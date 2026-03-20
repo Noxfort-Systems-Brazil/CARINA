@@ -2,7 +2,28 @@
   <h1>🚦 CARINA</h1>
   <h3>Controlled Artificial Road-traffic Intelligence Network Architecture</h3>
   <p><i>A next-generation, Open-Source Artificial Intelligence Ecosystem for Adaptive Urban Traffic Control</i></p>
-</div>
+
+
+  <p>
+    <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
+    <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Ubuntu%2022.04%2B-lightgrey" alt="Platform">
+    <img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
+    <img src="https://img.shields.io/badge/CUDA-12.x-76B900?logo=nvidia&logoColor=white" alt="CUDA">
+    <img src="https://img.shields.io/badge/Status-Production%20Ready-green" alt="Status">
+  </p>
+
+---
+
+## 📑 Table of Contents
+- [🌎 Executive Summary](#-executive-summary)
+- [✨ Key Features](#-key-features)
+- [🧠 The Neural Core: GOMES Architecture](#-the-neural-core-gomes-architecture)
+- [🎓 Training & Maturation: The DA SILVA Pipeline](#-training--maturation-the-da-silva-pipeline)
+- [🔬 Explainable AI (XAI) & LLM Transducers](#-explainable-ai-xai--llm-transducers)
+- [⚙️ Software Architecture & Enterprise Tech Stack](#️-software-architecture--enterprise-tech-stack)
+- [🚀 Getting Started](#-getting-started)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
 
 ---
 
@@ -14,6 +35,18 @@ By replacing archaic, hardcoded fixed-time controllers with dynamic, learning-ca
 - **Maximize Vehicular Throughput:** Drastically reduce wait times at intersections.
 - **Prevent Cascading Gridlocks:** Anticipate and neutralize traffic shockwaves before they paralyze city grids.
 - **Guarantee Safety:** Employ neuro-symbolic fail-safes to ensure no algorithm can ever trigger dangerous or contradictory traffic light phases.
+
+---
+
+## ✨ Key Features
+
+- **Decentralized Multi-Agent Control:** Intelligent nodes that coordinate to optimize city-wide traffic flow.
+- **Advanced Deep RL:** Utilizes PPO, TCN, and GAT to adapt to complex temporal and spatial traffic patterns.
+- **Fail-Safe Mechanisms:** A Guardian Agent powered by Dueling DQNs ensures strict adherence to safety protocols.
+- **Progressive Autonomy:** The DA SILVA curriculum safely transitions agents from purely observational to fully autonomous control.
+- **Explainable Decisions:** Transparent AI logic translated into human-readable technical reports using LLMs.
+- **High-Performance Architecture:** Asynchronous microservices, SQL/PostgreSQL persistence, and live telemetry integrations.
+- **Reactive Desktop UI:** Built with Flet (Flutter) for rich, real-time visualization of traffic topologies and system diagnostics.
 
 ---
 
@@ -53,7 +86,7 @@ Deploying an untrained neural network into a live city grid is irresponsible. CA
 
 Deep Neural Networks are often heavily criticized as uninterpretable "black boxes" by urban engineers. CARINA solves this by integrating a native **Explainable AI (XAI) Pipeline**:
 
-- **Captum Mathematical Attributions:** Working directly on the PyTorch Tensors, Captum mathematically dissects the TCN weights during runtime mapping exactly which input (e.g., *Northbound Lane Occupancy at t-5s*) triggered the neural network to switch the light to Green.
+- **Captum Mathematical Attributions:** Working directly on the PyTorch Tensors, Captum mathematically dissects the TCN weights during runtime, mapping exactly which input (e.g., *Northbound Lane Occupancy at t-5s*) triggered the neural network to switch the light to Green.
 - **Semantic Transducer (LLM Backend):** A raw matrix of integrated gradients means nothing to a city mayor. The Transducer passes these numerical arrays through a Large Language Model prompt, generating a human-readable, technically accurate "Laudo Técnico" (Technical Report) explaining the AI's logic in plain English/Portuguese.
 
 ---
@@ -74,6 +107,11 @@ CARINA is engineered for extreme resilience, deterministic behavior, and massive
 ## 🚀 Getting Started
 
 CARINA functions as a passive network node. It connects to **Eclipse SUMO** for simulation or directly to physical controllers via the agnostic **Synapse HFT Protocol**.
+
+### Prerequisites
+- Python 3.10 or higher
+- PostgreSQL (if running in production mode)
+- Eclipse SUMO (for simulation environments)
 
 ### Installation (Linux/Debian)
 
@@ -99,11 +137,27 @@ Once the AI training episode steps begin to roll, you can view the neural intros
 ```bash
 tensorboard --logdir=results/tensorboard
 ```
-Open your browser at `http://localhost:6006`.
+Open your browser at [http://localhost:6006](http://localhost:6006).
 
 ---
 
+## 🤝 Contributing
+
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+Distributed under the GNU Affero General Public License v3.0. See `LICENSE` for more information.
+
 <div align="center">
   <b>Developed with ❤️ for the future of urban mobility.</b><br>
-  <i>Copyright (C) 2026 Gabriel Moraes - Noxfort Systems | GNU Affero General Public License v3</i>
+  <i>Copyright &copy; 2026 - Noxfort Systems</i>
 </div>
