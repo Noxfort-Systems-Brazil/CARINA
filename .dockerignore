@@ -1,0 +1,33 @@
+# Arquivos do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pastas de ambiente virtual
+.venv
+venv/
+*env/
+
+# Arquivos de IDE e SO
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Logs
+*.log
+
+# Pastas de build do PyInstaller
+dist/
+build/
+# *.spec  <-- REMOVIDO (Precisamos do sfusion_mapper.spec agora)
+
+# Git
+.git/
+.gitignore
+
+# O próprio Dockerfile não precisa ser copiado
+Dockerfile
+docker-compose.yml

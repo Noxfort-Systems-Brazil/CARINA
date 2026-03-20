@@ -1,0 +1,77 @@
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
+# Copyright (C) 2025 Gabriel Moraes - Noxfort Systems
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY;
+# without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+# File: build-requirements.txt
+# Author: Gabriel Moraes
+# Date: 28 de Outubro de 2025
+#
+# Descrição:
+# Lista de todas as dependências de Python necessárias para EXECUTAR e
+# CONSTRUIR o ecistema CARINA.
+#
+# (CORRIGIDO: 'sumo-TraCI' removido)
+# (CORRIGIDO: 'qmapcontrol' removido)
+# (CORRIGIDO: Adicionado 'pandas' e 'xxhash')
+# (CORRIGIDO: Adicionado 'tensorboard' e 'scikit-learn')
+
+# --- Core AI & Compute ---
+# PyTorch 2.4.0 
+torch>=2.4.0
+# PyTorch Geometric
+torch-geometric>=2.6.1
+# Captum (para XAI - IA Explicável)
+captum>=0.7.0
+# Transformers (Qwen Model)
+transformers>=4.46.0
+accelerate>=1.0.0
+# TensorBoard (para logging da IA)
+tensorboard>=2.14.0
+
+# --- Simulação & Interação (Removido SUMO/TraCI) ---
+# --- Interface Gráfica (UI) ---
+flet==0.25.0
+
+# --- Comunicação & Serviços ---
+# Servidor WebSocket (para o Dashboard)
+websockets>=12.0
+# Cliente de telemetria
+prometheus-client>=0.20.0
+# gRPC
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+
+# --- Database & Messaging ---
+paho-mqtt>=2.1.0
+psycopg2-binary>=2.9.0
+
+# --- Hardware Communication ---
+pysnmp>=5.0.0
+
+# --- Análise e Manipulação de Dados ---
+# Manipulação de dados
+pandas>=2.1.0
+numpy>=1.26.0
+# Sklearn (para calibração do heatmap, etc.)
+scikit-learn>=1.3.0
+# Hashing rápido (dependência do pandas/outros)
+xxhash>=3.4.0
+
+# --- Ferramentas de Build (para PyInstaller) ---
+# O Compilador
+PyInstaller==6.10.0
+# Hooks adicionais para PyInstaller
+pyinstaller-hooks-contrib==2024.8

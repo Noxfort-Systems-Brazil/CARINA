@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CARINA
+Comment=Controlled Artificial Road-traffic Intelligence Network Architecture
+Exec=/opt/carina/carina
+Icon=carina
+Terminal=false
+Categories=Utility;Science;ArtificialIntelligence;
