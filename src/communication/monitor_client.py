@@ -134,7 +134,8 @@ class MonitorClient:
             try:
                 self.client.loop_stop()
                 self.client.disconnect()
-            except:
+            except (ConnectionError, TimeoutError, OSError) as e:
+                logging.warning(f"[{self.__class__.__name__}] Non-critical error during disconnect: {e}")
                 pass
 
     def connect_manual(self, host_str: str):

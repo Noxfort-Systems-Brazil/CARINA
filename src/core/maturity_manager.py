@@ -70,7 +70,8 @@ class MaturityManager:
             # Try getting it from the settings or use safe fallback
             try:
                 self.baseline_performance = settings.getfloat('MATURITY', 'baseline_reward', fallback=-10000.0)
-            except:
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.warning(f"Failed to read baseline_reward from settings: {e}")
                 self.baseline_performance = -10000.0
 
         # 3. Settings (Supports dict or ConfigParser)
@@ -78,7 +79,9 @@ class MaturityManager:
         def get_setting(key, fallback):
             if hasattr(settings, 'getfloat'): # It's ConfigParser
                 try: return settings.getfloat('MATURITY', key, fallback=fallback)
-                except: return fallback
+                except (ValueError, TypeError, AttributeError) as e:
+                    logger.warning(f"Failed to read setting {key}: {e}")
+                    return fallback
             elif isinstance(settings, dict):
                 return settings.get(key, fallback)
             return fallback
@@ -86,7 +89,9 @@ class MaturityManager:
         def get_int_setting(key, fallback):
             if hasattr(settings, 'getint'):
                 try: return settings.getint('MATURITY', key, fallback=fallback)
-                except: return fallback
+                except (ValueError, TypeError, AttributeError) as e:
+                    logger.warning(f"Failed to read int setting {key}: {e}")
+                    return fallback
             elif isinstance(settings, dict):
                 return settings.get(key, fallback)
             return fallback

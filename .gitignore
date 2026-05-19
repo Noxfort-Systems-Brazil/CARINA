@@ -1,0 +1,40 @@
+```
+# Dependencies
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+```

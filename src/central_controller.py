@@ -216,8 +216,11 @@ class CentralController:
         logging.info("Stopping CentralController...")
         self.is_running = False
         if self.server: self.server.stop(0)
-        try: self.ai_pipe_conn.send(("system", "shutdown", (), {}))
-        except: pass
+        try: 
+            self.ai_pipe_conn.send(("system", "shutdown", (), {}))
+        except (BrokenPipeError, ConnectionResetError, EOFError) as e:
+            logging.warning(f"CentralController: Failed to send shutdown signal to AI process: {e}")
+            pass
         if getattr(self, 'monitor_client', None):
             self.monitor_client.stop(shutdown_message="CARINA System Shutting Down...")
 

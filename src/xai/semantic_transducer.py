@@ -183,7 +183,8 @@ def main():
         try:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(f"ERROR: Failed to generate report. Details: {str(e)}")
-        except:
+        except (IOError, OSError, PermissionError) as write_err:
+            logging.error(f"Failed to write error message to output file: {write_err}")
             pass
         exit(1)
 
