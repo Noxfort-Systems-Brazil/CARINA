@@ -266,5 +266,16 @@
         "action": "Action",
         "details": "Détails",
         "refresh": "Actualiser"
+    },
+    "structured_report": {
+        "xai_metadata_title": "1. Détails Généraux de la Session",
+        "xai_label_agent": "Identifiant de l'Agent:",
+        "xai_all_agents_label": "Tous les Agents (Réseau Complet)",
+        "xai_label_scenario": "Scénario d'Opération:",
+        "xai_label_engine": "Moteur Analytique:",
+        "mfd_metadata_title": "1. Détails de l'Analyse de Performance MFD",
+        "mfd_label_scenario": "Scénario de Simulation:",
+        "mfd_label_engine": "Moteur Analytique MFD:",
+        "mfd_label_control": "Système de Contrôle:"
     }
 }

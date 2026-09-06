@@ -18,40 +18,42 @@
 # Author: Gabriel Moraes
 # Date: May 31, 2026
 
+import logging
 import os
 import sys
-import logging
-from typing import TYPE_CHECKING, Any, List, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from src.database.db_engine import DatabaseEngine
-from src.repositories.simulation_repo import SimulationRepository
-from src.repositories.fluid_dynamics_repo import FluidDynamicsRepository
-from src.repositories.cloud_vault_repo import CloudVaultRepository
-from src.repositories.step_decision_repo import StepDecisionRepository
 from src.database.step_decision_worker import StepDecisionWorker
+from src.repositories.cloud_vault_repo import CloudVaultRepository
+from src.repositories.fluid_dynamics_repo import FluidDynamicsRepository
+from src.repositories.simulation_repo import SimulationRepository
+from src.repositories.step_decision_repo import StepDecisionRepository
 
 if TYPE_CHECKING:
     from src.utils.locale_manager_backend import LocaleManagerBackend
 
+
 class DatabaseManager:
     """
     Facade Pattern.
-    Manages all interactions with the database. 
+    Manages all interactions with the database.
     Acts as a Unit of Work delegating calls to specialized repositories
     to respect the Single Responsibility Principle (SRP).
     """
-    def __init__(self, locale_manager: 'LocaleManagerBackend', db_name: str = "carina_data.db"):
+
+    def __init__(self, locale_manager: "LocaleManagerBackend", db_name: str = "carina_data.db"):
         self.locale_manager = locale_manager
-        
+
         # Initializes the Central Engine (Infrastructure/Connection)
         self.engine = DatabaseEngine(locale_manager=locale_manager, db_name=db_name)
-        
+
         # Initializes the Specialized Repositories (Business Logic)
         self.simulation_repo = SimulationRepository(self.engine, locale_manager)
         self.fluid_dynamics_repo = FluidDynamicsRepository(self.engine, locale_manager)
@@ -61,6 +63,20 @@ class DatabaseManager:
         # Async telemetry worker thread
         self.step_decision_worker = StepDecisionWorker(self.step_decision_repo)
         self.step_decision_worker.start()
+        self.current_session_id: Optional[int] = None
+
+    def start_operation_session(self) -> Optional[int]:
+        """Registers an operational session start_time in PostgreSQL."""
+        self.current_session_id = self.step_decision_repo.start_session()
+        return self.current_session_id
+
+    def end_operation_session(self, status: str = "FINALIZADO_NORMAL", error_msg: Optional[str] = None) -> bool:
+        """Updates operational session end_time and status in PostgreSQL."""
+        if self.current_session_id:
+            res = self.step_decision_repo.end_session(self.current_session_id, status, error_msg)
+            self.current_session_id = None
+            return res
+        return False
 
     # =========================================================================
     # SIMULATION RUNS & EPISODES
@@ -71,7 +87,7 @@ class DatabaseManager:
 
     def log_episode(self, run_id: int, episode_number: int, total_reward: float):
         self.simulation_repo.log_episode(run_id, episode_number, total_reward)
-            
+
     def log_analysis_report(self, run_id: int, summary: str, report_content: str):
         self.simulation_repo.log_analysis_report(run_id, summary, report_content)
 
@@ -102,7 +118,9 @@ class DatabaseManager:
         return self.query_fluid_dynamics_history(limit_seconds=limit_seconds)
 
     def query_fluid_dynamics_history_batches(self, limit_seconds: Optional[int] = None, batch_size: int = 50000):
-        return self.fluid_dynamics_repo.query_fluid_dynamics_history_batches(limit_seconds=limit_seconds, batch_size=batch_size)
+        return self.fluid_dynamics_repo.query_fluid_dynamics_history_batches(
+            limit_seconds=limit_seconds, batch_size=batch_size
+        )
 
     def query_aggregated_fluid_dynamics(self, limit_seconds: Optional[int] = None) -> List[Dict]:
         return self.fluid_dynamics_repo.query_aggregated_fluid_dynamics(limit_seconds=limit_seconds)

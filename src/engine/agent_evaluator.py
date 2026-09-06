@@ -18,11 +18,14 @@
 # Author: Gabriel Moraes
 # Date: April 15, 2026
 
-from typing import Dict, Any, Tuple, Optional
 import logging
+from typing import Any, Dict, Optional, Tuple
+
 import torch
+
 from core.enums import Maturity
 from core.system_reporter import SystemReporter
+
 
 class AgentEvaluator:
     """
@@ -30,8 +33,17 @@ class AgentEvaluator:
     Mede seus tempos de operação usando o StepTimer injetado.
     """
 
-    def __init__(self, state_extractor: Any, input_preprocessor: Any, reward_computer: Any, 
-                 action_authorizer: Any, action_supervisor: Any, maturity_manager: Any, locale_manager: Any) -> None:
+    def __init__(
+        self,
+        state_extractor: Any,
+        input_preprocessor: Any,
+        reward_computer: Any,
+        action_authorizer: Any,
+        action_supervisor: Any,
+        maturity_manager: Any,
+        locale_manager: Any,
+        db_manager: Any = None,
+    ) -> None:
         self.state_extractor = state_extractor
         self.input_preprocessor = input_preprocessor
         self.reward_computer = reward_computer
@@ -39,9 +51,19 @@ class AgentEvaluator:
         self.action_supervisor = action_supervisor
         self.maturity_manager = maturity_manager
         self.lm = locale_manager
+        self.db_manager = db_manager
 
-    def evaluate_agent(self, tl_id: str, agent: Any, current_stage_idx: int, traffic_data: dict, 
-                       edges_data: dict, sim_time: float, guardian: Optional[Any], step_timer: Any) -> Tuple[Optional[int], str, bool, float, float, Dict[str, str]]:
+    def evaluate_agent(
+        self,
+        tl_id: str,
+        agent: Any,
+        current_stage_idx: int,
+        traffic_data: dict,
+        edges_data: dict,
+        sim_time: float,
+        guardian: Optional[Any],
+        step_timer: Any,
+    ) -> Tuple[Optional[int], str, bool, float, float, Dict[str, str]]:
         """
         Executes the agent pipeline: Extraction -> Prep -> Inference -> Reward -> Guardian -> Auth.
         Returns:
@@ -54,46 +76,46 @@ class AgentEvaluator:
         """
         # --- UI DATA ---
         tls_lanes_state = self.state_extractor.get_phase_lane_states(tl_id, current_stage_idx)
-        
+
         # Population Maturity Info
         agent_maturity = self.maturity_manager.agent_maturity.get(tl_id, Maturity.CHILD)
         maturity_name = agent_maturity.name
-        
+
         # 1. Extract State
         step_timer.start_phase()
-        
+
         # Log Pedestrian Action if present
-        if 'tls_telemetry' in traffic_data:
-            telemetry = traffic_data['tls_telemetry'].get(tl_id, {})
-            if telemetry.get('active_ped_calls', 0) > 0:
-                logging.info(f"🚶‍♂️ [AgentEvaluator] TL {tl_id}: Botão de pedestre pressionado detectado pelo hardware (UTMC/NTCIP).")
-        
+        if "tls_telemetry" in traffic_data:
+            telemetry = traffic_data["tls_telemetry"].get(tl_id, {})
+            if telemetry.get("active_ped_calls", 0) > 0:
+                logging.info(
+                    f"🚶‍♂️ [AgentEvaluator] TL {tl_id}: Botão de pedestre pressionado detectado pelo hardware (UTMC/NTCIP)."
+                )
+
         state_vector = self.state_extractor.extract_state(traffic_data, tl_id, current_stage_idx)
-        if len(state_vector) == 0: 
+        if len(state_vector) == 0:
             return None, maturity_name, False, 0.0, 0.0, tls_lanes_state
 
         state_tensor, state_seq = self.input_preprocessor.prepare_tensor(tl_id, state_vector)
-        step_timer.stop_phase('extraction')
-        
+        step_timer.stop_phase("extraction")
+
         # 2. Agent Inference
         step_timer.start_phase()
         action_idx, action_log_prob, state_val, dist_entropy = agent.choose_action(state_tensor)
-        step_timer.stop_phase('inference')
-        
+        step_timer.stop_phase("inference")
+
         action_int = action_idx.item()
-        entropy_val = dist_entropy.item() if hasattr(dist_entropy, 'item') else 0.0
-        
+        entropy_val = dist_entropy.item() if hasattr(dist_entropy, "item") else 0.0
+
         # 3. Compute Reward
         step_timer.start_phase()
         reward = self.reward_computer.calculate(tl_id, edges_data)
-        step_timer.stop_phase('reward')
-        
-
+        step_timer.stop_phase("reward")
 
         # 5. Core Authorization
         step_timer.start_phase()
         is_auth, reason = self.action_authorizer.is_action_authorized(tl_id, agent_maturity, sim_time)
-        step_timer.stop_phase('auth')
+        step_timer.stop_phase("auth")
 
         # 6. Guardian Veto Control
         guardian_vetoed = False
@@ -102,59 +124,85 @@ class AgentEvaluator:
         if is_auth and action_int == 0 and guardian:
             current_stage_duration = sim_time - self.action_supervisor._last_stage_change_time.get(tl_id, 0)
             state_string = self.state_extractor.tl_stage_codes.get(tl_id, {}).get(current_stage_idx, "G")
-            
+
             # Improve context with more accurate information
             prev_stage_idx = (current_stage_idx - 1) % len(self.state_extractor.tl_stage_codes.get(tl_id, {0: "G"}))
             prev_state_string = self.state_extractor.tl_stage_codes.get(tl_id, {}).get(prev_stage_idx, "").upper()
-            
-            stage_durations = getattr(self.state_extractor, 'tl_stage_durations', {}).get(tl_id, {})
+
+            stage_durations = getattr(self.state_extractor, "tl_stage_durations", {}).get(tl_id, {})
             default_duration = stage_durations.get(current_stage_idx, 0.0)
             from utils.safety_rules import SafetyRules
+
             all_red_time = SafetyRules.get_all_red()
             if default_duration > 0:
-                is_clearance_red = ('Y' in prev_state_string) and (default_duration <= all_red_time)
+                is_clearance_red = ("Y" in prev_state_string) and (default_duration <= all_red_time)
             else:
-                is_clearance_red = 'Y' in prev_state_string
+                is_clearance_red = "Y" in prev_state_string
 
             context = {
-                'tl_id': tl_id,
-                'current_stage_duration': current_stage_duration,
-                'current_stage_state': state_string.upper(),
-                'next_stage_has_flow': True,
-                'is_clearance_red': is_clearance_red
+                "tl_id": tl_id,
+                "current_stage_duration": current_stage_duration,
+                "current_stage_state": state_string.upper(),
+                "next_stage_has_flow": True,
+                "is_clearance_red": is_clearance_red,
             }
-            
-            logging.debug(f"[AgentEvaluator] TL {tl_id} requesting stage change. Duration: {current_stage_duration:.2f}s, State: {state_string}")
+
+            logging.debug(
+                f"[AgentEvaluator] TL {tl_id} requesting stage change. Duration: {current_stage_duration:.2f}s, State: {state_string}"
+            )
             guard_action, guard_reason = guardian.select_action(state_vector, context)
-            logging.debug(f"[AgentEvaluator] Guardian decision for TL {tl_id}: action={guard_action}, reason='{guard_reason}'")
-            
+            logging.debug(
+                f"[AgentEvaluator] Guardian decision for TL {tl_id}: action={guard_action}, reason='{guard_reason}'"
+            )
+
             if guard_action == guardian.ACTION_KEEP_STAGE:
                 is_auth = False
                 reason = f"VETADA PELO GUARDIÃO ({guard_reason})"
                 guardian_vetoed = True
                 logging.info(f"[AgentEvaluator] TL {tl_id} stage change VETOED by Guardian: {guard_reason}")
-                
+
                 # Override action to "Keep Stage" (1) so the agent remembers the actual reality applied
                 action_int = 1
                 action_idx = torch.tensor([1], device=agent.device)
-                
+
                 # Recompute the probability (log_prob) of the new action under the current policy
                 with torch.no_grad():
                     action_log_prob, _, _ = agent.evaluate(state_tensor, action_idx)
             else:
                 logging.info(f"[AgentEvaluator] TL {tl_id} stage change ALLOWED by Guardian: {guard_reason}")
-        step_timer.stop_phase('guardian')
-        
+        step_timer.stop_phase("guardian")
+
         # 4. Store Experience (Moved after Guardian to properly reflect safe vetoes in memory)
         agent.push_memory(state_seq, action_idx, action_log_prob, reward, False, state_val)
 
         # 7. Reporting
-        action_str = self.lm.get_string("actions.change_stage") if original_action_int == 0 else self.lm.get_string("actions.keep_stage")
-        SystemReporter.report_agent_decision(
-            self.lm, tl_id, maturity_name, action_str, is_auth, reason, "NORMAL"
+        action_str = (
+            self.lm.get_string("actions.change_stage")
+            if original_action_int == 0
+            else self.lm.get_string("actions.keep_stage")
         )
-        
+        SystemReporter.report_agent_decision(self.lm, tl_id, maturity_name, action_str, is_auth, reason, "NORMAL")
+
+        # Real-Time Telemetry Push to PostgreSQL Counters (Codes 0-5)
+        if self.db_manager and hasattr(self.db_manager, "step_decision_worker"):
+            if guardian_vetoed:
+                r_upper = str(reason or "").upper()
+                if "AMARELO" in r_upper or "YELLOW" in r_upper:
+                    code = 2
+                elif "ALL_RED" in r_upper or "VERMELHO_INTEGRAL" in r_upper:
+                    code = 3
+                elif "MIN_RED" in r_upper or "VERMELHO" in r_upper:
+                    code = 4
+                elif "SPILLBACK" in r_upper or "D3QN" in r_upper or "SATURACAO" in r_upper:
+                    code = 5
+                else:
+                    code = 1  # Min Green CTB
+            else:
+                code = 0  # Approved / Homologated
+
+            self.db_manager.step_decision_worker.push_decision_code(agent_id=tl_id, decision_code=code, count=1)
+
         # Se foi autorizado OU se o Guardião vetou (forçando o Hold), aplicamos a ação
         action_to_apply = action_int if (is_auth or guardian_vetoed) else None
-        
+
         return action_to_apply, maturity_name, guardian_vetoed, reward, entropy_val, tls_lanes_state

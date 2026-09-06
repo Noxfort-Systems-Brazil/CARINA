@@ -18,11 +18,13 @@
 # Author: Gabriel Moraes
 # Date: August 9, 2026
 
-import os
 import json
 import logging
+import os
 import re
+
 from blocks.report_number_formatter import ReportNumberFormatter
+
 
 class ReportSemanticCleaner:
     """
@@ -42,7 +44,7 @@ class ReportSemanticCleaner:
         json_path = os.path.join(base_dir, "config", "semantic_rules.json")
 
         try:
-            with open(json_path, 'r', encoding='utf-8') as f:
+            with open(json_path, "r", encoding="utf-8") as f:
                 cls._semantic_rules_cache = json.load(f)
                 logging.info(f"[REPORT_SEMANTIC_CLEANER] Loaded semantic rules from: {json_path}")
         except Exception as e:
@@ -126,7 +128,7 @@ class ReportSemanticCleaner:
 
         # 8. Decimal separator formatting & double-comma thousands fix
         dec_sep = ReportNumberFormatter.get_configured_decimal_separator()
-        if dec_sep == '.':
+        if dec_sep == ".":
             # Fix double comma e.g. 2,241,86 -> 2,241.86
             text = re.sub(r"(\b\d{1,3}),(\d{3}),(\d{2})\b", r"\1,\2.\3", text)
             text = re.sub(r"(\b\d+),(\d{1,2})\b", r"\1.\2", text)
@@ -135,14 +137,20 @@ class ReportSemanticCleaner:
             text = re.sub(r"(\b\d{1,3}),(\d{3}),(\d{1,2})\b", r"\1.\2,\3", text)
             # Fix 4-digit numbers with comma used as thousands before 'segundos' (e.g., 1,582 segundos -> 1.582,0 segundos)
             text = re.sub(r"\b(\d{1,3}),(\d{3})\s*(segundos|s)\b", r"\1.\2,0 \3", text, flags=re.IGNORECASE)
-            # Only convert single dots to commas if NOT part of a thousands separator (e.g. 450.0 -> 450,0; but NOT 5.354,6)
+            # Preserve section numbering (e.g. 2.1, 2.2, 2.3, 1.1) from decimal comma replacement
+            text = re.sub(r"(#+\s*\d+)\.(\d+)", r"\1__SEC_DOT__\2", text)
+            text = re.sub(
+                r"(\b\d{1,2})\.(\d{1,2})\b(?!\s*%|\s*s\b|\s*segundos|\s*m\b|\s*km\b|\s*ms\b)", r"\1__SEC_DOT__\2", text
+            )
+            # Only convert single dots to commas if NOT part of a thousands separator or section number (e.g. 450.0% -> 450,0%)
             text = re.sub(r"(\b\d+)\.(\d{1,2})(?!\d|,\d)", r"\1,\2", text)
+            text = text.replace("__SEC_DOT__", ".")
             text = re.sub(r"\bCARINA\s+v1,0\b", "CARINA v1.0 (SAS Engine)", text, flags=re.IGNORECASE)
             text = re.sub(r"\bv1,0\b", "v1.0", text, flags=re.IGNORECASE)
 
         # 9. Renumber protocol lists starting strictly at 1 if the first item starts with a higher number
         def _renumber_list_from_one(m: re.Match) -> str:
-            lines = m.group(0).split('\n')
+            lines = m.group(0).split("\n")
             new_lines = []
             cur_idx = 1
             for line in lines:
@@ -152,7 +160,7 @@ class ReportSemanticCleaner:
                     cur_idx += 1
                 else:
                     new_lines.append(line)
-            return '\n'.join(new_lines)
+            return "\n".join(new_lines)
 
         text = re.sub(r"(?:^\s*\d+\.\s+.*\n?){2,}", _renumber_list_from_one, text, flags=re.MULTILINE)
 

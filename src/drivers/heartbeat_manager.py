@@ -29,11 +29,21 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
+
 class HeartbeatManager:
     """
     Manages the background heartbeat thread lifecycle for maintaining failsafe remote control.
     """
-    def __init__(self, ip_address: str, port: int, send_pulse_cb: Callable[[], bool], on_loss_cb: Callable[[], None], on_restore_cb: Callable[[], None], interval: float = 2.0):
+
+    def __init__(
+        self,
+        ip_address: str,
+        port: int,
+        send_pulse_cb: Callable[[], bool],
+        on_loss_cb: Callable[[], None],
+        on_restore_cb: Callable[[], None],
+        interval: float = 2.0,
+    ):
         self.ip_address = ip_address
         self.port = port
         self.send_pulse_cb = send_pulse_cb
@@ -51,9 +61,7 @@ class HeartbeatManager:
 
         self._stop_heartbeat_event.clear()
         self._heartbeat_thread = threading.Thread(
-            target=self._heartbeat_loop,
-            daemon=True,
-            name=f"Heartbeat-{self.ip_address}"
+            target=self._heartbeat_loop, daemon=True, name=f"Heartbeat-{self.ip_address}"
         )
         self._heartbeat_thread.start()
         logger.info(f"[{self.ip_address}:{self.port}] Heartbeat thread started.")
@@ -62,14 +70,21 @@ class HeartbeatManager:
         """Stops the background heartbeat thread cleanly."""
         if self._heartbeat_thread is not None:
             self._stop_heartbeat_event.set()
-            self._heartbeat_thread.join(timeout=3.0)
+            if self._heartbeat_thread.is_alive():
+                self._heartbeat_thread.join(timeout=2.0)
             self._heartbeat_thread = None
             logger.info(f"[{self.ip_address}:{self.port}] Heartbeat thread stopped.")
 
     def _heartbeat_loop(self) -> None:
         consecutive_failures = 0
         while not self._stop_heartbeat_event.is_set():
+            if self._stop_heartbeat_event.is_set():
+                break
+
             success = self.send_pulse_cb()
+            if self._stop_heartbeat_event.is_set():
+                break
+
             if not success:
                 consecutive_failures += 1
                 logger.warning(f"[{self.ip_address}:{self.port}] Heartbeat pulse failed ({consecutive_failures}x).")
@@ -79,5 +94,5 @@ class HeartbeatManager:
                 if consecutive_failures >= 3:
                     self.on_restore_cb()
                 consecutive_failures = 0
-            
+
             self._stop_heartbeat_event.wait(self.heartbeat_interval_seconds)

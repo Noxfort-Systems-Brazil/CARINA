@@ -20,7 +20,7 @@
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Dict
+from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
@@ -33,7 +33,7 @@ class FluidDynamicsWriter:
     for fluid dynamics samples.
     """
 
-    def __init__(self, engine: 'DatabaseEngine', query_provider: 'FluidDynamicsQueryProvider'):
+    def __init__(self, engine: "DatabaseEngine", query_provider: "FluidDynamicsQueryProvider"):
         self.engine = engine
         self.query_provider = query_provider
         self._edge_dict_cache: Dict[str, int] = {}
@@ -47,12 +47,14 @@ class FluidDynamicsWriter:
         try:
             cursor = conn.cursor()
             # Try lookup
-            cursor.execute("SELECT edge_int_id FROM public.edge_dictionary WHERE edge_str_id = %s;", (edge_str_id,))
+            cursor.execute("SELECT edge_int_id FROM edge_dictionary WHERE edge_str_id = %s;", (edge_str_id,))
             row = cursor.fetchone()
             if row:
                 int_id = row[0]
             else:
-                cursor.execute("INSERT INTO public.edge_dictionary (edge_str_id) VALUES (%s) RETURNING edge_int_id;", (edge_str_id,))
+                cursor.execute(
+                    "INSERT INTO edge_dictionary (edge_str_id) VALUES (%s) RETURNING edge_int_id;", (edge_str_id,)
+                )
                 int_id = cursor.fetchone()[0]
                 conn.commit()
             self._edge_dict_cache[edge_str_id] = int_id
@@ -67,12 +69,12 @@ class FluidDynamicsWriter:
         """
         compressed = []
         for s in samples:
-            edge_id = s.get('edge_id')
-            maturity = s.get('maturity_stage', 'CHILD')
-            density = round(s.get('density', 0.0), 2)
-            speed = round(s.get('mean_speed', 0.0), 2)
-            queue = s.get('queue_length', 0)
-            occ = round(s.get('occupancy', 0.0), 2)
+            edge_id = s.get("edge_id")
+            maturity = s.get("maturity_stage", "CHILD")
+            density = round(s.get("density", 0.0), 2)
+            speed = round(s.get("mean_speed", 0.0), 2)
+            queue = s.get("queue_length", 0)
+            occ = round(s.get("occupancy", 0.0), 2)
 
             key = (edge_id, maturity, density, speed, queue, occ)
 
@@ -80,13 +82,13 @@ class FluidDynamicsWriter:
                 prev_sample, prev_key = self._last_edge_samples[edge_id]
                 if prev_key == key:
                     # Increment sample count for unchanged telemetry state
-                    prev_sample['sample_count'] = prev_sample.get('sample_count', 1) + 1
+                    prev_sample["sample_count"] = prev_sample.get("sample_count", 1) + 1
                     continue
                 else:
                     compressed.append(prev_sample)
 
             new_sample = dict(s)
-            new_sample['sample_count'] = new_sample.get('sample_count', 1)
+            new_sample["sample_count"] = new_sample.get("sample_count", 1)
             self._last_edge_samples[edge_id] = (new_sample, key)
 
         return compressed
@@ -108,39 +110,41 @@ class FluidDynamicsWriter:
 
             cursor = conn.cursor()
             now = datetime.now()
-            
+
             # Check if sample_count column exists in query or table
             sql = """
-                INSERT INTO public.synapse_fluid_dynamics (
+                INSERT INTO synapse_fluid_dynamics (
                     collected_at, scenario_name, intersection_id, edge_id,
                     density, mean_speed, min_speed, queue_length, max_queue,
                     occupancy, edge_length, num_lanes, speed_limit, maturity_stage,
                     sample_count, edge_int_id
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            
+
             rows = []
             for s in compressed_samples:
-                edge_str = s['edge_id']
+                edge_str = s["edge_id"]
                 edge_int = self._get_or_create_edge_id(conn, edge_str)
-                rows.append((
-                    s.get('collected_at', now),
-                    s.get('scenario_name', 'default'),
-                    s.get('intersection_id'),
-                    edge_str,
-                    s['density'],
-                    s['mean_speed'],
-                    s.get('min_speed', s['mean_speed']),
-                    s['queue_length'],
-                    s.get('max_queue', s['queue_length']),
-                    s['occupancy'],
-                    s.get('edge_length'),
-                    s.get('num_lanes'),
-                    s.get('speed_limit'),
-                    s.get('maturity_stage', 'CHILD'),
-                    s.get('sample_count', 1),
-                    edge_int
-                ))
+                rows.append(
+                    (
+                        s.get("collected_at", now),
+                        s.get("scenario_name", "default"),
+                        s.get("intersection_id"),
+                        edge_str,
+                        s["density"],
+                        s["mean_speed"],
+                        s.get("min_speed", s["mean_speed"]),
+                        s["queue_length"],
+                        s.get("max_queue", s["queue_length"]),
+                        s["occupancy"],
+                        s.get("edge_length"),
+                        s.get("num_lanes"),
+                        s.get("speed_limit"),
+                        s.get("maturity_stage", "CHILD"),
+                        s.get("sample_count", 1),
+                        edge_int,
+                    )
+                )
             cursor.executemany(sql, rows)
             conn.commit()
         except Exception as e:

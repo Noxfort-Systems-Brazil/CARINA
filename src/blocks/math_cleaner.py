@@ -20,6 +20,7 @@
 
 import re
 
+
 def clean_latex_math(eq: str) -> str:
     """
     Cleans LaTeX mathematical syntax for clean Word document rendering.
@@ -31,73 +32,87 @@ def clean_latex_math(eq: str) -> str:
     if not eq:
         return ""
 
-    eq = eq.replace('$$', '').replace('$', '').strip()
+    eq = eq.replace("$$", "").replace("$", "").strip()
 
     # Clean \\tag{...} and \\mathbf{...}
-    eq = re.sub(r'\\tag\{[^{}]+\}', '', eq)
-    eq = re.sub(r'\\mathbf\s*\{', '', eq)
+    eq = re.sub(r"\\tag\{[^{}]+\}", "", eq)
+    eq = re.sub(r"\\mathbf\s*\{", "", eq)
 
-    # Clean \\left and \\right delimiters
-    eq = eq.replace(r'\left(', '(').replace(r'\right)', ')')
-    eq = eq.replace(r'\left[', '[').replace(r'\right]', ']')
-    eq = eq.replace(r'\left\{', '{').replace(r'\right\}', '}')
-    eq = eq.replace(r'\left', '').replace(r'\right', '')
+    # Clean \\left and \\right delimiters and escaped parens
+    eq = eq.replace(r"\\left(", "(").replace(r"\\right)", ")")
+    eq = eq.replace(r"\left(", "(").replace(r"\right)", ")")
+    eq = eq.replace(r"\\left[", "[").replace(r"\\right]", "]")
+    eq = eq.replace(r"\left[", "[").replace(r"\right]", "]")
+    eq = eq.replace(r"\\left\{", "{").replace(r"\\right\}", "}")
+    eq = eq.replace(r"\left\{", "{").replace(r"\right\}", "}")
+    eq = eq.replace(r"\\left", "").replace(r"\\right", "")
+    eq = eq.replace(r"\left", "").replace(r"\right", "")
+    eq = eq.replace(r"\(", "(").replace(r"\)", ")")
+    eq = eq.replace(r"\[", "[").replace(r"\]", "]")
 
     # Clean \\text{...}
-    eq = re.sub(r'\\text\{([^{}]+)\}', r'\1', eq)
+    eq = re.sub(r"\\text\{([^{}]+)\}", r"\1", eq)
 
     # Process \\frac{num}{den} robustly
     def _format_frac(m):
         num = m.group(1).strip()
         den = m.group(2).strip()
-        if r'\times' in den or r'\cdot' in den or '*' in den or '+' in den or '-' in den or ' ' in den or '×' in den:
+        if r"\times" in den or r"\cdot" in den or "*" in den or "+" in den or "-" in den or " " in den or "×" in den:
             return f"{num} / ({den})"
         return f"{num} / {den}"
 
-    frac_pattern = re.compile(r'\\frac\{((?:[^{}]|\{[^{}]*\})+)\}\{((?:[^{}]|\{[^{}]*\})+)\}')
+    frac_pattern = re.compile(r"\\frac\{((?:[^{}]|\{[^{}]*\})+)\}\{((?:[^{}]|\{[^{}]*\})+)\}")
     max_loops = 5
-    while r'\frac' in eq and max_loops > 0:
+    while r"\frac" in eq and max_loops > 0:
         max_loops -= 1
         new_eq = frac_pattern.sub(_format_frac, eq)
         if new_eq == eq:
-            eq = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'\1 / \2', eq)
+            eq = re.sub(r"\\frac\{([^}]+)\}\{([^}]+)\}", r"\1 / \2", eq)
             break
         eq = new_eq
 
     # Clean subscripts (v_{real} -> v_real, v_{limite} -> v_limite, F_{ideal} -> F_ideal, P_{95} -> P_95)
-    eq = re.sub(r'([a-zA-Z0-9]+)_\{([a-zA-Z0-9_]+)\}', r'\1_\2', eq)
-    eq = re.sub(r'([a-zA-Z0-9]+)_([a-zA-Z0-9]+)', r'\1_\2', eq)
-    eq = eq.replace('P_{95}', 'P_95').replace('P95', 'P_95')
-    eq = eq.replace('v_{real}', 'v_real').replace('vreal', 'v_real')
-    eq = eq.replace('v_{limite}', 'v_limite').replace('vlimite', 'v_limite')
-    eq = eq.replace('F_{ideal}', 'F_ideal').replace('Fideal', 'F_ideal')
+    eq = re.sub(r"([a-zA-Z0-9]+)_\{([a-zA-Z0-9_]+)\}", r"\1_\2", eq)
+    eq = re.sub(r"([a-zA-Z0-9]+)_([a-zA-Z0-9]+)", r"\1_\2", eq)
+    eq = eq.replace("P_{95}", "P_95").replace("P95", "P_95")
+    eq = eq.replace("v_{real}", "v_real").replace("vreal", "v_real")
+    eq = eq.replace("v_{limite}", "v_limite").replace("vlimite", "v_limite")
+    eq = eq.replace("F_{ideal}", "F_ideal").replace("Fideal", "F_ideal")
 
     # Clean latex multiplication & math operators
-    eq = eq.replace(r'\times', '×').replace(r'\cdot', '·')
-    eq = eq.replace(r'\sum_{a}', '∑ₐ').replace(r'\sum_{', '∑_').replace(r'\sum', '∑')
-    eq = eq.replace(r'\log', 'log')
-    eq = eq.replace(r'\Delta', 'Δ').replace(r'\delta', 'δ')
-    eq = eq.replace(r'\pi', 'π')
-    eq = eq.replace(r'\mathcal{H}', 'H').replace(r'\mathcal{P}', 'P')
-    eq = eq.replace(r'\%', '%')
-    eq = eq.replace(r'\infty', '∞').replace(r'\approx', '≈')
-    eq = eq.replace(r'\leq', '≤').replace(r'\geq', '≥').replace(r'\neq', '≠')
+    eq = eq.replace(r"\times", "×").replace(r"\cdot", "·")
+    eq = eq.replace(r"\alpha", "α").replace(r"\tau", "τ")
+    eq = eq.replace(r"\int", "∫").replace(r"\partial", "∂")
+    eq = eq.replace(r"\parallel", "∥").replace(r"\in", "∈")
+    eq = eq.replace(r"\sum_{a}", "∑ₐ").replace(r"\sum_{", "∑_").replace(r"\sum", "∑")
+    eq = eq.replace(r"\log", "log").replace(r"\exp", "exp").replace(r"\softmax", "softmax")
+    eq = eq.replace(r"\Delta", "Δ").replace(r"\delta", "δ")
+    eq = eq.replace(r"\pi", "π")
+    eq = (
+        eq.replace(r"\mathcal{H}", "H")
+        .replace(r"\mathcal{P}", "P")
+        .replace(r"\mathcal{A}", "A")
+        .replace(r"\mathcal{N}", "N")
+    )
+    eq = eq.replace(r"\%", "%")
+    eq = eq.replace(r"\infty", "∞").replace(r"\approx", "≈")
+    eq = eq.replace(r"\leq", "≤").replace(r"\geq", "≥").replace(r"\neq", "≠")
 
     # Clean any remaining unknown LaTeX keywords or backslashes
-    eq = re.sub(r'\\[a-zA-Z]+', '', eq)
-    eq = eq.replace('{', '').replace('}', '').replace('\\', '')
+    eq = re.sub(r"\\[a-zA-Z]+", "", eq)
+    eq = eq.replace("{", "").replace("}", "").replace("\\", "")
 
     # Clean inline math $...$
     def replace_inline(match):
         val = match.group(1)
-        val = re.sub(r'([a-zA-Z0-9]+)_\{([a-zA-Z0-9_]+)\}', r'\1_\2', val)
-        val = re.sub(r'([a-zA-Z0-9]+)_([a-zA-Z0-9]+)', r'\1_\2', val)
-        val = val.replace('P_{95}', 'P_95').replace('P95', 'P_95')
-        val = val.replace('{', '').replace('}', '').replace('\\', '')
+        val = re.sub(r"([a-zA-Z0-9]+)_\{([a-zA-Z0-9_]+)\}", r"\1_\2", val)
+        val = re.sub(r"([a-zA-Z0-9]+)_([a-zA-Z0-9]+)", r"\1_\2", val)
+        val = val.replace("P_{95}", "P_95").replace("P95", "P_95")
+        val = val.replace("{", "").replace("}", "").replace("\\", "")
         return val
 
-    eq = re.sub(r'\$([^$]+)\$', replace_inline, eq)
+    eq = re.sub(r"\$([^$]+)\$", replace_inline, eq)
 
     # Remove duplicate spaces
-    eq = re.sub(r'\s+', ' ', eq).strip()
+    eq = re.sub(r"\s+", " ", eq).strip()
     return eq

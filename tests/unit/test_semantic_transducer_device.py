@@ -1,7 +1,30 @@
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
+# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# File: tests/unit/test_semantic_transducer_device.py
+# Author: Gabriel Moraes
+# Date: September 2026
+
 import os
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from slm.semantic_transducer import SemanticTransducer
+
 
 @pytest.fixture(autouse=True)
 def mock_llama_cpp_module():
@@ -9,11 +32,13 @@ def mock_llama_cpp_module():
     with patch.dict("sys.modules", {"llama_cpp": mock_module}):
         yield mock_module
 
+
 @patch("torch.cuda.is_available", return_value=False)
 def test_transducer_device_init_no_cuda(mock_cuda):
     transducer = SemanticTransducer(model_path="dummy_path.gguf")
     assert transducer.device_setting == "cpu"
     assert transducer.gpu_layers == 0
+
 
 @patch("torch.cuda.is_available", return_value=True)
 @patch("torch.cuda.mem_get_info", return_value=(4 * 1024 * 1024 * 1024, 8 * 1024 * 1024 * 1024), create=True)
@@ -22,12 +47,14 @@ def test_transducer_device_init_sufficient_vram(mock_mem, mock_cuda):
     assert transducer.device_setting == "gpu"
     assert transducer.gpu_layers == -1
 
+
 @patch("torch.cuda.is_available", return_value=True)
 @patch("torch.cuda.mem_get_info", return_value=(2 * 1024 * 1024 * 1024, 8 * 1024 * 1024 * 1024), create=True)
 def test_transducer_device_init_insufficient_vram(mock_mem, mock_cuda):
     transducer = SemanticTransducer(model_path="dummy_path.gguf")
     assert transducer.device_setting == "cpu"
     assert transducer.gpu_layers == 0
+
 
 @patch("torch.cuda.is_available", return_value=True)
 @patch("torch.cuda.mem_get_info", side_effect=Exception("Driver error"), create=True)
@@ -37,6 +64,7 @@ def test_transducer_device_init_vram_error(mock_mem, mock_cuda):
     assert transducer.device_setting == "gpu"
     assert transducer.gpu_layers == -1
 
+
 @patch("slm.model_loader.os.path.exists", return_value=True)
 @patch("torch.cuda.is_available", return_value=False)
 def test_transducer_load_resources_cpu(mock_cuda, mock_exists, mock_llama_cpp_module):
@@ -44,12 +72,8 @@ def test_transducer_load_resources_cpu(mock_cuda, mock_exists, mock_llama_cpp_mo
     mock_llama.reset_mock()
     transducer = SemanticTransducer(model_path="dummy_path.gguf")
     transducer.load_resources()
-    mock_llama.assert_called_once_with(
-        model_path="dummy_path.gguf",
-        n_ctx=8192,
-        n_gpu_layers=0,
-        verbose=False
-    )
+    mock_llama.assert_called_once_with(model_path="dummy_path.gguf", n_ctx=8192, n_gpu_layers=0, verbose=False)
+
 
 @patch("slm.model_loader.os.path.exists", return_value=True)
 @patch("torch.cuda.is_available", return_value=True)
@@ -59,12 +83,8 @@ def test_transducer_load_resources_gpu(mock_mem, mock_cuda, mock_exists, mock_ll
     mock_llama.reset_mock()
     transducer = SemanticTransducer(model_path="dummy_path.gguf")
     transducer.load_resources()
-    mock_llama.assert_called_once_with(
-        model_path="dummy_path.gguf",
-        n_ctx=8192,
-        n_gpu_layers=-1,
-        verbose=False
-    )
+    mock_llama.assert_called_once_with(model_path="dummy_path.gguf", n_ctx=8192, n_gpu_layers=-1, verbose=False)
+
 
 @patch("slm.model_loader.os.path.exists", return_value=True)
 @patch("torch.cuda.is_available", return_value=True)
@@ -78,18 +98,9 @@ def test_transducer_load_resources_gpu_fallback(mock_mem, mock_cuda, mock_exists
     transducer.load_resources()
     assert mock_llama.call_count == 2
     # First call with -1, second with 0
-    mock_llama.assert_any_call(
-        model_path="dummy_path.gguf",
-        n_ctx=8192,
-        n_gpu_layers=-1,
-        verbose=False
-    )
-    mock_llama.assert_any_call(
-        model_path="dummy_path.gguf",
-        n_ctx=8192,
-        n_gpu_layers=0,
-        verbose=False
-    )
+    mock_llama.assert_any_call(model_path="dummy_path.gguf", n_ctx=8192, n_gpu_layers=-1, verbose=False)
+    mock_llama.assert_any_call(model_path="dummy_path.gguf", n_ctx=8192, n_gpu_layers=0, verbose=False)
+
 
 def test_transducer_build_prompt_laudo_estatistico_with_last_report():
     with patch("torch.cuda.is_available", return_value=False):
@@ -98,31 +109,32 @@ def test_transducer_build_prompt_laudo_estatistico_with_last_report():
         "timestamp": "2026-07-02 00:00:00",
         "mode": "STATISTICAL_REPORT",
         "language": "pt_br",
-        "attributions": {"junction_1": {"recommendation": "KEEP"}}
+        "attributions": {"junction_1": {"recommendation": "KEEP"}},
     }
-    
+
     # Prompt without last_report
     messages = transducer._build_prompt(input_data)
     assert "LAST_REPORT_TEXT" not in messages[1]["content"]
     assert "CARINA v1.0 (SAS Engine)" in messages[0]["content"]
-    
+
     # Prompt with last_report
     input_data["last_report_text"] = "This is the last report text content."
     messages_with_memory = transducer._build_prompt(input_data)
     assert "LAST_REPORT_TEXT" in messages_with_memory[1]["content"]
     assert "This is the last report text content." in messages_with_memory[1]["content"]
 
+
 def test_transducer_build_prompt_with_speed_unit():
     with patch("torch.cuda.is_available", return_value=False):
         transducer = SemanticTransducer(model_path="dummy_path.gguf")
-    
+
     # 1. speed_unit in input_data directly
     input_data = {
         "timestamp": "2026-07-02 00:00:00",
         "mode": "STATISTICAL_REPORT",
         "language": "en",
         "speed_unit": "km/h",
-        "attributions": {"junction_1": {"recommendation": "KEEP"}}
+        "attributions": {"junction_1": {"recommendation": "KEEP"}},
     }
     messages = transducer._build_prompt(input_data)
     assert "SPEED_UNIT: [km/h]" in messages[1]["content"]
@@ -133,7 +145,7 @@ def test_transducer_build_prompt_with_speed_unit():
         "timestamp": "2026-07-02 00:00:00",
         "mode": "MFD_OPTIMIZATION",
         "language": "pt_br",
-        "attributions": {"speed_unit": "mph", "data": 42}
+        "attributions": {"speed_unit": "mph", "data": 42},
     }
     messages = transducer._build_prompt(input_data_attributions)
     assert "SPEED_UNIT: [mph]" in messages[1]["content"]
@@ -142,14 +154,14 @@ def test_transducer_build_prompt_with_speed_unit():
 def test_transducer_prompt_truncation_and_dynamic_max_tokens():
     with patch("torch.cuda.is_available", return_value=False):
         transducer = SemanticTransducer(model_path="dummy_path.gguf")
-    
+
     # 1. Test prompt truncation
     input_data = {
         "timestamp": "2026-07-02 00:00:00",
         "mode": "STATISTICAL_REPORT",
         "language": "en",
         "last_report_text": "A" * 5000,
-        "attributions": {"junction_1": {"recommendation": "KEEP"}}
+        "attributions": {"junction_1": {"recommendation": "KEEP"}},
     }
     messages = transducer._build_prompt(input_data)
     user_content = messages[1]["content"]
@@ -166,13 +178,12 @@ def test_transducer_prompt_truncation_and_dynamic_max_tokens():
         "choices": [{"message": {"content": "<think>thinking...</think>report content"}}]
     }
     transducer.model = mock_model
-    
+
     res = transducer.generate_report(input_data)
-    
+
     # Verify that max_tokens was bounded correctly
     # n_ctx (8192) - prompt_tokens (2000) - safety_buffer (128) = 6064. Cap min/max = 4096.
     mock_model.create_chat_completion.assert_called_once()
     called_kwargs = mock_model.create_chat_completion.call_args[1]
     assert called_kwargs["max_tokens"] == 4096
     assert res == "report content"
-

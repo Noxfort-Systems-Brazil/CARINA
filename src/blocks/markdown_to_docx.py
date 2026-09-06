@@ -19,19 +19,27 @@
 # Date: July 25, 2026
 
 import re
-from typing import Dict, Any
+from typing import Any, Dict
 
 try:
-    from docx.shared import Pt, Inches, Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Inches, Pt
 except ImportError:
     pass
 
-from blocks.math_cleaner import clean_latex_math
-from blocks.docx_text_builder import add_formatted_text_to_paragraph, add_omml_equation_to_document
 from blocks.docx_table_builder import render_markdown_table
+from blocks.docx_text_builder import add_formatted_text_to_paragraph, add_omml_equation_to_document
+from blocks.math_cleaner import clean_latex_math
 
-def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: float = 11.0, font_name: str = "Arial", context: Dict[str, Any] = None, config: Dict[str, Any] = None) -> None:
+
+def render_markdown_to_docx(
+    doc: Any,
+    markdown_text: str,
+    default_font_size: float = 11.0,
+    font_name: str = "Arial",
+    context: Dict[str, Any] = None,
+    config: Dict[str, Any] = None,
+) -> None:
     """
     Renders standard Markdown text into a python-docx Document object.
     Orchestrates:
@@ -50,15 +58,23 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
     if not markdown_text:
         return
 
-    lines = markdown_text.split('\n')
+    lines = markdown_text.split("\n")
     i = 0
     in_code_block = False
 
     NON_BULLET_LABELS = [
-        "cenário de simulação:", "motor analítico mfd:", "sistema de controle:",
-        "identificador do agente:", "cenário de operação:", "motor analítico:",
-        "atraso médio (p95):", "extensão da fila:", "taxa de saturação:",
-        "o que são as variáveis", "explicação para gestão pública", "o que é o conceito matemático"
+        "cenário de simulação:",
+        "motor analítico mfd:",
+        "sistema de controle:",
+        "identificador do agente:",
+        "cenário de operação:",
+        "motor analítico:",
+        "atraso médio (p95):",
+        "extensão da fila:",
+        "taxa de saturação:",
+        "o que são as variáveis",
+        "explicação para gestão pública",
+        "o que é o conceito matemático",
     ]
 
     last_was_page_break = False
@@ -78,7 +94,11 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
             continue
 
         # 0.1 Handle explicit Page Break tags (<pagebreak>, <!-- PAGE BREAK -->, [page_break])
-        if "<pagebreak>" in line_str.lower() or "<!-- page break -->" in line_str.lower() or "[page_break]" in line_str.lower():
+        if (
+            "<pagebreak>" in line_str.lower()
+            or "<!-- page break -->" in line_str.lower()
+            or "[page_break]" in line_str.lower()
+        ):
             doc.add_page_break()
             last_was_page_break = True
             cleaned_line = re.sub(r"(?i)<pagebreak>|<!-- page break -->|\[page_break\]", "", line_str).strip()
@@ -91,6 +111,7 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
         if "[signature_block]" in line_str.lower() or "[signature]" in line_str.lower():
             try:
                 from blocks.signature import SignatureBlock
+
                 SignatureBlock().build(doc, context, config)
             except Exception:
                 pass
@@ -112,20 +133,69 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
             continue
 
         # 1. Handle Markdown Tables (| Col1 | Col2 |)
-        if line_str.startswith('|'):
+        if line_str.startswith("|"):
             last_was_page_break = False
             table_lines = []
-            while i < len(lines) and lines[i].strip().startswith('|'):
+            while i < len(lines) and lines[i].strip().startswith("|"):
                 table_lines.append(lines[i].strip())
                 i += 1
             render_markdown_table(doc, table_lines, font_name=font_name, font_size=default_font_size)
             continue
 
+        # 1.5. Markdown Images ![alt](src)
+        img_match = re.match(r"^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$", line_str)
+        if img_match:
+            caption_text = img_match.group(1).strip()
+            img_src = img_match.group(2).strip()
+            tmp_img_path = None
+            try:
+                import base64
+                import os
+                import tempfile
+
+                if img_src.startswith("data:image/"):
+                    b64_data = img_src.split(",", 1)[1] if "," in img_src else img_src
+                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+                        tmp_file.write(base64.b64decode(b64_data))
+                        tmp_img_path = tmp_file.name
+                elif os.path.exists(img_src):
+                    tmp_img_path = img_src
+
+                if tmp_img_path and os.path.exists(tmp_img_path) and os.path.getsize(tmp_img_path) > 0:
+                    p_img = doc.add_paragraph()
+                    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p_img.paragraph_format.space_before = Pt(8)
+                    p_img.paragraph_format.space_after = Pt(4)
+                    run_img = p_img.add_run()
+                    run_img.add_picture(tmp_img_path, width=Inches(5.5))
+
+                    if caption_text:
+                        p_cap = doc.add_paragraph()
+                        p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        p_cap.paragraph_format.space_before = Pt(2)
+                        p_cap.paragraph_format.space_after = Pt(8)
+                        r_cap = p_cap.add_run(caption_text)
+                        r_cap.font.name = font_name
+                        r_cap.font.size = Pt(9.0)
+                        r_cap.font.italic = True
+            except Exception as e:
+                import logging
+
+                logging.warning(f"[MarkdownToDocx] Failed to render image line: {e}")
+            finally:
+                if tmp_img_path and img_src.startswith("data:image/") and os.path.exists(tmp_img_path):
+                    try:
+                        os.remove(tmp_img_path)
+                    except Exception:
+                        pass
+            i += 1
+            continue
+
         # 2. Headers (# H1, ## H2, ### H3, #### H4)
-        if line_str.startswith('#'):
+        if line_str.startswith("#"):
             level = 0
             for char in line_str:
-                if char == '#':
+                if char == "#":
                     level += 1
                 else:
                     break
@@ -138,6 +208,7 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
                 if not context.get("_signature_rendered", False):
                     try:
                         from blocks.signature import SignatureBlock
+
                         SignatureBlock().build(doc, context, config)
                     except Exception:
                         pass
@@ -147,18 +218,15 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
             else:
                 last_was_page_break = False
 
-            # Map level to professional font sizes
+            # Headings use the configured document text font size with bold styling
+            font_size = default_font_size
             if level == 1:
-                font_size = 14.0
                 space_before = 12
             elif level == 2:
-                font_size = 12.5
                 space_before = 10
             elif level == 3:
-                font_size = 11.5
                 space_before = 8
             else:
-                font_size = 11.0
                 space_before = 6
 
             p = doc.add_paragraph()
@@ -174,16 +242,18 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
         if line_str.startswith("$$") and line_str.endswith("$$"):
             eq_raw = line_str[2:-2].strip()
 
-            tag_match = re.search(r'\\tag\{(\d+)\}', eq_raw) or re.search(r'\s*\((\d+)\)\s*$', eq_raw)
+            tag_match = re.search(r"\\tag\{(\d+)\}", eq_raw) or re.search(r"\s*\((\d+)\)\s*$", eq_raw)
             tag_str = ""
             if tag_match:
                 tag_num = tag_match.group(1)
                 tag_str = f"({tag_num})"
-                eq_raw = re.sub(r'\\tag\{(\d+)\}', '', eq_raw)
-                eq_raw = re.sub(r'\s*\(\d+\)\s*$', '', eq_raw).strip()
+                eq_raw = re.sub(r"\\tag\{(\d+)\}", "", eq_raw)
+                eq_raw = re.sub(r"\s*\(\d+\)\s*$", "", eq_raw).strip()
 
             # Try native Word OMML fraction rendering first
-            if not add_omml_equation_to_document(doc, eq_raw, tag_str, font_name=font_name, font_size=default_font_size):
+            if not add_omml_equation_to_document(
+                doc, eq_raw, tag_str, font_name=font_name, font_size=default_font_size
+            ):
                 cleaned_eq = clean_latex_math(eq_raw)
                 p = doc.add_paragraph()
                 p.paragraph_format.space_before = Pt(8)
@@ -191,31 +261,49 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
 
                 if tag_str:
                     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    add_formatted_text_to_paragraph(p, f"      **{cleaned_eq}**", font_size=default_font_size, font_name=font_name)
+                    add_formatted_text_to_paragraph(
+                        p, f"      **{cleaned_eq}**", font_size=default_font_size, font_name=font_name
+                    )
                     r_tag = p.add_run(f"\t\t{tag_str}")
                     r_tag.bold = True
                     r_tag.font.name = font_name
                     r_tag.font.size = Pt(default_font_size)
                 else:
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    add_formatted_text_to_paragraph(p, f"**{cleaned_eq}**", font_size=default_font_size, font_name=font_name)
+                    add_formatted_text_to_paragraph(
+                        p, f"**{cleaned_eq}**", font_size=default_font_size, font_name=font_name
+                    )
 
             i += 1
             continue
 
         # 4. Bullet list and selective filtering
-        if line_str.startswith('- ') or line_str.startswith('* '):
+        if line_str.startswith("- ") or line_str.startswith("* "):
             list_text = line_str[2:].strip()
             clean_check = list_text.replace("**", "").strip().lower()
 
             is_non_bullet = any(clean_check.startswith(lbl) for lbl in NON_BULLET_LABELS)
-            if not is_non_bullet and len(list_text) > 130 and ("justificativ" in clean_check or "justification" in clean_check or "обоснование" in clean_check or "论证" in clean_check):
+            if (
+                not is_non_bullet
+                and len(list_text) > 130
+                and (
+                    "justificativ" in clean_check
+                    or "justification" in clean_check
+                    or "обоснование" in clean_check
+                    or "论证" in clean_check
+                )
+            ):
                 is_non_bullet = True
 
-            if is_non_bullet or clean_check.startswith("o que são") or clean_check.startswith("explicação para") or clean_check.startswith("o que é"):
+            if (
+                is_non_bullet
+                or clean_check.startswith("o que são")
+                or clean_check.startswith("explicação para")
+                or clean_check.startswith("o que é")
+            ):
                 line_str = list_text
             else:
-                p = doc.add_paragraph(style='List Bullet')
+                p = doc.add_paragraph(style="List Bullet")
                 p.paragraph_format.space_before = Pt(2)
                 p.paragraph_format.space_after = Pt(2)
                 list_text = clean_latex_math(list_text)
@@ -224,10 +312,10 @@ def render_markdown_to_docx(doc: Any, markdown_text: str, default_font_size: flo
                 continue
 
         # 5. Numbered list
-        match_num = re.match(r'^(\d+)\.\s(.*)', line_str)
+        match_num = re.match(r"^(\d+)\.\s(.*)", line_str)
         if match_num:
             list_text = match_num.group(2).strip()
-            p = doc.add_paragraph(style='List Number')
+            p = doc.add_paragraph(style="List Number")
             p.paragraph_format.space_before = Pt(2)
             p.paragraph_format.space_after = Pt(2)
             list_text = clean_latex_math(list_text)

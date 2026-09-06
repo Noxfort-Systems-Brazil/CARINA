@@ -18,21 +18,22 @@
 # Author: Gabriel Moraes
 # Date: August 9, 2026
 
-import os
-import re
 import json
 import logging
-from typing import Dict, Any, List
+import os
+import re
+from typing import Any, Dict, List
 
 try:
-    from docx.shared import Pt, RGBColor
-    from docx.oxml import parse_xml
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import parse_xml
+    from docx.shared import Pt, RGBColor
 except ImportError:
     pass
 
 _cached_omml_config: Dict[str, Any] = None
 _cached_subscript_config: Dict[str, Any] = None
+
 
 def _load_omml_templates() -> Dict[str, Any]:
     """Dynamically loads OMML equation XML templates from config/omml_equation_templates.json with in-memory caching."""
@@ -44,7 +45,7 @@ def _load_omml_templates() -> Dict[str, Any]:
     candidates = [
         os.path.join(base_dir, "..", "..", "config", "omml_equation_templates.json"),
         os.path.join(base_dir, "..", "config", "omml_equation_templates.json"),
-        os.path.join(os.getcwd(), "config", "omml_equation_templates.json")
+        os.path.join(os.getcwd(), "config", "omml_equation_templates.json"),
     ]
 
     for json_path in candidates:
@@ -58,9 +59,10 @@ def _load_omml_templates() -> Dict[str, Any]:
 
     _cached_omml_config = {
         "namespaces": 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
-        "templates": {}
+        "templates": {},
     }
     return _cached_omml_config
+
 
 def _load_subscript_rules() -> Dict[str, Any]:
     """Dynamically loads subscript regex rules from config/xai_report_templates.json or config/report_templates.json with in-memory caching."""
@@ -70,10 +72,13 @@ def _load_subscript_rules() -> Dict[str, Any]:
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
+        os.path.join(base_dir, "..", "..", "config", "xai_report_sections.json"),
+        os.path.join(base_dir, "..", "config", "xai_report_sections.json"),
+        os.path.join(os.getcwd(), "config", "xai_report_sections.json"),
         os.path.join(base_dir, "..", "..", "config", "xai_report_templates.json"),
         os.path.join(base_dir, "..", "config", "xai_report_templates.json"),
         os.path.join(os.getcwd(), "config", "xai_report_templates.json"),
-        os.path.join(os.getcwd(), "config", "report_templates.json")
+        os.path.join(os.getcwd(), "config", "report_templates.json"),
     ]
 
     for json_path in candidates:
@@ -88,61 +93,57 @@ def _load_subscript_rules() -> Dict[str, Any]:
                 logging.warning(f"Failed to load subscript rules from '{json_path}': {e}")
 
     _cached_subscript_config = {
-        "subscript_regex_pattern": r"([a-zA-Z\']+|\b[a-zA-Z]{1,50})_\{?([a-zA-Z0-9]+)\}?|\b(v)(real|limite)\b|\b(F)(ideal)\b|\b(P)(95)\b"
+        "subscript_regex_pattern": r"([a-zA-Zα-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe\']+|\b[a-zA-Zα-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe]{1,50})_\{?([a-zA-Z0-9α-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe]+)\}?|\b(v)(real|limite)\b|\b(F)(ideal)\b|\b(P)(95)\b"
     }
     return _cached_subscript_config
 
-def add_omml_equation_to_document(doc: Any, eq_raw: str, tag_str: str = "", font_name: str = "Arial", font_size: float = 11.0) -> bool:
+
+def add_omml_equation_to_document(
+    doc: Any, eq_raw: str, tag_str: str = "", font_name: str = "Arial", font_size: float = 11.0
+) -> bool:
     """
     Renders native Word OMML equations with stacked vertical fractions (horizontal bar)
     and right-aligned ABNT tag (1)-(4), dynamically driven by JSON configuration.
     """
     try:
-        from docx.oxml import parse_xml
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml import parse_xml
     except ImportError:
         return False
 
     omml_config = _load_omml_templates()
-    ns_decl = omml_config.get("namespaces", 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"')
-    templates_dict = omml_config.get("templates", {})
+    ns_decl = omml_config.get(
+        "namespaces",
+        'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+    )
+    templates = omml_config.get("templates", {})
 
-    eq_clean = eq_raw.replace("$", "").strip()
     omml_xml = None
 
-    # Check JSON configured equation templates by keywords
-    for tpl_name, tpl_info in templates_dict.items():
-        keywords = tpl_info.get("keywords", [])
-        if any(kw in eq_clean for kw in keywords):
-            raw_xml_str = tpl_info.get("xml", "")
-            omml_xml = raw_xml_str.replace("{ns_decl}", ns_decl)
+    # Try matching equation by exact formula or keyword signatures
+    for eq_key, eq_data in templates.items():
+        xml_template = eq_data.get("omml_xml", "")
+        keywords = eq_data.get("keywords", [])
+        if any(kw in eq_raw for kw in keywords):
+            omml_xml = xml_template.replace("$$NAMESPACES$$", ns_decl)
             break
 
-    # Generic Division / Fraction fallback (num / den) - ONLY for simple fraction expressions
-    if not omml_xml and ('/' in eq_clean) and not any(op in eq_clean for op in ['∫', '∫', '∑', '∂', 'dα', 'dx', 'integral', 'partial']):
-        if '=' in eq_clean:
-            left_part, right_part = eq_clean.split('=', 1)
-            left_part = left_part.strip() + " = "
-        else:
-            left_part = ""
-            right_part = eq_clean
-
-        if '/' in right_part and right_part.count('/') == 1:
-            num_str, den_str = right_part.split('/', 1)
-            num_clean = num_str.strip()
-            den_clean = den_str.strip().strip('()')
-            if num_clean and den_clean:
-                omml_xml = (
-                    f'<m:oMathPara {ns_decl}>\n'
-                    f'  <m:oMath>\n'
-                    f'    <m:r><m:t>{left_part}</m:t></m:r>\n'
-                    f'    <m:f>\n'
-                    f'      <m:num><m:r><m:t>{num_clean}</m:t></m:r></m:num>\n'
-                    f'      <m:den><m:r><m:t>{den_clean}</m:t></m:r></m:den>\n'
-                    f'    </m:f>\n'
-                    f'  </m:oMath>\n'
-                    f'</m:oMathPara>'
-                )
+    # Fallback to direct pattern match if not matched by keywords
+    if not omml_xml:
+        if "α_{ij}" in eq_raw or "\\alpha_{ij}" in eq_raw or "ST-GATv2" in eq_raw or "LeakyReLU" in eq_raw:
+            omml_xml = templates.get("eq2_gatv2", {}).get("omml_xml", "").replace("$$NAMESPACES$$", ns_decl)
+        elif "Atenção(Q, K, V)" in eq_raw or "softmax" in eq_raw:
+            omml_xml = templates.get("eq3_cross_attention", {}).get("omml_xml", "").replace("$$NAMESPACES$$", ns_decl)
+        elif "Q(s, a)" in eq_raw or "D3QN" in eq_raw or "V(s)" in eq_raw:
+            omml_xml = templates.get("eq4_d3qn", {}).get("omml_xml", "").replace("$$NAMESPACES$$", ns_decl)
+        elif "y(t)" in eq_raw or "PPO-TCN" in eq_raw:
+            omml_xml = templates.get("eq1_tcn", {}).get("omml_xml", "").replace("$$NAMESPACES$$", ns_decl)
+        elif "PAE" in eq_raw or "\\mathcal{L}_{PAE}" in eq_raw or "Autoencoder" in eq_raw:
+            omml_xml = templates.get("eq5_pae", {}).get("omml_xml", "").replace("$$NAMESPACES$$", ns_decl)
+        elif "GradientesIntegrados" in eq_raw or "IntegratedGradients" in eq_raw or "Captum" in eq_raw:
+            omml_xml = templates.get("eq5_captum", {}).get("omml_xml", "").replace("$$NAMESPACES$$", ns_decl)
+        elif "∑" in eq_raw and "GradientesIntegrados" in eq_raw:
+            omml_xml = templates.get("eq6_completeness", {}).get("omml_xml", "").replace("$$NAMESPACES$$", ns_decl)
 
     if not omml_xml:
         return False
@@ -163,30 +164,51 @@ def add_omml_equation_to_document(doc: Any, eq_raw: str, tag_str: str = "", font
 
     return True
 
-def add_formatted_text_to_paragraph(p: Any, text: str, font_size: float = 11.0, bold: bool = False, font_name: str = "Arial") -> None:
+
+def add_formatted_text_to_paragraph(
+    p: Any, text: str, font_size: float = 11.0, bold: bool = False, font_name: str = "Arial"
+) -> None:
     """Splits text by ** (bold) and * (italic) to apply appropriate formatting runs inline."""
-    parts = text.split('**')
+    parts = text.split("**")
     is_bold_part = False
     for part in parts:
         if part:
-            sub_parts = part.split('*')
+            sub_parts = part.split("*")
             is_italic_sub = False
             for sub in sub_parts:
                 if sub:
-                    add_text_run_with_subscript_support(p, sub, font_size=font_size, is_bold=(is_bold_part or bold), is_italic=is_italic_sub, font_name=font_name)
+                    add_text_run_with_subscript_support(
+                        p,
+                        sub,
+                        font_size=font_size,
+                        is_bold=(is_bold_part or bold),
+                        is_italic=is_italic_sub,
+                        font_name=font_name,
+                    )
                 is_italic_sub = not is_italic_sub
         is_bold_part = not is_bold_part
 
-def add_text_run_with_subscript_support(p: Any, text_segment: str, font_size: float = 11.0, is_bold: bool = False, is_italic: bool = False, font_name: str = "Arial") -> None:
+
+def add_text_run_with_subscript_support(
+    p: Any,
+    text_segment: str,
+    font_size: float = 11.0,
+    is_bold: bool = False,
+    is_italic: bool = False,
+    font_name: str = "Arial",
+) -> None:
     """
     Adds runs to paragraph p, detecting variable subscripts driven by JSON subscript configuration
     and applying native Word subscript (run.font.subscript = True) to the subscript portion.
     """
     sub_config = _load_subscript_rules()
-    pattern = sub_config.get(
-        "subscript_regex_pattern",
-        r"([a-zA-Z\']+|\b[a-zA-Z]{1,50})_\{?([a-zA-Z0-9]+)\}?|\b(v)(real|limite)\b|\b(F)(ideal)\b|\b(P)(95)\b"
-    )
+    if isinstance(sub_config, dict):
+        pattern = sub_config.get(
+            "subscript_regex_pattern",
+            r"([a-zA-Zα-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe\']+|\b[a-zA-Zα-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe]{1,50})_\{?([a-zA-Z0-9α-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe]+)\}?|\b(v)(real|limite)\b|\b(F)(ideal)\b|\b(P)(95)\b",
+        )
+    else:
+        pattern = r"([a-zA-Zα-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe\']+|\b[a-zA-Zα-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe]{1,50})_\{?([a-zA-Z0-9α-ωΑ-Ω\u0370-\u03ff\u1f00-\u1ffe]+)\}?|\b(v)(real|limite)\b|\b(F)(ideal)\b|\b(P)(95)\b"
 
     last_idx = 0
     for match in re.finditer(pattern, text_segment):

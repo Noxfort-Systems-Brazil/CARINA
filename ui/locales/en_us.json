@@ -245,7 +245,12 @@
             "status_disconnected": "disconnected",
             "status_connected": "connected",
             "btn_connect": "Connect",
-            "btn_disconnect": "Disconnect"
+            "btn_disconnect": "Disconnect",
+            "save_dialog_title": "Save Template CSV Spreadsheet",
+            "select_dialog_title": "Select Configuration CSV Spreadsheet",
+            "export_success": "CSV template exported successfully to: {path}",
+            "export_error": "Error exporting CSV template.",
+            "import_success": "Import complete: {success} out of {total} traffic lights connected successfully."
         }
     },
     "dialogs": {
@@ -349,6 +354,7 @@
     "structured_report": {
         "xai_metadata_title": "1. General Session Details",
         "xai_label_agent": "Agent Identifier:",
+        "xai_all_agents_label": "All Agents (Full Network)",
         "xai_label_scenario": "Operating Scenario:",
         "xai_label_engine": "Analytical Engine:",
         "mfd_metadata_title": "1. MFD Performance Analysis Details",

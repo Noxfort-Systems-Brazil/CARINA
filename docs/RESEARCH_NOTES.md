@@ -7,7 +7,7 @@ aliases: [Neural Research, Mathematical Formulations, PPO-TCN, GOMES]
 
 This document details the mathematical framework, neural network architectures, and curriculum formulations underlying CARINA's **Graph-based Operational Multi-agent Expert System (GOMES)** and the **DA SILVA** maturation curriculum.
 
-⬅️ Back to [Main Documentation Hub](CARINA_MOC.md)
+⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🏛️ See [Multiprocessing Architecture](../ARCHITECTURE.md) | 🛡️ See [Safety & Watchdog](SAFETY_AND_WATCHDOG.md) | 🔍 See [Explainable AI & SAS](XAI_AND_SAS.md)
 
 ---
 

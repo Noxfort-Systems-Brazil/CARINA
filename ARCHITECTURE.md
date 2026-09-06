@@ -1,24 +1,24 @@
 ---
-tags: [architecture, core, system, gatv2, pae, pbt, amp]
-aliases: [Arquitetura CARINA, Visão Geral, Blueprint]
+tags: [architecture, core, system, gatv2, pae, pbt, amp, multiprocessing]
+aliases: [System Architecture, Multiprocessing Blueprint, System Overview]
 ---
 
 # 🏛️ CARINA: System Blueprint & Multiprocessing Architecture
 
-This document specifies the internal engineering architecture of the CARINA ecosystem. It details the 8 concurrent operating system microservices, the neural network topology, the `TopologicalScaler`, the `ConsultantAgent`, the `CrossAttentionFusion` duality, and the async PostgreSQL delta storage engine.
+This document specifies the internal engineering architecture of the CARINA ecosystem. It details the 8 concurrent operating system microservices, the deep neural network topology, the `TopologicalScaler`, the `ConsultantAgent`, the `CrossAttentionFusion` duality, physical controller drivers, and the asynchronous PostgreSQL delta storage engine.
 
-⬅️ Back to [Main Documentation Hub](docs/CARINA_MOC.md)
+⬅️ Back to [Main Documentation Hub](docs/CARINA_MOC.md) | 🚦 See [Hardware Drivers](docs/HARDWARE_DRIVERS.md) | 🧠 See [Neural Formulations](docs/RESEARCH_NOTES.md) | 🛡️ See [Safety & Watchdog](docs/SAFETY_AND_WATCHDOG.md)
 
 ---
 
 ## 1. Multiprocessing Microservices Concurrency Model
 
-Python's Global Interpreter Lock (GIL) prevents multi-threaded CPU-bound AI inference and heavy I/O operations from running in true parallelism. To achieve sub-millisecond actuation latency, CARINA employs a **multiprocessing microservice model** orchestrated by `carina.py` and `ProcessManager`.
+Python's Global Interpreter Lock (GIL) prevents multi-threaded CPU-bound AI inference and heavy I/O operations from running in true parallelism. To achieve sub-millisecond actuation latency, CARINA employs a **multiprocessing microservice model** orchestrated by [`carina.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/carina.py) and [`src/launcher/process_manager.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/launcher/process_manager.py).
 
 ```mermaid
 graph TD
     Launcher[carina.py Orchestrator / UI Tray] -->|Spawns & Monitors| PM[ProcessManager]
-    
+
     PM --> CC[1. CentralController Process]
     PM --> AI[2. AI_Process Engine]
     PM --> WD[3. Watchdog Process]
@@ -69,33 +69,35 @@ graph TD
                          └─────────────────────────────┘
 ```
 
-### 2.1 Módulo ST-GATv2 Lite (`st_gatv2_lite.py`)
-- **Proposta:** Sincronização espacial de Onda Verde entre semáforos vizinhos da malha urbana.
-- **Dinamismo:** A topologia do grafo viário físico é estática, mas as atenções espaciais $\alpha_{ij}(t)$ são recalculadas em tempo real com base no fluxo.
+### 2.1 ST-GATv2 Lite Module (`src/models/st_gatv2_lite.py`)
+- **Purpose:** Spatial synchronization of arterial "Green Waves" across neighboring intersections in the urban road network graph.
+- **Dynamic Weighting:** While the physical road topology is static, dynamic spatial attention coefficients $\alpha_{ij}(t)$ are recomputed in real time based on incoming vehicle densities and velocity gradients.
 
-### 2.2 Agente Consultor Global PAE (`consultant_agent.py`)
-- **Proposta:** Rodando em segundo plano acionado por eventos de telemetria, pensa no futuro ($t + \Delta t$) com um Predictive Autoencoder (PAE) de alta capacidade (64 a 128 canais em Londrina).
-- **Mentoria Direcionada:** Emite vetores latentes preditivos individualizados por evento para enriquecer a tomada de decisão dos agentes locais.
+### 2.2 Global Consultant Agent (`src/agents/consultant_agent.py`)
+- **Purpose:** Operating as a background microservice triggered by telemetry events, the Consultant projects future network states ($t + \Delta t$) using a high-capacity Predictive Autoencoder (PAE with 64 to 128 channels).
+- **Targeted Mentorship:** Generates individualized predictive latent vectors $Z$ per event to enrich the contextual decision space of local PPO agents.
 
-### 2.3 Auto-Dimensionador Topológico (`topo_scaler.py`)
-- **Cálculo Algorítmico em $O(1)$:** Auto-detecta a densidade do mapa ($N$ semáforos) e ajusta autonomamente as dimensões neurais em potências de 2 amigáveis aos NVIDIA TensorCores:
+### 2.3 $O(1)$ Topological Auto-Scaler (`src/utils/topo_scaler.py`)
+- **Algorithmic Scaling:** Auto-detects network density ($N$ intersections) and autonomously adjusts neural dimensions in powers of 2 optimized for NVIDIA TensorCores:
   - $N \le 20 \implies \text{dim} = 32, \text{heads} = 2$
   - $20 < N \le 80 \implies \text{dim} = 64, \text{heads} = 4$
-  - $80 < N \le 250 \implies \text{dim} = 128, \text{heads} = 8$ (Ex: Londrina)
-  - $N > 250 \implies \text{dim} = 256, \text{heads} = 16$ (Megalópoles)
+  - $80 < N \le 250 \implies \text{dim} = 128, \text{heads} = 8$ (e.g., Londrina Metropolitan Grid)
+  - $N > 250 \implies \text{dim} = 256, \text{heads} = 16$ (Megalopolis Grid)
 
-### 2.4 Dualidade no Cross-Attention (`cross_attention.py`)
-- **`LocalAgent` (PPO):** Cross-Attention com **PBT (Population-Based Training)** adaptativo evoluindo a temperatura de Softmax ($\tau$) em tempo real.
-- **`GuardianAgent` (D3QN):** Cross-Attention com **Pesos Fixos e Determinísticos** (`is_fixed=True`) para servir como régua inabalável de veto de segurança.
+### 2.4 Cross-Attention Duality (`src/models/cross_attention.py`)
+- **`LocalAgent` (PPO-TCN):** Operates cross-attention with **Population-Based Training (PBT)**, dynamically adapting Softmax temperature ($\tau$) during online execution.
+- **`GuardianAgent` (D3QN):** Enforces cross-attention with **Fixed Deterministic Weights** (`is_fixed=True`) to maintain an invariant, unyielding safety baseline.
 
-### 2.5 Aceleração Universal AMP (`torch.amp.autocast`)
-- Todas as inferências neurais foram envelopadas com `torch.amp.autocast`, ativando aceleração nativa FP16/TF32 nos NVIDIA TensorCores e reduzindo o consumo de VRAM para apenas **~20 MB**.
+### 2.5 Universal AMP & TensorCore Acceleration
+- All neural network forward passes are enveloped in `torch.amp.autocast`, enabling native FP16/TF32 hardware acceleration across NVIDIA TensorCores and restricting total VRAM consumption to only **~20 MB** for the core models.
 
 ---
 
 ## 3. Persistent Data & Delta Storage Engine
 
-CARINA conta com um motor de persistência assíncrona com **compressão delta** no PostgreSQL:
-- **`step_decisions`**: Decisões, vetos e timers gravados via `StepDecisionWorker` em lote assíncrono (< 0,001 ms RAM push).
-- **`edge_dictionary`**: Mapeamento de nomes de vias para IDs inteiros de 4 bytes.
-- **Redução de Armazenamento:** Economia global de **97,9% no disco do PostgreSQL** (~380 MB/dia para 200 semáforos).
+CARINA implements an asynchronous persistence engine featuring **Run-Length Delta Compression** in PostgreSQL:
+- **`step_decisions`**: Stores suggestions, Guardian safety vetoes, and step timers dispatched via [`StepDecisionWorker`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/database/step_decision_worker.py) in non-blocking RAM queues ($< 0.001\text{ ms}$ overhead).
+- **`edge_dictionary`**: Maps long road names to 4-byte integers for compact indexing.
+- **Storage Reduction:** Achieves a **97.9% storage footprint reduction** (~380 MB/day for a 200-intersection metropolitan network).
+
+For database schemas and query details, see [Database Architecture & Schemas](docs/DATABASE_AND_SCHEMAS.md).

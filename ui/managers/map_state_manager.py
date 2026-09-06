@@ -26,20 +26,23 @@ of the map, including selection and highlighting of streets and traffic lights.
 It directly manipulates canvas and stack objects to reflect the current state.
 """
 
+from typing import Dict, Tuple
+
 import flet as ft
 import flet.canvas as cv
-from typing import Dict
+
 
 class MapStateManager:
     """
     Manages the visual state (selection/highlights) of the map.
     """
+
     def __init__(
         self,
         canvas: cv.Canvas,
         stack: ft.Stack,
         edge_paths: Dict[str, cv.Path],
-        interactive_widgets: Dict[str, ft.Container]
+        interactive_widgets: Dict[str, ft.Container],
     ):
         """
         Initializes the state manager.
@@ -58,7 +61,7 @@ class MapStateManager:
         # --- Internal state of selection ---
         self.selected_edge_id: str | None = None
         self.selected_interactive_id: str | None = None
-        
+
         # --- References to featured widgets ---
         self.highlight_casing: cv.Path | None = None
         self.highlight_foreground: cv.Path | None = None
@@ -82,13 +85,21 @@ class MapStateManager:
         """
         self._clear_all_highlights()
 
-        if item_type == 'street' and item_id:
+        if item_type == "street" and item_id:
             self._highlight_street(item_id)
             self.selected_edge_id = item_id
-        elif item_type == 'interactive' and item_id:
+        elif item_type == "interactive" and item_id:
             self._highlight_interactive(item_id)
             self.selected_interactive_id = item_id
-    
+
+    def get_selected_type_and_id(self) -> Tuple[str | None, str | None]:
+        """Returns the current selection type ('street' or 'interactive') and the item id."""
+        if self.selected_edge_id:
+            return ("street", self.selected_edge_id)
+        if self.selected_interactive_id:
+            return ("interactive", self.selected_interactive_id)
+        return (None, None)
+
     def _clear_all_highlights(self):
         """Clears all visual highlights from the map."""
         self._unhighlight_street()
@@ -105,15 +116,26 @@ class MapStateManager:
 
     def _highlight_street(self, edge_id: str):
         path_object = self.edge_paths.get(edge_id)
-        if not path_object: return
+        if not path_object:
+            return
 
         self.highlight_casing = cv.Path(
             elements=path_object.elements,
-            paint=ft.Paint(stroke_width=path_object.paint.stroke_width + 5, color=ft.Colors.BLACK, style=ft.PaintingStyle.STROKE, stroke_cap=ft.StrokeCap.ROUND)
+            paint=ft.Paint(
+                stroke_width=path_object.paint.stroke_width + 5,
+                color=ft.Colors.BLACK,
+                style=ft.PaintingStyle.STROKE,
+                stroke_cap=ft.StrokeCap.ROUND,
+            ),
         )
         self.highlight_foreground = cv.Path(
             elements=path_object.elements,
-            paint=ft.Paint(stroke_width=path_object.paint.stroke_width + 1, color=ft.Colors.YELLOW_ACCENT_400, style=ft.PaintingStyle.STROKE, stroke_cap=ft.StrokeCap.ROUND)
+            paint=ft.Paint(
+                stroke_width=path_object.paint.stroke_width + 1,
+                color=ft.Colors.YELLOW_ACCENT_400,
+                style=ft.PaintingStyle.STROKE,
+                stroke_cap=ft.StrokeCap.ROUND,
+            ),
         )
         self.canvas.shapes.append(self.highlight_casing)
         self.canvas.shapes.append(self.highlight_foreground)
@@ -126,14 +148,18 @@ class MapStateManager:
 
     def _highlight_interactive(self, widget_id: str):
         widget = self.interactive_widgets.get(widget_id)
-        if not widget: return
+        if not widget:
+            return
 
         self.highlight_aura = ft.Container(
-            width=widget.width + 8, height=widget.height + 8,
-            left=widget.left - 4, top=widget.top - 4,
+            width=widget.width + 8,
+            height=widget.height + 8,
+            left=widget.left - 4,
+            top=widget.top - 4,
             bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.YELLOW_ACCENT_400),
-            border_radius=8, animate=ft.Animation(100, "easeOut"),
+            border_radius=8,
+            animate=ft.Animation(100, "easeOut"),
         )
-        
+
         # Inserts the aura in the correct layer (behind the interactive widgets)
         self.stack.controls.insert(1, self.highlight_aura)

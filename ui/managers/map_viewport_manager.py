@@ -20,11 +20,13 @@
 
 from typing import Tuple
 
+
 class MapViewportManager:
     """
     Manages layout dimensions and chrome offsets for the Map Viewport.
     """
-    def __init__(self, chrome_width_offset: int = 420, chrome_height_offset: int = 160):
+
+    def __init__(self, chrome_width_offset: int = 320, chrome_height_offset: int = 100):
         self.chrome_width_offset = chrome_width_offset
         self.chrome_height_offset = chrome_height_offset
         self.width: int = 1280

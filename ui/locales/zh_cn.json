@@ -266,5 +266,16 @@
         "action": "操作",
         "details": "详细信息",
         "refresh": "刷新"
+    },
+    "structured_report": {
+        "xai_metadata_title": "1. 会话总体详细信息",
+        "xai_label_agent": "代理标识符:",
+        "xai_all_agents_label": "全部代理 (全路网)",
+        "xai_label_scenario": "运行场景:",
+        "xai_label_engine": "分析引擎:",
+        "mfd_metadata_title": "1. MFD 性能分析详情",
+        "mfd_label_scenario": "仿真场景:",
+        "mfd_label_engine": "MFD 分析引擎:",
+        "mfd_label_control": "控制系统:"
     }
 }

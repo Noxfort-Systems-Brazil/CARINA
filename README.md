@@ -34,12 +34,18 @@ Explore the full architecture, internal mechanics, and developer guides for the 
 | 🏛️ **Core Architecture** | 8 Concurrent OS microservices, ST-GATv2 Lite & Consultant PAE | [View Blueprint](ARCHITECTURE.md) |
 | ⚡ **Synapse HFT API** | Sub-millisecond gRPC telemetry & Protobuf IPC specifications | [View API Reference](docs/API_REFERENCE.md) |
 | 🧠 **Neural Formulations** | PPO-TCN, ST-GATv2 Lite, Cross-Attention & Consultant PAE | [View Research](docs/RESEARCH_NOTES.md) |
+| 🚦 **Hardware Drivers** | Physical controllers (NTCIP 1202, UTMC2, SNMP Client & Traps) | [View Drivers](docs/HARDWARE_DRIVERS.md) |
 | 🛡️ **Safety Firewall & Watchdog** | Guardian D3QN Vetoes, Symbolic rules & Watchdog | [View Safety Guide](docs/SAFETY_AND_WATCHDOG.md) |
-| 🗄️ **Database & Schemas** | PostgreSQL Delta Storage (97.9% reduction), 1-byte Enums | [View DB Specs](docs/DATABASE_AND_SCHEMAS.md) |
+| 📊 **Engineering Warrants** | MUTCD / FHWA Traffic Signal Warrants 1, 2, 3, 7, 8 | [View Warrants](docs/TRAFFIC_ENGINEERING_WARRANTS.md) |
 | 📈 **MFD & Traffic Analytics** | Network density-flow curves, capacity drop & gating | [View MFD Guide](docs/MFD_AND_ANALYTICS.md) |
-| 🔍 **Explainable AI (XAI)** | Captum Integrated Gradients, 5 Formal Equations & Word export | [View XAI & SAS](docs/XAI_AND_SAS.md) |
-| 🖥️ **Flet Dashboard** | Native desktop UI running in an isolated process | [View UI Guide](docs/UI_AND_DASHBOARD.md) |
-| 🛠️ **Developer Guides** | Schema migrations, PyInstaller builds, IPC queues | [View Guides](docs/DEVELOPER_GUIDES.md) |
+| 🗄️ **Database & Schemas** | PostgreSQL Delta Storage (97.9% reduction), 12-Factor Setup | [View DB Specs](docs/DATABASE_AND_SCHEMAS.md) |
+| 🔍 **Explainable AI (XAI)** | Captum Integrated Gradients, 5 Formal Equations & Audits | [View XAI & SAS](docs/XAI_AND_SAS.md) |
+| 📄 **Report Blocks Engine** | ABNT NBR 14724 Word (.docx) Builder & OMML Math Equations | [View Reports](docs/REPORT_BLOCKS_AND_TEMPLATES.md) |
+| 🤖 **Small Language Models** | Local Qwen3 1.7B / llama.cpp Offline Textual Justification | [View SLM Guide](docs/SLM_AND_LOCAL_LLM.md) |
+| 🖥️ **Flet UI & Planning** | Native desktop UI, Planning Canvas, System Tray & SDS | [View UI Guide](docs/UI_AND_DASHBOARD.md) |
+| 🗺️ **Rendering & Heatmaps** | Vector Map Rendering & Asynchronous Heatmap Interpolation | [View Rendering](docs/RENDERING_AND_HEATMAPS.md) |
+| 🔐 **Security & Auth** | User accounts, salted bcrypt hashing & brute-force lockdown | [View Security](docs/SECURITY_AND_AUTH.md) |
+| 🛠️ **Developer Guides** | Agent development, settings configuration & setup | [View Guides](docs/DEVELOPER_GUIDES.md) |
 | 🧪 **Testing & Validation** | Pytest suite, coverage reports & Guardian safety mocks | [View Guidelines](docs/TESTING.md) |
 | 🚀 **Deployment & Packaging** | Docker containerization, Systemd services & Debian packages | [View Deployment](docs/DEPLOYMENT_AND_PACKAGING.md) |
 

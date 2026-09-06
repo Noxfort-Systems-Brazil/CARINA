@@ -1,22 +1,47 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
 # Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# File: tests/unit/test_consolidation_purge.py
+# Author: Gabriel Moraes
+# Date: September 2026
 
 import sqlite3
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from repositories.fluid_dynamics_repo import FluidDynamicsRepository
+
 
 class ProxyConnection:
     def __init__(self, conn):
         self._conn = conn
+
     def cursor(self):
         return self._conn.cursor()
+
     def commit(self):
         return self._conn.commit()
+
     def rollback(self):
         return self._conn.rollback()
+
     def close(self):
         pass
+
 
 class MockDbEngine:
     def __init__(self):
@@ -26,7 +51,8 @@ class MockDbEngine:
 
     def _init_sqlite(self):
         cursor = self._conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS synapse_fluid_dynamics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 scenario_name TEXT DEFAULT 'default',
@@ -44,8 +70,10 @@ class MockDbEngine:
                 maturity_stage TEXT NOT NULL DEFAULT 'CHILD',
                 collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS synapse_edge_phase_hourly_summary (
                 edge_id TEXT NOT NULL,
                 maturity_stage TEXT NOT NULL,
@@ -61,8 +89,10 @@ class MockDbEngine:
                 avg_occupancy REAL NOT NULL,
                 PRIMARY KEY (edge_id, maturity_stage, summary_hour)
             );
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS synapse_intersection_phase_hourly_summary (
                 intersection_id TEXT NOT NULL,
                 maturity_stage TEXT NOT NULL,
@@ -77,19 +107,23 @@ class MockDbEngine:
                 total_delay REAL NOT NULL,
                 PRIMARY KEY (intersection_id, maturity_stage, summary_hour)
             );
-        """)
+        """
+        )
         # Insert samples: one old sample (>48h ago) and one recent sample
-        cursor.execute("""
-            INSERT INTO synapse_fluid_dynamics 
+        cursor.execute(
+            """
+            INSERT INTO synapse_fluid_dynamics
             (scenario_name, intersection_id, edge_id, density, mean_speed, queue_length, occupancy, edge_length, maturity_stage, collected_at)
-            VALUES 
+            VALUES
             ('default', 'int_1', 'edge_old', 50.0, 30.0, 10, 0.4, 100.0, 'CHILD', datetime('now', '-50 hours')),
             ('default', 'int_1', 'edge_new', 20.0, 50.0, 2, 0.1, 100.0, 'CHILD', datetime('now', '-1 hours'));
-        """)
+        """
+        )
         self._conn.commit()
 
     def get_connection(self):
         return ProxyConnection(self._conn)
+
 
 def test_consolidate_and_purge_old_data():
     engine = MockDbEngine()
@@ -110,15 +144,15 @@ def test_consolidate_and_purge_old_data():
     assert cursor.fetchone()[0] == 1
 
     cursor.execute("SELECT edge_id FROM synapse_fluid_dynamics;")
-    assert cursor.fetchone()[0] == 'edge_new'
+    assert cursor.fetchone()[0] == "edge_new"
 
     cursor.execute("SELECT edge_id, sample_count, avg_speed FROM synapse_edge_phase_hourly_summary;")
     summary_edge = cursor.fetchone()
-    assert summary_edge[0] == 'edge_old'
+    assert summary_edge[0] == "edge_old"
     assert summary_edge[1] == 1
     assert summary_edge[2] == 30.0
 
     cursor.execute("SELECT intersection_id, sample_count FROM synapse_intersection_phase_hourly_summary;")
     summary_int = cursor.fetchone()
-    assert summary_int[0] == 'int_1'
+    assert summary_int[0] == "int_1"
     assert summary_int[1] == 1

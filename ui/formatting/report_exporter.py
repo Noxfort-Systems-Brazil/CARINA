@@ -18,20 +18,24 @@
 # Author: Gabriel Moraes
 # Date: 2026-07-01
 
-import os
 import base64
+import os
 import tempfile
 from typing import Any
+
 import flet as ft
-from ui.handlers.locale_manager import LocaleManager
+
 from blocks.structured_report_builder import StructuredReportBuilder
 from src.utils.settings_manager import SettingsManager
+from ui.handlers.locale_manager import LocaleManager
+
 
 class ReportExporter:
     """
     Service handler that orchestrates configuration fetching, temporary image writing,
     and invocation of StructuredReportBuilder to export DOCX reports.
     """
+
     @staticmethod
     def export_report(
         page: ft.Page,
@@ -41,7 +45,7 @@ class ReportExporter:
         text_content: str,
         results_dir: str,
         mode: str,  # "XAI", "MFD", or "PLANNING"
-        agent_id: str = None
+        agent_id: str = None,
     ) -> bool:
         if not save_path.lower().endswith(".docx"):
             save_path += ".docx"
@@ -53,17 +57,17 @@ class ReportExporter:
                 if mode == "PLANNING":
                     possible_paths = [
                         os.path.join(results_dir, "map_planning.png"),
-                        os.path.join(results_dir, "maps", "map_planning.png")
+                        os.path.join(results_dir, "maps", "map_planning.png"),
                     ]
                 elif mode == "MFD":
                     possible_paths = [
                         os.path.join(results_dir, "mfd_curve.png"),
-                        os.path.join(results_dir, "plots", "mfd_curve.png")
+                        os.path.join(results_dir, "plots", "mfd_curve.png"),
                     ]
                 else:
                     possible_paths = [
                         os.path.join(results_dir, "xai_importance.png"),
-                        os.path.join(results_dir, "plots", "xai_importance.png")
+                        os.path.join(results_dir, "plots", "xai_importance.png"),
                     ]
                 for p in possible_paths:
                     if os.path.exists(p) and os.path.getsize(p) > 0:
@@ -106,10 +110,27 @@ class ReportExporter:
 
             config = {
                 "logo_path": settings.get("report_logo_path") or settings.get("xai_logo_path"),
-                "secretary_name": get_cfg("report_secretary_name", "xai_secretary_name", "secretary_name", "Dr. Gabriel Moraes"),
-                "secretary_title": get_cfg("report_secretary_title", "xai_secretary_title", "secretary_title", "Secretário de Mobilidade e Trânsito"),
-                "agency_name": get_cfg("report_agency_name", "xai_agency_name", "agency_name", "Prefeitura Municipal / Secretaria de Trânsito"),
-                "department_name": get_cfg("report_department_name", "xai_department_name", "department_name", "Departamento de Mobilidade Inteligente"),
+                "secretary_name": get_cfg(
+                    "report_secretary_name", "xai_secretary_name", "secretary_name", "Dr. Gabriel Moraes"
+                ),
+                "secretary_title": get_cfg(
+                    "report_secretary_title",
+                    "xai_secretary_title",
+                    "secretary_title",
+                    "Secretário de Mobilidade e Trânsito",
+                ),
+                "agency_name": get_cfg(
+                    "report_agency_name",
+                    "xai_agency_name",
+                    "agency_name",
+                    "Prefeitura Municipal / Secretaria de Trânsito",
+                ),
+                "department_name": get_cfg(
+                    "report_department_name",
+                    "xai_department_name",
+                    "department_name",
+                    "Departamento de Mobilidade Inteligente",
+                ),
                 "ordinance_enabled": settings.get("report_ordinance_enabled"),
                 "ordinance_number": settings.get("report_ordinance_number"),
                 "city": settings.get("report_city"),
@@ -124,23 +145,64 @@ class ReportExporter:
                 "line_spacing": float(get_cfg("report_line_spacing", "xai_line_spacing", "line_spacing", "1.15")),
                 "alignment": get_cfg("report_alignment", "xai_alignment", "alignment", "justify"),
                 "locale_manager": locale_manager,
-                "mode": mode
+                "mode": mode,
             }
 
             if mode == "PLANNING":
-                config["metadata_title"] = locale_manager.get_string("structured_report.planning_metadata_title", default="1. IDENTIFICAÇÃO E AMBIENTE OPERACIONAL")
-                config["chart_title"] = locale_manager.get_string("structured_report.planning_chart_title", default="2. MAPA DE PLANEJAMENTO TÁTICO")
-                config["chart_caption"] = locale_manager.get_string("structured_report.planning_chart_caption", default="Figura 1 – Mapa com Recomendações Espaciais da Malha Viária.")
-                config["content_fallback"] = locale_manager.get_string("structured_report.planning_content_fallback", default="Nenhum laudo analítico de planejamento disponível.")
-                config["conformity_text"] = locale_manager.get_string("structured_report.planning_conformity_text", default="Este documento foi consolidado pelo motor analítico CARINA SAS com base nos warrants técnicos (MUTCD / CONTRAN). Ele atesta as recomendações de engenharia de tráfego para a malha.")
+                config["ementa_text"] = locale_manager.get_string(
+                    "structured_report.planning_ementa_text",
+                    default="Assunto: Análise da Capacidade Operacional, Avaliação de Warrants Técnicos (CONTRAN/MUTCD) e Recomendação Semafórica para a Malha Viária Urbana.",
+                )
+                config["metadata_title"] = locale_manager.get_string(
+                    "structured_report.planning_metadata_title", default="1. IDENTIFICAÇÃO E AMBIENTE OPERACIONAL"
+                )
+                config["chart_title"] = locale_manager.get_string(
+                    "structured_report.planning_chart_title", default="2. MAPA DE PLANEJAMENTO TÁTICO"
+                )
+                config["chart_caption"] = locale_manager.get_string(
+                    "structured_report.planning_chart_caption",
+                    default="Figura 1 – Mapa com Recomendações Espaciais da Malha Viária.",
+                )
+                config["content_fallback"] = locale_manager.get_string(
+                    "structured_report.planning_content_fallback",
+                    default="Nenhum laudo analítico de planejamento disponível.",
+                )
+                config["conformity_text"] = locale_manager.get_string(
+                    "structured_report.planning_conformity_text",
+                    default="Este documento foi consolidado pelo motor analítico CARINA SAS com base nos warrants técnicos (MUTCD / CONTRAN). Ele atesta as recomendações de engenharia de tráfego para a malha.",
+                )
             elif mode == "MFD":
-                config["metadata_title"] = locale_manager.get_string("structured_report.mfd_metadata_title", default="1. IDENTIFICAÇÃO E AMBIENTE OPERACIONAL")
-                config["chart_title"] = locale_manager.get_string("structured_report.mfd_chart_title", default="3. VISUALIZAÇÃO DO DIAGRAMA FUNDAMENTAL MACROSCÓPICO (MFD)")
-                config["chart_caption"] = locale_manager.get_string("structured_report.mfd_chart_caption", default="Figura 1 – Curva de otimização MFD exibindo produção versus acumulação da malha viária.")
-                config["content_fallback"] = locale_manager.get_string("structured_report.mfd_content_fallback", default="Nenhum laudo analítico MFD disponível.")
-                config["conformity_text"] = locale_manager.get_string("structured_report.mfd_conformity_text", default="Este laudo foi gerado de forma determinística pelo motor de otimização CARINA v1.0 (MFD Engine). Todos os cálculos foram executados por equações matemáticas auditáveis em Python e redigidos sob validação estrita de integridade técnico-gerencial.")
+                config["ementa_text"] = locale_manager.get_string(
+                    "structured_report.mfd_ementa_text",
+                    default="Assunto: Análise da Capacidade Macroscópica da Rede, Diagrama Fundamental Macroscópico (MFD) e Avaliação de Nível de Serviço.",
+                )
+                config["metadata_title"] = locale_manager.get_string(
+                    "structured_report.mfd_metadata_title", default="1. IDENTIFICAÇÃO E AMBIENTE OPERACIONAL"
+                )
+                config["chart_title"] = locale_manager.get_string(
+                    "structured_report.mfd_chart_title",
+                    default="3. VISUALIZAÇÃO DO DIAGRAMA FUNDAMENTAL MACROSCÓPICO (MFD)",
+                )
+                config["chart_caption"] = locale_manager.get_string(
+                    "structured_report.mfd_chart_caption",
+                    default="Figura 1 – Curva de otimização MFD exibindo produção versus acumulação da malha viária.",
+                )
+                config["content_fallback"] = locale_manager.get_string(
+                    "structured_report.mfd_content_fallback", default="Nenhum laudo analítico MFD disponível."
+                )
+                config["conformity_text"] = locale_manager.get_string(
+                    "structured_report.mfd_conformity_text",
+                    default="Este laudo foi gerado de forma determinística pelo motor de otimização CARINA v1.0 (MFD Engine). Todos os cálculos foram executados por equações matemáticas auditáveis em Python e redigidos sob validação estrita de integridade técnico-gerencial.",
+                )
+            else:
+                config["ementa_text"] = locale_manager.get_string(
+                    "structured_report.xai_ementa_text",
+                    default="Assunto: Auditoria de Inteligência Artificial, Explicabilidade Algorítmica (XAI) e Avaliação de Desempenho Operacional da Malha Semafórica Inteligente.",
+                )
 
-            block_order_str = get_cfg("report_block_order", "xai_block_order", "block_order", "header,title,metadata,chart,content,signature")
+            block_order_str = get_cfg(
+                "report_block_order", "xai_block_order", "block_order", "header,title,metadata,chart,content,signature"
+            )
             block_order = [b.strip() for b in block_order_str.split(",") if b.strip()]
 
             # Clean pipe '|' residues from strings
@@ -161,44 +223,73 @@ class ReportExporter:
                 scenario_clean = raw_scenario.replace("_", " ").title()
 
             from blocks.report_post_processor import ReportPostProcessor
-            
+
             if mode == "XAI" and results_dir:
                 try:
                     from xai.xai_report_generator import XaiReportGenerator
+
                     xai_gen = XaiReportGenerator(results_dir)
                     full_res = xai_gen.generate_full_multi_agent_report(primary_agent_id=agent_id)
-                    if full_res and full_res.get("text_content"):
-                        text_content = full_res["text_content"]
+                    if full_res:
+                        if full_res.get("text_content"):
+                            text_content = full_res["text_content"]
+                        if full_res.get("image_base64"):
+                            image_base64 = full_res["image_base64"]
+                            # Update temp image file for docx builder
+                            if tmp_img_path and os.path.exists(tmp_img_path):
+                                try:
+                                    os.remove(tmp_img_path)
+                                except:
+                                    pass
+                            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
+                                tmp_img.write(base64.b64decode(image_base64))
+                                tmp_img_path = tmp_img.name
                 except Exception as e:
                     logging.warning(f"[REPORT_EXPORTER] Failed multi-agent XAI report generation: {e}")
 
-            cleaned_text_content = ReportPostProcessor.enforce_semantic_consistency(text_content) if text_content else ""
+            cleaned_text_content = (
+                ReportPostProcessor.enforce_semantic_consistency(text_content) if text_content else ""
+            )
 
-            engine_str = "CARINA v1.0 (MFD Engine)" if mode == "MFD" else ("CARINA v1.0 (SAS Engine)" if mode == "PLANNING" else "CARINA v1.0 (XAI Engine)")
+            # If XAI markdown content already embeds figures in-line, exclude top-level standalone chart block
+            if mode == "XAI" and cleaned_text_content and "![" in cleaned_text_content:
+                block_order = [b for b in block_order if b.lower() != "chart"]
+
+            engine_str = (
+                "CARINA v1.0 (MFD Engine)"
+                if mode == "MFD"
+                else ("CARINA v1.0 (SAS Engine)" if mode == "PLANNING" else "CARINA v1.0 (XAI Engine)")
+            )
 
             context = {
                 "scenario": clean_str(scenario_clean),
                 "engine_version": engine_str,
                 "image_path": tmp_img_path,
                 "text_content": cleaned_text_content,
-                "results_dir": results_dir
+                "results_dir": results_dir,
             }
             if agent_id is not None:
                 context["agent_id"] = clean_str(agent_id)
 
             if mode == "PLANNING":
-                lbl_scenario = locale_manager.get_string("structured_report.planning_label_scenario", default="Cenário de Operação:")
-                lbl_engine = locale_manager.get_string("structured_report.planning_label_engine", default="Motor Analítico SAS:")
+                lbl_scenario = locale_manager.get_string(
+                    "structured_report.planning_label_scenario", default="Cenário de Operação:"
+                )
+                lbl_engine = locale_manager.get_string(
+                    "structured_report.planning_label_engine", default="Motor Analítico SAS:"
+                )
                 context["metadata_rows"] = [
                     (clean_str(lbl_scenario), clean_str(context.get("scenario", "N/A"))),
-                    (clean_str(lbl_engine), clean_str(context.get("engine_version", "CARINA v1.0.0")))
+                    (clean_str(lbl_engine), clean_str(context.get("engine_version", "CARINA v1.0.0"))),
                 ]
             elif mode == "MFD":
-                lbl_scenario = locale_manager.get_string("structured_report.mfd_label_scenario", default="Cenário de Operação:")
+                lbl_scenario = locale_manager.get_string(
+                    "structured_report.mfd_label_scenario", default="Cenário de Operação:"
+                )
                 lbl_engine = locale_manager.get_string("structured_report.mfd_label_engine", default="Motor Analítico:")
                 context["metadata_rows"] = [
                     (clean_str(lbl_scenario), clean_str(context.get("scenario", "N/A"))),
-                    (clean_str(lbl_engine), clean_str(context.get("engine_version", "CARINA v1.0 (MFD Engine)")))
+                    (clean_str(lbl_engine), clean_str(context.get("engine_version", "CARINA v1.0 (MFD Engine)"))),
                 ]
 
             # Use StructuredReportBuilder modular block pipeline for ALL report modes (XAI, MFD, PLANNING)
@@ -206,18 +297,24 @@ class ReportExporter:
             success = builder.generate_report(save_path, context, config)
 
             if success:
-                success_msg = locale_manager.get_string("xai_viewer.export_success", default="Laudo exportado com sucesso para: {path}", path=save_path)
+                success_msg = locale_manager.get_string(
+                    "xai_viewer.export_success", default="Laudo exportado com sucesso para: {path}", path=save_path
+                )
                 page.snack_bar = ft.SnackBar(content=ft.Text(success_msg))
                 page.snack_bar.open = True
             else:
-                error_msg = locale_manager.get_string("xai_viewer.export_error", default="Erro ao gerar o laudo técnico.")
+                error_msg = locale_manager.get_string(
+                    "xai_viewer.export_error", default="Erro ao gerar o laudo técnico."
+                )
                 page.snack_bar = ft.SnackBar(content=ft.Text(error_msg))
                 page.snack_bar.open = True
             page.update()
             return success
 
         except Exception as ex:
-            catch_msg = locale_manager.get_string("xai_viewer.export_catch_error", default="Erro ao exportar laudo: {error}", error=str(ex))
+            catch_msg = locale_manager.get_string(
+                "xai_viewer.export_catch_error", default="Erro ao exportar laudo: {error}", error=str(ex)
+            )
             page.snack_bar = ft.SnackBar(content=ft.Text(catch_msg))
             page.snack_bar.open = True
             page.update()

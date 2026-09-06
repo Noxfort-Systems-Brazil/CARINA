@@ -18,48 +18,58 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
+from typing import Any, Callable, Dict, List, Tuple
+
 import flet as ft
 import flet.canvas as cv
-from typing import Dict, List, Callable, Any, Tuple
 
 from ui.interfaces.map_protocols import (
-    InteractionHandlerProtocol,
-    StreetInteractionHandlerProtocol,
     EventRouterProtocol,
-    MapDrawerProtocol,
-    MapStateManagerProtocol,
+    InteractionHandlerProtocol,
     MapAnimatorProtocol,
+    MapControlsAssemblerProtocol,
+    MapDrawerProtocol,
+    MapSceneBuilderProtocol,
+    MapStateManagerProtocol,
+    MapTelemetryManagerProtocol,
     MapViewportManagerProtocol,
-    MapControlsAssemblerProtocol
+    MapVisualSyncerProtocol,
+    StreetInteractionHandlerProtocol,
 )
+
 
 class MapComponentsFactory:
     """
     Factory to instantiate concrete map sub-components,
     preserving DIP by isolating live_canvas_map_widget.py from concrete imports.
     """
+
     @staticmethod
     def create_viewport_manager() -> MapViewportManagerProtocol:
         from ui.managers.map_viewport_manager import MapViewportManager
+
         return MapViewportManager()
 
     @staticmethod
     def create_controls_assembler() -> MapControlsAssemblerProtocol:
         from ui.builders.map_controls_assembler import MapControlsAssembler
+
         return MapControlsAssembler()
 
     @staticmethod
-    def create_interaction_handler(viewport_width: float, viewport_height: float, on_update: Callable[[], None]) -> InteractionHandlerProtocol:
+    def create_interaction_handler(
+        viewport_width: float, viewport_height: float, on_update: Callable[[], None]
+    ) -> InteractionHandlerProtocol:
         from ui.handlers.map_interaction_handler import MapInteractionHandler
+
         return MapInteractionHandler(
-            base_width=viewport_width,
-            base_height=viewport_height,
-            on_update_callback=on_update
+            base_width=viewport_width, base_height=viewport_height, on_update_callback=on_update
         )
 
     @staticmethod
     def create_street_interaction_handler() -> StreetInteractionHandlerProtocol:
         from ui.handlers.street_interaction_handler import StreetInteractionHandler
+
         return StreetInteractionHandler(on_street_selected=None)
 
     @staticmethod
@@ -68,30 +78,32 @@ class MapComponentsFactory:
         street_interaction_handler: StreetInteractionHandlerProtocol,
         on_update: Callable[[], None],
         on_semaphore_click: Callable[[str | None], None],
-        on_street_click: Callable[[str | None], None]
+        on_street_click: Callable[[str | None], None],
     ) -> EventRouterProtocol:
         from ui.router.map_event_router import MapEventRouter
+
         return MapEventRouter(
             interaction_handler=interaction_handler,
             street_interaction_handler=street_interaction_handler,
             safe_update_callback=on_update,
             on_semaphore_click=on_semaphore_click,
-            on_street_click=on_street_click
+            on_street_click=on_street_click,
         )
 
     @staticmethod
     def create_drawer(nodes: Dict, edges: List) -> MapDrawerProtocol:
         from ui.renderers.map_drawer import MapDrawer
+
         return MapDrawer(nodes, edges)
 
     @staticmethod
-    def create_state_manager(canvas: cv.Canvas, stack: ft.Stack, edge_paths: Dict, interactive_widgets: Dict) -> MapStateManagerProtocol:
+    def create_state_manager(
+        canvas: cv.Canvas, stack: ft.Stack, edge_paths: Dict, interactive_widgets: Dict
+    ) -> MapStateManagerProtocol:
         from ui.managers.map_state_manager import MapStateManager
+
         return MapStateManager(
-            canvas=canvas,
-            stack=stack,
-            edge_paths=edge_paths,
-            interactive_widgets=interactive_widgets
+            canvas=canvas, stack=stack, edge_paths=edge_paths, interactive_widgets=interactive_widgets
         )
 
     @staticmethod
@@ -101,14 +113,41 @@ class MapComponentsFactory:
         on_panel_update_callback: Callable[[str, Dict, str, str], None],
         edge_paths: Dict,
         interactive_widgets: Dict,
-        topology_edges: List
+        topology_edges: List,
+        initial_congestion_data: Dict = None,
+        initial_panel_data: Dict = None,
+        initial_street_overrides: Dict = None,
+        initial_semaphore_overrides: Dict = None,
     ) -> MapAnimatorProtocol:
         from ui.animators.map_animator import MapAnimator
+
         return MapAnimator(
             widget_to_update=widget_to_update,
             get_panel_state_callback=get_panel_state_callback,
             on_panel_update_callback=on_panel_update_callback,
             edge_paths=edge_paths,
             semaforo_widgets=interactive_widgets,
-            topology_edges=topology_edges
+            topology_edges=topology_edges,
+            initial_congestion_data=initial_congestion_data,
+            initial_panel_data=initial_panel_data,
+            initial_street_overrides=initial_street_overrides,
+            initial_semaphore_overrides=initial_semaphore_overrides,
         )
+
+    @staticmethod
+    def create_telemetry_manager() -> MapTelemetryManagerProtocol:
+        from ui.managers.map_telemetry_manager import MapTelemetryManager
+
+        return MapTelemetryManager()
+
+    @staticmethod
+    def create_visual_syncer() -> MapVisualSyncerProtocol:
+        from ui.renderers.map_visual_syncer import MapVisualSyncer
+
+        return MapVisualSyncer()
+
+    @staticmethod
+    def create_scene_builder() -> MapSceneBuilderProtocol:
+        from ui.builders.map_scene_builder import MapSceneBuilder
+
+        return MapSceneBuilder()

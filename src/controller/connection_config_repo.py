@@ -30,6 +30,7 @@ from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
+
 class ConnectionConfigRepository:
     """
     Manages loading, saving, importing, and exporting of intersection connection configurations.
@@ -38,10 +39,13 @@ class ConnectionConfigRepository:
     @staticmethod
     def export_csv_template(filepath: str, saved_ips: Dict[str, str], known_intersections: List[str]) -> bool:
         """
-        Generates a CSV file containing all known intersections and their configured IPs.
+        Generates a CSV spreadsheet template containing all known intersections and their configured IPs.
+        Ensures proper .csv extension and UTF-8 encoding.
         """
         try:
-            with open(filepath, mode='w', newline='', encoding='utf-8') as f:
+            if not filepath.lower().endswith(".csv"):
+                filepath = f"{filepath}.csv"
+            with open(filepath, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(["Intersection ID", "IP Address"])
                 for tl_id in known_intersections:
@@ -56,18 +60,65 @@ class ConnectionConfigRepository:
     @staticmethod
     def import_csv_config(filepath: str) -> Dict[str, str]:
         """
-        Reads a CSV file containing intersection connection configurations.
+        Reads a CSV spreadsheet containing intersection connection configurations.
+        Supports UTF-8 / UTF-8 with BOM, multiple delimiters (, ; \t), and header aliases.
         Returns a dictionary mapping intersection IDs to IP addresses.
         """
         configs = {}
         try:
-            with open(filepath, mode='r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    tl_id = row.get("Intersection ID", "").strip()
-                    ip = row.get("IP Address", "").strip()
-                    if tl_id and ip:
-                        configs[tl_id] = ip
+            with open(filepath, mode="r", encoding="utf-8-sig") as f:
+                content = f.read()
+
+            if not content.strip():
+                logger.warning(f"CSV file is empty: {filepath}")
+                return configs
+
+            # Determine delimiter dynamically
+            first_line = content.splitlines()[0] if content.splitlines() else ""
+            delimiter = ","
+            if ";" in first_line and first_line.count(";") >= first_line.count(","):
+                delimiter = ";"
+            elif "\t" in first_line and first_line.count("\t") > first_line.count(","):
+                delimiter = "\t"
+
+            import io
+
+            reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+
+            for row in reader:
+                tl_id = ""
+                ip = ""
+                for key, val in row.items():
+                    if not key:
+                        continue
+                    clean_k = key.strip().lower()
+                    if clean_k in [
+                        "intersection id",
+                        "intersection_id",
+                        "id do cruzamento",
+                        "id",
+                        "cruzamento",
+                        "agent_id",
+                        "intersection",
+                        "semaforo",
+                        "semáforo",
+                    ]:
+                        tl_id = str(val).strip() if val else ""
+                    elif clean_k in [
+                        "ip address",
+                        "ip_address",
+                        "endereço ip",
+                        "endereco ip",
+                        "ip",
+                        "ip_addr",
+                        "address",
+                        "host",
+                    ]:
+                        ip = str(val).strip() if val else ""
+
+                if tl_id and ip:
+                    configs[tl_id] = ip
+
             logger.info(f"Imported {len(configs)} configurations from CSV: {filepath}")
         except Exception as e:
             logger.error(f"Failed to import CSV configuration: {e}")
@@ -80,25 +131,32 @@ class ConnectionConfigRepository:
         """
         try:
             from src.database.db_engine import DatabaseEngine
+
             engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:
                 return False
             cursor = conn.cursor()
             if engine.db_type == "postgres":
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO hardware_controller_connections (intersection_id, ip_address, auto_connect, last_connected)
                     VALUES (%s, %s, TRUE, NOW())
-                    ON CONFLICT (intersection_id) 
+                    ON CONFLICT (intersection_id)
                     DO UPDATE SET ip_address = EXCLUDED.ip_address, auto_connect = TRUE, last_connected = NOW();
-                """, (str(intersection_id), str(ip_address)))
+                """,
+                    (str(intersection_id), str(ip_address)),
+                )
             else:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO hardware_controller_connections (intersection_id, ip_address, auto_connect, last_connected)
                     VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
-                    ON CONFLICT(intersection_id) 
+                    ON CONFLICT(intersection_id)
                     DO UPDATE SET ip_address = excluded.ip_address, auto_connect = TRUE, last_connected = CURRENT_TIMESTAMP;
-                """, (str(intersection_id), str(ip_address)))
+                """,
+                    (str(intersection_id), str(ip_address)),
+                )
             conn.commit()
             conn.close()
             logger.info(f"[DB Persistence] Saved hardware connection for '{intersection_id}' at {ip_address}")
@@ -115,24 +173,25 @@ class ConnectionConfigRepository:
         """
         try:
             from src.database.db_engine import DatabaseEngine
+
             engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:
                 return False
             cursor = conn.cursor()
-            
+
             clean_id = str(intersection_id).strip()
             alt_id = clean_id.replace("tl_", "") if clean_id.startswith("tl_") else f"tl_{clean_id}"
-            
+
             if engine.db_type == "postgres":
                 cursor.execute(
                     "DELETE FROM hardware_controller_connections WHERE intersection_id = %s OR intersection_id = %s;",
-                    (clean_id, alt_id)
+                    (clean_id, alt_id),
                 )
             else:
                 cursor.execute(
                     "DELETE FROM hardware_controller_connections WHERE intersection_id = ? OR intersection_id = ?;",
-                    (clean_id, alt_id)
+                    (clean_id, alt_id),
                 )
             conn.commit()
             conn.close()
@@ -150,12 +209,15 @@ class ConnectionConfigRepository:
         configs = {}
         try:
             from src.database.db_engine import DatabaseEngine
+
             engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:
                 return configs
             cursor = conn.cursor()
-            cursor.execute("SELECT intersection_id, ip_address FROM hardware_controller_connections WHERE auto_connect = TRUE;")
+            cursor.execute(
+                "SELECT intersection_id, ip_address FROM hardware_controller_connections WHERE auto_connect = TRUE;"
+            )
             rows = cursor.fetchall()
             for row in rows:
                 configs[str(row[0])] = str(row[1])
@@ -172,6 +234,7 @@ class ConnectionConfigRepository:
         """
         try:
             from src.database.db_engine import DatabaseEngine
+
             engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:

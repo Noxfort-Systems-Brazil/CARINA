@@ -1,8 +1,28 @@
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
+# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# File: tests/benchmark.py
+# Author: Gabriel Moraes
+# Date: September 2026
+
 import os
-import sys
-import time
 import platform
 import subprocess
+import sys
+import time
 
 try:
     import psutil
@@ -10,6 +30,7 @@ except ImportError:
     print("Instalando a biblioteca 'psutil'...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "psutil"])
     import psutil
+
 
 def get_folder_size(folder_path):
     total_size = 0
@@ -20,63 +41,68 @@ def get_folder_size(folder_path):
                 total_size += os.path.getsize(fp)
     return total_size
 
+
 def get_gpu_info():
     try:
         result = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"],
-            encoding='utf-8'
+            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,nounits,noheader"], encoding="utf-8"
         )
-        lines = result.strip().split('\n')
-        vram_used = sum(int(line.split(',')[0].strip()) for line in lines)
-        vram_total = sum(int(line.split(',')[1].strip()) for line in lines)
+        lines = result.strip().split("\n")
+        vram_used = sum(int(line.split(",")[0].strip()) for line in lines)
+        vram_total = sum(int(line.split(",")[1].strip()) for line in lines)
         return {"vram_used_mb": vram_used, "vram_total_mb": vram_total, "has_gpu": True}
     except Exception:
         return {"vram_used_mb": 0, "vram_total_mb": 0, "has_gpu": False}
+
 
 def run_benchmark(num_junctions, duration=60):
     print("\n==================================================")
     print("       INICIANDO BENCHMARK CARINA CORE")
     print(f"       Mockando: {num_junctions} Cruzamentos | Tempo: {duration}s")
     print("==================================================")
-    
+
     os_info = f"{platform.system()} {platform.release()} ({platform.architecture()[0]})"
-    
+
     mock_script = os.path.join(os.path.dirname(__file__), "mock_junctions.py")
     if not os.path.exists(mock_script):
         print(f"Erro: '{mock_script}' não encontrado.")
         return
-        
+
     print(f"-> Passo 1/2: Levantando Mock de {num_junctions} cruzamentos em background...")
-    mock_process = subprocess.Popen([sys.executable, mock_script, str(num_junctions)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    time.sleep(2) # Dar tempo para portas abrirem
-    
+    mock_process = subprocess.Popen(
+        [sys.executable, mock_script, str(num_junctions)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+
+    time.sleep(2)  # Dar tempo para portas abrirem
+
     core_script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "carina.py"))
     print("-> Passo 2/2: Iniciando a inteligência central (CARINA CORE)...")
-    
+
     env = os.environ.copy()
     env["CARINA_TEST_MODE"] = "1"
-    
-    core_process = subprocess.Popen([sys.executable, core_script], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
+
+    core_process = subprocess.Popen(
+        [sys.executable, core_script], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+
     peak_cpu_percent = 0.0
     peak_ram_mb = 0.0
     peak_vram_mb = 0.0
-    
+
     start_time = time.time()
-    
+
     try:
         core_ps = psutil.Process(core_process.pid)
         print("\nMonitorando recursos de IA (SLM, Dashboards, Workers)...\n")
-        
+
         while time.time() - start_time < duration:
             if core_process.poll() is not None:
                 print("\nO processo do CARINA_CORE terminou prematuramente.")
                 break
-                
+
             total_cpu = 0.0
             total_ram = 0
-            
+
             children = core_ps.children(recursive=True)
             for p in [core_ps] + children:
                 try:
@@ -84,22 +110,24 @@ def run_benchmark(num_junctions, duration=60):
                     total_ram += p.memory_info().rss
                 except psutil.NoSuchProcess:
                     pass
-            
+
             if total_cpu > peak_cpu_percent:
                 peak_cpu_percent = total_cpu
-                
+
             ram_mb = total_ram / (1024 * 1024)
             if ram_mb > peak_ram_mb:
                 peak_ram_mb = ram_mb
-                
+
             gpu_info = get_gpu_info()
             if gpu_info["has_gpu"] and gpu_info["vram_used_mb"] > peak_vram_mb:
                 peak_vram_mb = gpu_info["vram_used_mb"]
-                
+
             time.sleep(1)
-            sys.stdout.write(f"\rRestante: {int(duration - (time.time() - start_time))}s | CPU Pico: {peak_cpu_percent:.1f}% | RAM Pico: {peak_ram_mb:.0f} MB")
+            sys.stdout.write(
+                f"\rRestante: {int(duration - (time.time() - start_time))}s | CPU Pico: {peak_cpu_percent:.1f}% | RAM Pico: {peak_ram_mb:.0f} MB"
+            )
             sys.stdout.flush()
-            
+
     except KeyboardInterrupt:
         print("\nBenchmark interrompido pelo usuário.")
     finally:
@@ -116,43 +144,48 @@ def run_benchmark(num_junctions, duration=60):
 
     folder_size_mb = get_folder_size(os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))) / (1024 * 1024)
     cores_utilizados = max(1, int(peak_cpu_percent / 100) + 1)
-    
-    gerar_relatorio(os_info, cores_utilizados, peak_ram_mb, peak_vram_mb, folder_size_mb, peak_cpu_percent, num_junctions)
+
+    gerar_relatorio(
+        os_info, cores_utilizados, peak_ram_mb, peak_vram_mb, folder_size_mb, peak_cpu_percent, num_junctions
+    )
+
 
 def format_gb(mb):
     if mb < 1024:
         return f"{mb:.0f} MB"
     return f"{mb / 1024:.2f} GB"
 
+
 def get_next_tier(value, tiers):
     for t in tiers:
         if value <= t:
             return t
-    return int(value) + (1 if value % 1 > 0 else 0) # Se passar do máximo tabelado, apenas arredonda para cima
+    return int(value) + (1 if value % 1 > 0 else 0)  # Se passar do máximo tabelado, apenas arredonda para cima
+
 
 def gerar_relatorio(os_info, base_cores, base_ram_mb, base_vram_mb, folder_size_mb, peak_cpu_percent, num_junctions):
-    os_ram_reserve_mb = 2048 
-    
+    os_ram_reserve_mb = 2048
+
     # =========================================================
     # SIMULAÇÃO DE PICO MÁXIMO (WORST-CASE STRESS TEST)
-    # Garante que o hardware recomendado suportará o sistema 
-    # utilizando 100% da CARINA (Infernência contínua, XAI, 
+    # Garante que o hardware recomendado suportará o sistema
+    # utilizando 100% da CARINA (Infernência contínua, XAI,
     # Watchdog e tráfego intenso em todos os semáforos ao mesmo tempo).
     # =========================================================
     stress_ram_factor = 2.5  # O pico de tráfego inunda filas MQTT e alocações de IA
     stress_cpu_factor = 2.0  # Múltiplas threads do Motor Simbólico trabalhando sem parar
-    stress_vram_factor = 1.8 # Aceleradores trabalhando em capacidade máxima
-    
+    stress_vram_factor = 1.8  # Aceleradores trabalhando em capacidade máxima
+
     # Cálculos brutos convertidos para GB
     ram_raw_gb = max(4096, (base_ram_mb * stress_ram_factor) + os_ram_reserve_mb + 2048) / 1024.0
     cpu_cores_raw = int(base_cores * stress_cpu_factor) + 2
     disk_raw_gb = (folder_size_mb + (10.0 * num_junctions) + 5120) / 1024.0
-    
+
     # Arredondamento para "Padrões de Mercado" (2, 4, 8, 16, 32...)
     ram_recomendada = get_next_tier(ram_raw_gb, [4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256, 512])
     cpu_cores_recomendado = get_next_tier(cpu_cores_raw, [2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 48, 64, 128])
     disk_recomendado = get_next_tier(disk_raw_gb, [16, 32, 64, 128, 256, 512, 1024, 2048])
-    
+
     if base_vram_mb > 0:
         vram_raw_gb = (base_vram_mb * stress_vram_factor) / 1024.0
         vram_recomendada = get_next_tier(vram_raw_gb, [2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 80])
@@ -215,19 +248,20 @@ Placa de Vídeo (GPU): {vram_text}
     report_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "benchmark.txt"))
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
-        
+
     print(f"\nRelatório focado gerado com sucesso em: {report_path}")
+
 
 if __name__ == "__main__":
     print("==================================================")
     print("        CARINA - CONFIGURAÇÃO DE BENCHMARK        ")
     print("==================================================")
-    
+
     try:
         user_input = input("Quantos semáforos (cruzamentos) deseja simular no teste base? [Padrão: 20]: ").strip()
         num_junctions = int(user_input) if user_input else 20
-        
-        duracao_teste = 60 # Tempo tabelado fixado
+
+        duracao_teste = 60  # Tempo tabelado fixado
     except ValueError:
         print("Entrada inválida. Usando valores padrão (20 cruzamentos, 60 segundos).")
         num_junctions = 20

@@ -1,15 +1,31 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
 # Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
 #
-# File: tests/unit/test_sas_report_generator.py
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pytest
+# File: tests/unit/test_sas_report_generator.py
+# Author: Gabriel Moraes
+# Date: September 2026
+
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from sas.report_generator import ReportGenerator
-from sas.report_transducer_factory import ReportTransducerFactory
 from sas.report_intersection_processor import ReportIntersectionProcessor
 from sas.report_table_builder import ReportTableBuilder
+from sas.report_transducer_factory import ReportTransducerFactory
 
 
 def test_report_transducer_factory_fallback():
@@ -31,16 +47,13 @@ def test_report_intersection_processor():
             "queue_p95": 4,
             "saturation_ratio": 0.65,
             "lanes_primary": 2,
-            "lanes_secondary": 1
+            "lanes_secondary": 1,
         },
         "recommendation": "Otimizar tempo de ciclo",
-        "status": "Sinalizado"
+        "status": "Sinalizado",
     }
 
-    stats = {
-        "critical_j_ids": set(),
-        "total_junctions": 1
-    }
+    stats = {"critical_j_ids": set(), "total_junctions": 1}
 
     res = ReportIntersectionProcessor.process_single_intersection("J1", mock_data, stats, "pt_br")
     assert res["clean_j_id"] == "J1"
@@ -60,10 +73,10 @@ def test_report_generator_execution():
                 "vol_secondary_val": 150.0,
                 "avg_delay": 12.0,
                 "queue_p95": 3,
-                "saturation_ratio": 0.55
+                "saturation_ratio": 0.55,
             },
             "recommendation": "Manter",
-            "status": "Sinalizado"
+            "status": "Sinalizado",
         }
     }
 

@@ -24,15 +24,15 @@ The "Actuator" of the environment: expert in applying actions safely.
 Delegates hardware communication directly to the ConnectionManager.
 """
 
-import logging
 import configparser
-import sys
+import logging
 import os
-from typing import TYPE_CHECKING, Dict, Any
+import sys
+from typing import TYPE_CHECKING, Any, Dict
 
 # Ensure src path is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
@@ -43,17 +43,23 @@ if TYPE_CHECKING:
 
 from utils.safety_rules import SafetyRules
 
+
 class ActionSupervisor:
     """
     The "Actuator" of the environment: expert in applying actions safely.
     Delegates hardware communication directly to the ConnectionManager.
     """
 
-    def __init__(self, connection_manager: 'HardwareConnectionManager', settings: configparser.ConfigParser,
-                 state_extractor: 'StateExtractor', locale_manager: 'LocaleManagerBackend'):
-        
+    def __init__(
+        self,
+        connection_manager: "HardwareConnectionManager",
+        settings: configparser.ConfigParser,
+        state_extractor: "StateExtractor",
+        locale_manager: "LocaleManagerBackend",
+    ):
+
         self.connection_manager = connection_manager
-        self.state_extractor = state_extractor 
+        self.state_extractor = state_extractor
         self.locale_manager = locale_manager
         self.lm = self.locale_manager
 
@@ -65,13 +71,18 @@ class ActionSupervisor:
         # Load minimum safety time rules
         self.green_time = SafetyRules.get_green()
 
-        logging.info(self.lm.get_string("action_supervisor.init.actuator_created", fallback="ActionSupervisor initialized with ConnectionManager."))
+        logging.info(
+            self.lm.get_string(
+                "action_supervisor.init.actuator_created",
+                fallback="ActionSupervisor initialized with ConnectionManager.",
+            )
+        )
 
     def update_vetos(self, vetos: dict):
         """Updates the list of actions vetoed by the Safety Layer (Guardian)."""
         if vetos:
             for tl_id, veto_signal in vetos.items():
-                self.vetoed_actions[tl_id] = veto_signal.get('veto_action')
+                self.vetoed_actions[tl_id] = veto_signal.get("veto_action")
 
     def apply_actions(self, actions: Dict[str, int], current_sim_time: float, current_stages: Dict[str, Any]) -> None:
         """
@@ -80,7 +91,13 @@ class ActionSupervisor:
         for tl_id, action in list(actions.items()):
             # 1. Check Guardian Veto
             if tl_id in self.vetoed_actions and self.vetoed_actions[tl_id] == action:
-                logging.info(self.lm.get_string("action_supervisor.veto_blocked", default="[{tl_id}] Action blocked by Guardian veto.", tl_id=tl_id))
+                logging.info(
+                    self.lm.get_string(
+                        "action_supervisor.veto_blocked",
+                        default="[{tl_id}] Action blocked by Guardian veto.",
+                        tl_id=tl_id,
+                    )
+                )
                 del self.vetoed_actions[tl_id]
                 actions[tl_id] = 1  # Force to HOLD
 
@@ -89,13 +106,34 @@ class ActionSupervisor:
         Sends the hold command for the specified stage to the hardware driver.
         """
         if self.override_states.get(tl_id) in ("ALERT", "OFF"):
-            logging.debug(self.lm.get_string("action_supervisor.override_active", default="[{tl_id}] Skipping send_stage_hold because of active override: {state}", tl_id=tl_id, state=self.override_states[tl_id]))
+            logging.debug(
+                self.lm.get_string(
+                    "action_supervisor.override_active",
+                    default="[{tl_id}] Skipping send_stage_hold because of active override: {state}",
+                    tl_id=tl_id,
+                    state=self.override_states[tl_id],
+                )
+            )
             return
-            
+
         driver = self.connection_manager.active_connections.get(tl_id)
         if driver:
             # Pass 1-based stage to allow the driver to handle the hardware bitmask conversion
-            driver.apply_action({'action_type': 'hold', 'stage': stage_idx + 1})
+            driver.apply_action({"action_type": "hold", "stage": stage_idx + 1})
+
+    def cleanup_intersection(self, tl_id: str) -> None:
+        """Removes all cached states and override flags for a disconnected intersection."""
+        possible_ids = [str(tl_id)]
+        if str(tl_id).startswith("tl_"):
+            possible_ids.append(str(tl_id).replace("tl_", ""))
+        else:
+            possible_ids.append(f"tl_{tl_id}")
+
+        for pid in possible_ids:
+            self._last_stage_change_time.pop(pid, None)
+            self.vetoed_actions.pop(pid, None)
+            self._last_sent_action.pop(pid, None)
+            self.override_states.pop(pid, None)
 
     def reset(self):
         """Clears metrics for a clean restart."""
@@ -110,26 +148,50 @@ class ActionSupervisor:
         """
         if tl_id == "ALL" and state == "SHUTDOWN":
             for driver in self.connection_manager.active_connections.values():
-                logging.critical(self.lm.get_string("action_supervisor.shutdown_global", default="[ActionSupervisor] Global SHUTDOWN: Stopping heartbeat for traffic light {ip}", ip=driver.ip_address))
+                logging.critical(
+                    self.lm.get_string(
+                        "action_supervisor.shutdown_global",
+                        default="[ActionSupervisor] Global SHUTDOWN: Stopping heartbeat for traffic light {ip}",
+                        ip=driver.ip_address,
+                    )
+                )
                 driver.shutdown()
             return
-            
+
         if tl_id in self.connection_manager.active_connections:
             driver = self.connection_manager.active_connections[tl_id]
             if state == "ALERT":
                 self.override_states[tl_id] = "ALERT"
-                driver.apply_action({'action_type': 'flash'})
+                driver.apply_action({"action_type": "flash"})
                 driver.log_carina_override("ALERT")
-                logging.info(self.lm.get_string("action_supervisor.flash_sent", default="[{tl_id}] FLASH (Alert) command sent to hardware via ActionSupervisor.", tl_id=tl_id))
+                logging.info(
+                    self.lm.get_string(
+                        "action_supervisor.flash_sent",
+                        default="[{tl_id}] FLASH (Alert) command sent to hardware via ActionSupervisor.",
+                        tl_id=tl_id,
+                    )
+                )
             elif state == "OFF":
                 self.override_states[tl_id] = "OFF"
-                driver.apply_action({'action_type': 'dark'})
+                driver.apply_action({"action_type": "dark"})
                 driver.log_carina_override("OFF")
-                logging.info(self.lm.get_string("action_supervisor.dark_sent", default="[{tl_id}] DARK (Off) command sent to hardware via ActionSupervisor.", tl_id=tl_id))
+                logging.info(
+                    self.lm.get_string(
+                        "action_supervisor.dark_sent",
+                        default="[{tl_id}] DARK (Off) command sent to hardware via ActionSupervisor.",
+                        tl_id=tl_id,
+                    )
+                )
             elif state == "NORMAL":
                 prev_state = self.override_states.pop(tl_id, None)
                 if prev_state == "ALERT":
-                    driver.apply_action({'action_type': 'release_flash'})
+                    driver.apply_action({"action_type": "release_flash"})
                 elif prev_state == "OFF":
-                    driver.apply_action({'action_type': 'release_dark'})
-                logging.info(self.lm.get_string("action_supervisor.normal_returned", default="[{tl_id}] Traffic light returned to normal operation by operator.", tl_id=tl_id))
+                    driver.apply_action({"action_type": "release_dark"})
+                logging.info(
+                    self.lm.get_string(
+                        "action_supervisor.normal_returned",
+                        default="[{tl_id}] Traffic light returned to normal operation by operator.",
+                        tl_id=tl_id,
+                    )
+                )

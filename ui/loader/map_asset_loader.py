@@ -26,19 +26,21 @@ arquivos de ativos (mapas, coordenadas) do diretório de resultados da
 simulação mais recente.
 """
 
-import os
 import json
 import logging
-from typing import Dict, Any, Tuple
+import os
 
 # Importing the src is necessary for the UI module to find the utils module
 import sys
+from typing import Any, Dict, Tuple
+
 project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 src_path_to_add = os.path.join(project_root_path, "src")
 if src_path_to_add not in sys.path:
     sys.path.insert(0, src_path_to_add)
 
 from src.utils.map_data_parser import parse_map_data
+
 
 class MapAssetLoader:
     """Encontra e carrega arquivos de ativos da simulação mais recente."""
@@ -55,11 +57,16 @@ class MapAssetLoader:
         maps_sub = os.path.join(folder_path, "maps")
         if os.path.exists(maps_sub):
             candidates.insert(0, maps_sub)
-            
+
         for cand in candidates:
             try:
                 for f in os.listdir(cand):
-                    if f == "map_topology.json" or f.endswith(".net.xml.gz") or f.endswith(".net.xml") or f.endswith(".nod.xml"):
+                    if (
+                        f == "map_topology.json"
+                        or f.endswith(".net.xml.gz")
+                        or f.endswith(".net.xml")
+                        or f.endswith(".nod.xml")
+                    ):
                         return True
             except Exception:
                 continue
@@ -69,6 +76,7 @@ class MapAssetLoader:
         """Retorna exclusivamente o caminho para a sessão hft_live_session."""
         try:
             from src.utils.paths import get_base_output_dir
+
             hft_dir = os.path.join(get_base_output_dir(), "results", "hft_live_session")
             if not os.path.exists(hft_dir):
                 os.makedirs(hft_dir, exist_ok=True)
@@ -99,7 +107,7 @@ class MapAssetLoader:
         if not coords_path:
             logging.error("[AssetLoader] Não foi possível encontrar o arquivo 'map_coords.json'.")
             return None
-        
+
         try:
             with open(coords_path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -121,46 +129,62 @@ class MapAssetLoader:
         if res:
             return res
 
-        logging.error("[AssetLoader] Falha ao encontrar mapa válido em hft_live_session (.net.xml.gz, .net.xml ou map_topology.json).")
+        logging.error(
+            "[AssetLoader] Falha ao encontrar mapa válido em hft_live_session (.net.xml.gz, .net.xml ou map_topology.json)."
+        )
         return None
 
     def _try_load_from_scenario_dir(self, scenario_dir: str) -> Tuple[Dict, Any, Dict] | None:
         try:
             maps_dir = os.path.join(scenario_dir, "maps")
             target_dir = maps_dir if os.path.exists(maps_dir) else scenario_dir
-            
+
             # --- ATTEMPT 1: Load Topology JSON ---
             json_topology_path = os.path.join(target_dir, "map_topology.json")
             if os.path.exists(json_topology_path):
-                logging.info(f"[AssetLoader] Carregando topologia vetorial moderna: {json_topology_path}")
                 try:
-                    with open(json_topology_path, 'r', encoding='utf-8') as f:
+                    with open(json_topology_path, "r", encoding="utf-8") as f:
                         topology = json.load(f)
                     nodes_list = topology.get("nodes", [])
                     edges_list = topology.get("edges", [])
                     bounds = topology.get("bounds", {})
-                    nodes_dict = {node["id"]: node for node in nodes_list}
-                    return nodes_dict, edges_list, bounds
+
+                    has_full_topology = edges_list and all(
+                        "from" in e and "to" in e for e in edges_list[: min(10, len(edges_list))]
+                    )
+                    if has_full_topology:
+                        logging.info(f"[AssetLoader] Carregando topologia vetorial moderna: {json_topology_path}")
+                        nodes_dict = {node["id"]: node for node in nodes_list}
+                        return nodes_dict, edges_list, bounds
+                    else:
+                        logging.warning(
+                            f"[AssetLoader] Topologia desatualizada sem 'from'/'to' em {json_topology_path}. Re-extraindo do SUMO..."
+                        )
                 except Exception as e:
                     logging.error(f"[AssetLoader] Erro ao processar map_topology.json: {e}", exc_info=True)
 
             # --- ATTEMPT 2: Load SUMO Network Map (*.net.xml.gz / *.net.xml) ---
             net_file_path = None
             if os.path.exists(target_dir):
-                gz_candidates = [os.path.join(target_dir, f) for f in os.listdir(target_dir) if f.endswith(".net.xml.gz")]
+                gz_candidates = [
+                    os.path.join(target_dir, f) for f in os.listdir(target_dir) if f.endswith(".net.xml.gz")
+                ]
                 xml_candidates = [os.path.join(target_dir, f) for f in os.listdir(target_dir) if f.endswith(".net.xml")]
                 if gz_candidates:
                     net_file_path = gz_candidates[0]
                 elif xml_candidates:
                     net_file_path = xml_candidates[0]
-            
+
             if net_file_path:
-                logging.info(f"[AssetLoader] Mapa SUMO encontrado ({os.path.basename(net_file_path)}): {net_file_path}. Extraindo topologia JSON...")
+                logging.info(
+                    f"[AssetLoader] Mapa SUMO encontrado ({os.path.basename(net_file_path)}): {net_file_path}. Extraindo topologia JSON..."
+                )
                 from src.utils.map_processor import MapProcessor
+
                 try:
                     MapProcessor.extract_topology_to_json(net_file_path, json_topology_path)
                     if os.path.exists(json_topology_path):
-                        with open(json_topology_path, 'r', encoding='utf-8') as f:
+                        with open(json_topology_path, "r", encoding="utf-8") as f:
                             topology = json.load(f)
                         nodes_list = topology.get("nodes", [])
                         edges_list = topology.get("edges", [])
@@ -181,7 +205,7 @@ class MapAssetLoader:
 
         except Exception as e:
             logging.error(f"[AssetLoader] Erro ao tentar carregar mapa de {scenario_dir}: {e}", exc_info=True)
-            
+
         return None
 
     def load_background_map(self) -> tuple[str, dict] | None:
@@ -193,9 +217,10 @@ class MapAssetLoader:
         if not bg_json_path or not bg_png_path:
             logging.debug("[AssetLoader] Arquivos de imagem de fundo ou coordenadas não encontrados.")
             return None
-        
+
         try:
             import base64
+
             with open(bg_json_path, "r", encoding="utf-8") as f:
                 bg_data = json.load(f)
             with open(bg_png_path, "rb") as f:

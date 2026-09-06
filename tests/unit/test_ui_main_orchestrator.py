@@ -1,23 +1,40 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
 # Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
 #
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 # File: tests/unit/test_ui_main_orchestrator.py
+# Author: Gabriel Moraes
+# Date: September 2026
 
-import pytest
 from unittest.mock import MagicMock
-import flet as ft
 
-from ui.views.error_view import ErrorView
+import flet as ft
+import pytest
+
 from ui.builders.settings_dialog_builder import SettingsDialogBuilder
 from ui.managers.navigation_manager import NavigationManager
+from ui.views.error_view import ErrorView
 
 
 def test_error_view_render():
     """Verify ErrorView renders error card without throwing exceptions."""
     mock_page = MagicMock()
     mock_page.overlay = []
-    
+
     restart_called = False
+
     def on_restart(e):
         nonlocal restart_called
         restart_called = True
@@ -45,7 +62,7 @@ def test_settings_dialog_builder():
         locale_manager=mock_lm,
         security_ui=mock_security,
         settings_view=mock_settings_view,
-        settings_client=mock_client
+        settings_client=mock_client,
     )
 
     assert dialog is not None
@@ -73,7 +90,7 @@ def test_navigation_manager():
         diagnostics_view=mock_diag,
         settings_view=mock_set_view,
         settings_dialog=mock_dialog,
-        open_settings_callback=lambda e: None
+        open_settings_callback=lambda e: None,
     )
 
     assert nav.appbar is not None

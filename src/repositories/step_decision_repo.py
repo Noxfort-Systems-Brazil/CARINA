@@ -5,21 +5,15 @@
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # File: src/repositories/step_decision_repo.py
 # Author: Gabriel Moraes
 # Date: August 2026
 
+import datetime
 import logging
-from typing import TYPE_CHECKING, List, Dict, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
 import psycopg2
 from psycopg2.extras import execute_values
 
@@ -27,69 +21,100 @@ if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
     from src.utils.locale_manager_backend import LocaleManagerBackend
 
+
 class StepDecisionRepository:
     """
-    High-performance repository for real-time step decision and Guardian veto telemetry.
-    Supports 1-byte Smallint Enum encoding, Delta Compression, bulk batch insertion,
-    and forensic audit query generation for XAI reports.
+    High-performance repository for real-time step decision counters (codes 0-5),
+    operational session lifecycle management, and SUMO topology dictionary storage.
     """
 
-    # Enums for 1-byte Smallint Storage
-    ACTION_MAP = {"MANTER ESTÁGIO": 0, "PRÓXIMO ESTÁGIO": 1, "OVERRIDE": 2}
-    DECISION_MAP = {"APROVADA": 0, "NEGADA": 1}
-    MATURITY_MAP = {"CHILD": 0, "TEEN": 1, "ADULT": 2}
-    VETO_REASON_MAP = {
-        "SEM_VETO": 0,
+    # Enums for 0-5 Decision / Veto Codes
+    DECISION_CODES = {
+        "APPROVED": 0,
+        "PASS": 0,
         "MIN_GREEN": 1,
-        "YELLOW_CLEARANCE": 2,
-        "SPILLBACK_D3QN": 3,
-        "GRIDLOCK": 4
+        "MIN_YELLOW": 2,
+        "MIN_ALL_RED": 3,
+        "MIN_RED": 4,
+        "SPILLBACK_D3QN": 5,
     }
 
-    # Reverse Mappings for Report Formatting
+    # Reverse Mappings for ABNT Report Formatting
     VETO_REASON_TEXT = {
         0: "Nenhum (Decisão Aprovada)",
         1: "Proteção de Tempo Mínimo de Verde (Min Green = 10s)",
-        2: "Proteção de Amarelo e Red-Clearance de Segurança",
-        3: "Risco de Saturação e Spillback (D3QN Guardian)",
-        4: "Prevenção de Travamento de Cruzamento (Gridlock)"
+        2: "Proteção de Tempo Mínimo de Amarelo (Yellow Clearance)",
+        3: "Proteção de Tempo Mínimo de Vermelho Integral (All-Red)",
+        4: "Proteção de Tempo Mínimo de Vermelho Geral (Min Red)",
+        5: "Veto Crítico de Spillback (Redes Neurais D3QN)",
     }
 
-    def __init__(self, engine: 'DatabaseEngine', locale_manager: 'LocaleManagerBackend'):
+    def __init__(self, engine: "DatabaseEngine", locale_manager: "LocaleManagerBackend"):
         self.engine = engine
         self.locale_manager = locale_manager
+        self.ensure_tables_exist()
 
-    def encode_decision(self, sim_time: float, step_num: int, agent_id: str, 
-                       maturity: str, suggested_action: str, final_decision: str, 
-                       veto_reason: str, step_count: int = 1,
-                       total_time_ms: float = 0.0, guardian_time_ms: float = 0.0) -> Tuple:
-        """Converts raw decision data into an ultra-compact binary enum tuple."""
-        mat_code = self.MATURITY_MAP.get(maturity.upper(), 2)
-        sug_code = self.ACTION_MAP.get(suggested_action.upper(), 0)
-        dec_code = self.DECISION_MAP.get(final_decision.upper(), 0)
-        
-        # Map veto reason
-        veto_upper = veto_reason.upper()
-        if "MÍNIMO" in veto_upper or "MIN" in veto_upper or "GREEN" in veto_upper:
-            veto_code = 1
-        elif "AMARELO" in veto_upper or "YELLOW" in veto_upper:
-            veto_code = 2
-        elif "D3QN" in veto_upper or "SPILLBACK" in veto_upper:
-            veto_code = 3
-        elif "GRIDLOCK" in veto_upper or "TRAVAMENTO" in veto_upper:
-            veto_code = 4
-        else:
-            veto_code = 0 if dec_code == 0 else 1
+    def ensure_tables_exist(self) -> bool:
+        """Ensures that step_decision_counters, operation_sessions, and topology_dictionary tables exist."""
+        conn = self.engine.get_connection()
+        if not conn:
+            return False
+        try:
+            with conn.cursor() as cursor:
+                # 1. Step Decision Counters table (pure BIGINT numeric agent_id)
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS step_decision_counters (
+                        agent_id BIGINT NOT NULL,
+                        decision_code INTEGER NOT NULL,
+                        count BIGINT NOT NULL DEFAULT 0,
+                        PRIMARY KEY (agent_id, decision_code)
+                    );
+                """
+                )
 
-        return (
-            float(sim_time), int(step_num), str(agent_id),
-            mat_code, sug_code, dec_code, veto_code,
-            int(step_count), float(total_time_ms), float(guardian_time_ms)
-        )
+                # 2. Operational Sessions table
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS operation_sessions (
+                        session_id BIGSERIAL PRIMARY KEY,
+                        start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        end_time TIMESTAMP,
+                        status VARCHAR(50) DEFAULT 'EM_OPERACAO',
+                        error_message TEXT
+                    );
+                """
+                )
 
-    def insert_batch(self, batch_tuples: List[Tuple]) -> bool:
+                # 3. Topology Dictionary table
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS topology_dictionary (
+                        id BIGSERIAL PRIMARY KEY,
+                        element_type VARCHAR(20) NOT NULL,
+                        raw_net_id VARCHAR(255) UNIQUE NOT NULL,
+                        numeric_id BIGINT NOT NULL,
+                        custom_name VARCHAR(255) NOT NULL,
+                        from_node VARCHAR(100),
+                        to_node VARCHAR(100),
+                        is_bidirectional_pair BOOLEAN DEFAULT FALSE
+                    );
+                """
+                )
+            conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"[StepDecisionRepo] Error ensuring tables exist: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return False
+
+    def increment_decision_counter_batch(self, batch_tuples: List[Tuple[int, int, int]]) -> bool:
         """
-        Executes high-speed bulk batch insertion into PostgreSQL using execute_values.
+        Executes high-speed atomic UPSERT batch updates into step_decision_counters.
+        batch_tuples: [(agent_id_bigint, decision_code_int, count_bigint)]
         """
         if not batch_tuples:
             return True
@@ -99,107 +124,291 @@ class StepDecisionRepository:
             return False
 
         query = """
-            INSERT INTO public.step_decisions (
-                simulation_time, step_number, agent_id, maturity_stage,
-                suggested_action, final_decision, veto_reason_code,
-                step_count, total_step_time_ms, guardian_time_ms
-            ) VALUES %s
+            INSERT INTO step_decision_counters (agent_id, decision_code, count)
+            VALUES %s
+            ON CONFLICT (agent_id, decision_code)
+            DO UPDATE SET count = step_decision_counters.count + EXCLUDED.count;
         """
         try:
             with conn.cursor() as cursor:
-                execute_values(cursor, query, batch_tuples, page_size=500)
+                execute_values(cursor, query, batch_tuples, page_size=1000)
             conn.commit()
             return True
         except Exception as e:
-            logging.error(f"[StepDecisionRepo] Bulk insert failed: {e}")
+            logging.error(f"[StepDecisionRepo] Counter batch update failed: {e}")
             try:
                 conn.rollback()
             except Exception:
                 pass
             return False
 
+    def start_session(self) -> Optional[int]:
+        """Registers a new operational session start_time in PostgreSQL."""
+        conn = self.engine.get_connection()
+        if not conn:
+            return None
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO operation_sessions (start_time, status)
+                    VALUES (CURRENT_TIMESTAMP, 'EM_OPERACAO')
+                    RETURNING session_id;
+                """
+                )
+                sid = cursor.fetchone()[0]
+            conn.commit()
+            return sid
+        except Exception as e:
+            logging.error(f"[StepDecisionRepo] Error starting operation session: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return None
+
+    def end_session(self, session_id: int, status: str = "FINALIZADO_NORMAL", error_msg: Optional[str] = None) -> bool:
+        """Updates operation session end_time and status in PostgreSQL."""
+        conn = self.engine.get_connection()
+        if not conn or not session_id:
+            return False
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE operation_sessions
+                    SET end_time = CURRENT_TIMESTAMP, status = %s, error_message = %s
+                    WHERE session_id = %s;
+                """,
+                    (status, error_msg, session_id),
+                )
+            conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"[StepDecisionRepo] Error ending operation session {session_id}: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return False
+
+    def bulk_save_topology_elements(self, elements: List[Dict[str, Any]]) -> bool:
+        """Saves or updates topology dictionary elements in PostgreSQL."""
+        if not elements:
+            return True
+        conn = self.engine.get_connection()
+        if not conn:
+            return False
+
+        batch = [
+            (
+                el["element_type"],
+                el["raw_net_id"],
+                int(el["numeric_id"]),
+                el["custom_name"],
+                el.get("from_node"),
+                el.get("to_node"),
+                bool(el.get("is_bidirectional_pair", False)),
+            )
+            for el in elements
+        ]
+
+        query = """
+            INSERT INTO topology_dictionary (
+                element_type, raw_net_id, numeric_id, custom_name, from_node, to_node, is_bidirectional_pair
+            ) VALUES %s
+            ON CONFLICT (raw_net_id) DO UPDATE SET
+                numeric_id = EXCLUDED.numeric_id,
+                from_node = EXCLUDED.from_node,
+                to_node = EXCLUDED.to_node,
+                is_bidirectional_pair = EXCLUDED.is_bidirectional_pair;
+        """
+        try:
+            with conn.cursor() as cursor:
+                execute_values(cursor, query, batch, page_size=500)
+            conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"[StepDecisionRepo] Bulk save topology elements failed: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return False
+
+    def update_topology_custom_name(self, element_type: str, raw_net_id: str, new_name: str) -> bool:
+        """Updates user configured custom name for a street or intersection in PostgreSQL."""
+        conn = self.engine.get_connection()
+        if not conn:
+            return False
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE topology_dictionary
+                    SET custom_name = %s
+                    WHERE UPPER(element_type) = UPPER(%s) AND raw_net_id = %s;
+                """,
+                    (new_name, element_type, raw_net_id),
+                )
+            conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"[StepDecisionRepo] Failed to update custom name for {raw_net_id}: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return False
+
+    def get_topology_custom_name(self, element_type: str, raw_net_id: str) -> Optional[str]:
+        """Queries custom user-configured name for a street or intersection from PostgreSQL."""
+        conn = self.engine.get_connection()
+        if not conn:
+            return None
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT custom_name FROM topology_dictionary
+                    WHERE UPPER(element_type) = UPPER(%s) AND (raw_net_id = %s OR numeric_id = %s);
+                """,
+                    (element_type, raw_net_id, self._to_int_id(raw_net_id)),
+                )
+                row = cursor.fetchone()
+                return str(row[0]) if row and row[0] else None
+        except Exception:
+            return None
+
+    def get_all_audited_agent_ids(self) -> List[str]:
+        """Queries PostgreSQL to get all unique agent_ids (BIGINT) recorded in step_decision_counters."""
+        conn = self.engine.get_connection()
+        if not conn:
+            return []
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT DISTINCT agent_id FROM step_decision_counters ORDER BY agent_id;")
+                rows = cursor.fetchall()
+                return [str(r[0]) for r in rows if r and r[0] is not None]
+        except Exception as e:
+            logging.warning(f"[StepDecisionRepo] Failed to fetch audited agent_ids: {e}")
+            return []
+
     def get_guardian_veto_statistics(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Queries PostgreSQL for exact Guardian Agent audit statistics.
-        Returns: {
-            'total_evaluated': int,
-            'total_approved': int,
-            'total_vetoed': int,
-            'compliance_rate': float,
-            'top_veto_reason': str
-        }
-        """
+        """Fetches decision audit statistics for XAI reports from step_decision_counters DB table."""
         conn = self.engine.get_connection()
         if not conn:
             return {
-                "total_evaluated": 120,
-                "total_approved": 118,
-                "total_vetoed": 2,
-                "compliance_rate": 98.3,
-                "top_veto_reason": self.VETO_REASON_TEXT[1]
+                "total_evaluated": 0,
+                "total_approved": 0,
+                "temporal_interventions": 0,
+                "critical_vetoes": 0,
+                "compliance_rate": 100.0,
+                "top_veto_reason": self.VETO_REASON_TEXT[0],
             }
+
+        num_agent_id = self._to_int_id(agent_id) if agent_id else None
 
         try:
             with conn.cursor() as cursor:
-                if agent_id:
-                    cursor.execute("""
-                        SELECT 
-                            COALESCE(SUM(step_count), 0) AS total_eval,
-                            COALESCE(SUM(CASE WHEN final_decision = 0 THEN step_count ELSE 0 END), 0) AS approved,
-                            COALESCE(SUM(CASE WHEN final_decision = 1 THEN step_count ELSE 0 END), 0) AS vetoed
-                        FROM public.step_decisions
+                if num_agent_id is not None:
+                    cursor.execute(
+                        """
+                        SELECT
+                            COALESCE(SUM(count), 0) AS total_eval,
+                            COALESCE(SUM(CASE WHEN decision_code = 0 THEN count ELSE 0 END), 0) AS approved,
+                            COALESCE(SUM(CASE WHEN decision_code IN (1, 2, 3, 4) THEN count ELSE 0 END), 0) AS temporal_cnt,
+                            COALESCE(SUM(CASE WHEN decision_code = 5 THEN count ELSE 0 END), 0) AS critical_cnt
+                        FROM step_decision_counters
                         WHERE agent_id = %s;
-                    """, (str(agent_id),))
+                    """,
+                        (num_agent_id,),
+                    )
                 else:
-                    cursor.execute("""
-                        SELECT 
-                            COALESCE(SUM(step_count), 0) AS total_eval,
-                            COALESCE(SUM(CASE WHEN final_decision = 0 THEN step_count ELSE 0 END), 0) AS approved,
-                            COALESCE(SUM(CASE WHEN final_decision = 1 THEN step_count ELSE 0 END), 0) AS vetoed
-                        FROM public.step_decisions;
-                    """)
+                    cursor.execute(
+                        """
+                        SELECT
+                            COALESCE(SUM(count), 0) AS total_eval,
+                            COALESCE(SUM(CASE WHEN decision_code = 0 THEN count ELSE 0 END), 0) AS approved,
+                            COALESCE(SUM(CASE WHEN decision_code IN (1, 2, 3, 4) THEN count ELSE 0 END), 0) AS temporal_cnt,
+                            COALESCE(SUM(CASE WHEN decision_code = 5 THEN count ELSE 0 END), 0) AS critical_cnt
+                        FROM step_decision_counters;
+                    """
+                    )
 
                 row = cursor.fetchone()
                 total_eval = int(row[0]) if row and row[0] else 0
                 approved = int(row[1]) if row and row[1] else 0
-                vetoed = int(row[2]) if row and row[2] else 0
+                temporal_cnt = int(row[2]) if row and row[2] else 0
+                critical_cnt = int(row[3]) if row and row[3] else 0
 
                 if total_eval == 0:
                     return {
-                        "total_evaluated": 120,
-                        "total_approved": 118,
-                        "total_vetoed": 2,
-                        "compliance_rate": 98.3,
-                        "top_veto_reason": self.VETO_REASON_TEXT[1]
+                        "total_evaluated": 0,
+                        "total_approved": 0,
+                        "temporal_interventions": 0,
+                        "critical_vetoes": 0,
+                        "compliance_rate": 100.0,
+                        "top_veto_reason": "Aguardando Amostragem em Tempo Real",
                     }
 
                 rate = (approved / total_eval) * 100.0
 
-                # Get top veto reason
-                cursor.execute("""
-                    SELECT veto_reason_code, SUM(step_count) AS cnt
-                    FROM public.step_decisions
-                    WHERE final_decision = 1
-                    GROUP BY veto_reason_code
-                    ORDER BY cnt DESC LIMIT 1;
-                """)
-                vrow = cursor.fetchone()
-                reason_code = int(vrow[0]) if vrow else 1
-                top_reason = self.VETO_REASON_TEXT.get(reason_code, self.VETO_REASON_TEXT[1])
+                # Fetch top veto reason code
+                if temporal_cnt == 0 and critical_cnt == 0:
+                    top_reason = self.VETO_REASON_TEXT[0]
+                else:
+                    if num_agent_id is not None:
+                        cursor.execute(
+                            """
+                            SELECT decision_code, SUM(count) AS cnt
+                            FROM step_decision_counters
+                            WHERE decision_code > 0 AND agent_id = %s
+                            GROUP BY decision_code
+                            ORDER BY cnt DESC LIMIT 1;
+                        """,
+                            (num_agent_id,),
+                        )
+                    else:
+                        cursor.execute(
+                            """
+                            SELECT decision_code, SUM(count) AS cnt
+                            FROM step_decision_counters
+                            WHERE decision_code > 0
+                            GROUP BY decision_code
+                            ORDER BY cnt DESC LIMIT 1;
+                        """
+                        )
+                    vrow = cursor.fetchone()
+                    reason_code = int(vrow[0]) if vrow else 1
+                    top_reason = self.VETO_REASON_TEXT.get(reason_code, self.VETO_REASON_TEXT[1])
 
                 return {
                     "total_evaluated": total_eval,
                     "total_approved": approved,
-                    "total_vetoed": vetoed,
+                    "temporal_interventions": temporal_cnt,
+                    "critical_vetoes": critical_cnt,
                     "compliance_rate": round(rate, 1),
-                    "top_veto_reason": top_reason
+                    "top_veto_reason": top_reason,
                 }
         except Exception as e:
             logging.warning(f"[StepDecisionRepo] Failed to query statistics: {e}")
             return {
-                "total_evaluated": 120,
-                "total_approved": 118,
-                "total_vetoed": 2,
-                "compliance_rate": 98.3,
-                "top_veto_reason": self.VETO_REASON_TEXT[1]
+                "total_evaluated": 0,
+                "total_approved": 0,
+                "temporal_interventions": 0,
+                "critical_vetoes": 0,
+                "compliance_rate": 100.0,
+                "top_veto_reason": "Aguardando Amostragem em Tempo Real",
             }
+
+    @staticmethod
+    def _to_int_id(val: Any) -> int:
+        """Extracts integer numeric digits from agent_id string/int."""
+        if isinstance(val, int):
+            return val
+        s = str(val or "")
+        digits = "".join([c for c in s if c.isdigit()])
+        if digits:
+            return int(digits)
+        return abs(hash(s)) % (10**10)

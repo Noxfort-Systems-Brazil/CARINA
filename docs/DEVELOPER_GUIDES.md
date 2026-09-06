@@ -1,152 +1,128 @@
 ---
-tags: [developer, guide, setup, pyinstaller, config]
-aliases: [Developer Guides, Configuration Reference, PyInstaller Build]
+tags: [developer, guide, setup, agents, config, 12-factor]
+aliases: [Developer Guides, Configuration Reference, Agent Architecture]
 ---
 
 # 🛠️ Developer & Integration Guides
 
-This document provides step-by-step developer guides for configuring, extending, and building the CARINA ecosystem.
+This document provides step-by-step developer guides for setting up the environment, configuring settings, creating custom reinforcement learning agents, and understanding the CARINA codebase.
 
-⬅️ Back to [Main Documentation Hub](CARINA_MOC.md)
+⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🧪 See [Testing & Validation](TESTING.md) | 🚀 See [Deployment & Packaging](DEPLOYMENT_AND_PACKAGING.md) | 🗄️ See [Database & Schemas](DATABASE_AND_SCHEMAS.md)
 
 ---
 
-## 1. Complete `config/settings.ini` Parameter Reference
+## 1. Environment & Configuration Setup
 
-The central configuration file is located at `config/settings.ini`.
+CARINA follows the **12-Factor App** configuration methodology. Secrets and environmental attributes are separated from operational hyperparameters:
+
+### 1.1 Secrets & Infrastructure: `.env`
+Copy the example file to `.env`:
+```bash
+cp .env.example .env
+```
+Configure your credentials:
+```bash
+CARINA_ENV=development                   # 'development' or 'production'
+CARINA_DB_USER=admin
+CARINA_DB_PASSWORD=admin
+CARINA_DB_HOST=localhost
+CARINA_DB_PORT=5432
+CARINA_DB_NAME=carina_data
+CARINA_SNMP_COMMUNITY=public
+```
+
+### 1.2 Operational Parameters: `config/settings.ini`
+Hyperparameters, training intervals, and watchdog tolerances reside in [`config/settings.ini`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/config/settings.ini):
 
 ```ini
-[SERVER]
-# gRPC High-Frequency Telemetry Server Port
-grpc_port = 50051
-grpc_max_workers = 10
-enable_tls = false
-
-[DATABASE]
-# Database backend: 'postgresql' or 'sqlite'
-db_type = postgresql
-db_host = localhost
-db_port = 5432
-db_name = carina_db
-db_user = carina_user
-db_password = secret_password
-pool_size = 20
-
-[AI]
-# Reinforcement Learning Engine Parameters
-device = cuda
-learning_rate = 0.0003
+[AI_TRAINING]
+episode_max_steps = 100
+update_timestep = 1024
 gamma = 0.99
+sequence_length = 4
+k_epochs = 4
+eps_clip = 0.2
 gae_lambda = 0.95
-ppo_clip = 0.2
-batch_size = 64
-temporal_context_window = 8
-spillback_risk_threshold = 0.80
 
-[XAI]
-# Explainable AI & Local LLM Configuration
-enable_xai = true
-model_name = Qwen/Qwen3-1.7B-Instruct
-vram_allocation_gb = 4.0
+[PBT]
+evolution_frequency_episodes = 10
+exploitation_percentile = 25
+learning_rate_range = 0.00001, 0.0005
 
-[MFD]
-# Macroscopic Fundamental Diagram Analysis
-mfd_time_window_seconds = 3600
-critical_density_threshold = 45.0
+[WATCHDOG]
+initial_grace_period_seconds = 10
+heartbeat_timeout_seconds = 5.0
 
-[PROMETHEUS]
-# Metrics Exporter Port
-metrics_port = 8001
-enable_metrics = true
+[GUARDIAN_AGENT]
+learning_rate = 0.00025
+gamma = 0.90
+epsilon_start = 1.0
+epsilon_end = 0.05
+batch_size = 128
+
+[HEATMAP_SCALING]
+weight_occupancy = 1.0
+weight_waiting_time = 1.5
 ```
 
 ---
 
-## 2. Creating a Custom Reinforcement Learning Agent
+## 2. Agent Hierarchy & Extending Reinforcement Learning
 
-To register a new agent (e.g., `CustomSACAgent`):
+CARINA's neural architecture divides decision-making into four specialized roles located in [`src/agents/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents):
 
-1. Create your agent class in `src/agents/custom_sac_agent.py` inheriting from `BaseAgent`:
+1. **`LocalAgent` ([`local_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/local_agent.py)):** Tactical PPO-TCN agent controlling local intersection phase durations.
+2. **`GuardianAgent` ([`guardian_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/guardian_agent.py)):** Neuro-symbolic D3QN safety sentinel that audits and vetoes unsafe actions.
+3. **`ConsultantAgent` ([`consultant_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/consultant_agent.py)):** High-capacity Predictive Autoencoder (PAE) projecting future traffic trends.
+4. **`StrategistAgent` ([`strategist_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/strategist_agent.py)):** ST-GATv2 Lite arterial graph coordinator.
 
+### 2.1 Implementing a Custom Agent
+To create a new tactical agent (e.g., `CustomPPOAgent`):
+
+1. Create `src/agents/custom_ppo_agent.py`:
 ```python
-from agents.base_agent import BaseAgent
 import torch
+import torch.nn as nn
 
-class CustomSACAgent(BaseAgent):
+class CustomPPOAgent:
     def __init__(self, state_dim: int, action_dim: int, config: dict):
-        super().__init__(state_dim, action_dim, config)
-        # Initialize actor/critic networks here
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.config = config
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def select_action(self, state_tensor: torch.Tensor, explore: bool = True) -> int:
-        # Return discrete phase action index
-        pass
+    def act(self, observation_tensor: torch.Tensor, explore: bool = True) -> int:
+        """Selects discrete traffic signal phase action."""
+        with torch.amp.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu"):
+            # Compute action logits
+            action_index = 0
+            return action_index
 
-    def update(self, replay_buffer) -> dict:
-        # Perform backpropagation update step
-        return {"actor_loss": 0.0, "critic_loss": 0.0}
+    def update(self, memory_buffer) -> dict:
+        """Executes backpropagation optimization."""
+        return {"loss": 0.0}
 ```
 
-2. Register your agent in `src/engine/decision_coordinator.py`:
-
+2. Register your agent in [`src/core/decision_coordinator.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/core/decision_coordinator.py):
 ```python
-from agents.custom_sac_agent import CustomSACAgent
+from agents.custom_ppo_agent import CustomPPOAgent
 
-def get_agent_instance(agent_type: str, state_dim: int, action_dim: int, config: dict):
-    if agent_type == "SAC":
-        return CustomSACAgent(state_dim, action_dim, config)
-    # ...
-```
-
-3. Update `config/settings.ini`:
-```ini
-[AI]
-agent_type = SAC
+# Inside DecisionCoordinator initialization:
+if agent_type == "CUSTOM_PPO":
+    self.agent = CustomPPOAgent(state_dim, action_dim, config)
 ```
 
 ---
 
-## 3. Building Standalone Executables with PyInstaller
+## 3. Packaging & Distribution (`build_installer.sh`)
 
-CARINA supports frozen binary distribution via PyInstaller for Linux and Windows.
-
-### 3.1 Main Application Executable (`carina.spec`)
-To build the primary `carina` executable bundle:
+CARINA uses Docker as an isolated, sterile build environment to compile standalone `.deb` installers for Ubuntu/Debian Linux:
 
 ```bash
-# Clean previous build artifacts
-rm -rf dist/ build/
-
-# Run PyInstaller build spec
-pyinstaller carina.spec --noconfirm
+chmod +x build_installer.sh
+./build_installer.sh
 ```
 
-The resulting standalone executable bundle will be generated in `dist/carina/`.
+The script packages PyInstaller binaries, systemd service units, configuration templates, and desktop icons into `./dist/carina_1.0.0_amd64.deb`.
 
-### 3.2 Patch Utility Executable (`apply_patch.spec`)
-For deploying zero-downtime micro-updates:
-
-```bash
-pyinstaller apply_patch.spec --noconfirm
-```
-
----
-
-## 4. Environment & Sys.Path Handling in Frozen Mode
-
-When running in PyInstaller frozen mode (`sys.frozen = True`), CARINA uses `src/launcher/env_setup.py` to resolve resource paths dynamically:
-
-```python
-import sys
-import os
-
-def setup_environment():
-    if getattr(sys, 'frozen', False):
-        bundle_root = sys._MEIPASS
-        project_root = os.path.dirname(sys.executable)
-    else:
-        project_root = os.path.abspath(os.path.dirname(__file__))
-        bundle_root = project_root
-
-    sys.path.insert(0, project_root)
-    return project_root, bundle_root, getattr(sys, 'frozen', False)
-```
+For detailed containerization and deployment instructions, see [Deployment & Packaging](DEPLOYMENT_AND_PACKAGING.md).

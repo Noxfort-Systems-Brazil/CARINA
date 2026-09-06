@@ -1,33 +1,39 @@
 ---
-tags: [xai, sas, mfd, captum, abnt, forensic-audit, guardian-veto]
-aliases: [Explainable AI, SAS Analytics, MFD Engine, ABNT Reports]
+tags: [xai, sas, captum, abnt, forensic-audit, guardian-veto, attribution]
+aliases: [Explainable AI, SAS Analytics, XAI Pipeline, Forensic Auditing]
 ---
 
-# 🔍 Explainable AI (XAI), SAS Analytics & MFD Engine
+# 🔍 Explainable AI (XAI), Forensic Auditing & SAS Analytics
 
-This document specifies CARINA's forensic explainability pipeline (**`XaiReportGenerator`** / Captum), the Guardian Agent Veto Audit Engine, municipal ABNT NBR 14724 report generation, and the network-wide Macroscopic Fundamental Diagram engine (**`MFD_Worker`**).
+This document specifies CARINA's forensic explainability pipeline located in [`src/xai/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai) and [`src/sas/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/sas). It details **Google Captum Integrated Gradients**, the 5 formal neural equations, Guardian Agent safety veto audit tables, and ABNT NBR 14724 report generation.
 
-⬅️ Back to [Main Documentation Hub](CARINA_MOC.md)
+⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 📄 See [Report Blocks & Word](REPORT_BLOCKS_AND_TEMPLATES.md) | 🤖 See [Small Language Models](SLM_AND_LOCAL_LLM.md)
 
 ---
 
-## 1. Explainable AI & Forensic Audit Generator (`XaiReportGenerator`)
+## 1. Forensic Explainability Architecture (`src/xai/`)
 
-In safety-critical municipal traffic control, black-box AI decisions are legally unacceptable to public prosecutors, audit courts (Tribunal de Contas), and traffic engineers. CARINA provides **100% deterministic mathematical explainability** via Google Captum Integrated Gradients and ABNT NBR 14724 Word export.
+In municipal traffic management, black-box AI decisions are legally unacceptable to public prosecutors, audit courts (Tribunal de Contas), and certified traffic engineers. CARINA provides **100% deterministic mathematical explainability** through:
 
 ```text
-    ┌─────────────────────────┐          ┌───────────────────────────┐          ┌────────────────────────┐
-    │  Deep Neural Network    │ ───────> │ Captum Integrated         │ ───────> │  ABNT NBR 14724 Report │ ───> Forensic xai.docx
-    │  (TCN + ST-GATv2 + D3QN)│          │ Gradients (0% to 100%)    │          │  5 Formal Equations +  │      (Municipal Audit Report)
-    └─────────────────────────┘          └───────────────────────────┘          │  Guardian Veto Table   │
-                                                                                └────────────────────────┘
+ ┌─────────────────────────┐          ┌───────────────────────────┐          ┌────────────────────────┐
+ │  Deep Neural Network    │ ───────> │ Captum Integrated         │ ───────> │  ABNT NBR 14724 Report │ ───> Forensic xai.docx
+ │  (TCN + ST-GATv2 + D3QN)│          │ Gradients (0% to 100%)    │          │  5 Formal Equations +  │      (Municipal Audit Report)
+ └─────────────────────────┘          └───────────────────────────┘          │  Guardian Veto Table   │
+                                                                             └────────────────────────┘
 ```
+
+The XAI pipeline uses a modular multi-agent builder architecture:
+- [`src/xai/multi_agent_report_builder.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/multi_agent_report_builder.py): Coordinates the generation of municipal reports across all intersections.
+- [`src/xai/captum_attribution_engine.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/captum_attribution_engine.py): Computes gradient attributions along the interpolation path from baseline to current input.
+- [`src/xai/network_attribution_aggregator.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/network_attribution_aggregator.py): Aggregates feature importance across arterial avenues.
+- [`src/xai/report_block_registry.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/report_block_registry.py): Dispatches report sections to specialized renderers.
 
 ---
 
-## 2. The 5 Formal Neural Equations (Section 2 of ABNT Report)
+## 2. The 5 Formal Neural Equations (Section 2 of Report)
 
-To comply with public administration auditability standards, CARINA's report includes 5 formal LaTeX equations governing every neural network layer:
+To comply with administrative auditability standards, CARINA's report includes 5 formal LaTeX equations governing every neural layer:
 
 ### 2.1 Causal Dilated Convolution (LocalAgent TCN)
 $$\mathbf{y}(t) = (x *_d f)(t) = \sum_{i=0}^{k-1} f(i) \cdot x(t - d \cdot i)$$
@@ -41,27 +47,21 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k} \cdot 
 ### 2.4 Guardian Safety Dueling Q-Value (D3QN Veto)
 $$Q(s, a) = V(s) + \left( A(s, a) - \frac{1}{|\mathcal{A}|} \sum_{a'} A(s, a') \right)$$
 
-### 2.5 Captum Integrated Gradients (Attribution & Completeness Axiom)
-$$\text{GradientesIntegrados}_i(x) = (x_i - x'_i) \times \int_0^1 \frac{\partial F(x' + \alpha(x - x'))}{\partial x_i} d\alpha$$
+### 2.5 Captum Integrated Gradients (Completeness Axiom)
+$$\text{IntegratedGradients}_i(x) = (x_i - x'_i) \times \int_0^1 \frac{\partial F(x' + \alpha(x - x'))}{\partial x_i} d\alpha$$
 
-$$\sum_{i=1}^n \text{GradientesIntegrados}_i(x) = F(x) - F(x')$$
+$$\sum_{i=1}^n \text{IntegratedGradients}_i(x) = F(x) - F(x')$$
 
 ---
 
-## 3. Guardian Agent Veto Audit Table (Section 4 & Anexo I)
+## 3. Guardian Agent Veto Audit Table
 
-The ABNT report automatically queries PostgreSQL `step_decisions` to generate the **Guardian Agent Safety Veto Audit Table**:
+The report queries PostgreSQL `step_decisions` to generate the official **Guardian Agent Safety Veto Audit Table**:
 
-| Intersection ID | Evaluated Decisions | Approved / Homologated | Safety Vetoes | Compliance Rate (%) | Root Cause of Vetoes |
+| Intersection ID | Evaluated Decisions | Approved Actions | Safety Vetoes | Compliance Rate (%) | Primary Root Cause of Veto |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Cruzamento ID 1193472566** | 120 | 118 | 2 | **98.3%** | Min Green Time Protection (10s) |
+| **Junction ID 1193472566** | 1,420 | 1,396 | 24 | **98.3%** | Minimum Green Time Protection (7s) |
+| **Junction ID 2281940123** | 1,420 | 1,418 | 2 | **99.8%** | Yellow Clearance Enforcement (3s) |
 
----
-
-## 4. Macroscopic Fundamental Diagram Engine (`MFD_Worker`)
-
-The **`MFD_Worker`** aggregates spatial traffic density $K_{net}$ (veh/km) and network-wide space-mean flow $Q_{net}$ (veh/hr) to build real-time Macroscopic Fundamental Diagrams (MFD).
-
-$$K_{net} = \frac{\sum_{i=1}^N k_i \cdot L_i}{\sum_{i=1}^N L_i}, \quad Q_{net} = \frac{\sum_{i=1}^N q_i \cdot L_i}{\sum_{i=1}^N L_i}$$
-
-When $K_{net} > K_{crit}$, perimeter metering triggers to prevent city-wide gridlock.
+For document formatting and OMML math rendering details, see [Report Blocks & Word](REPORT_BLOCKS_AND_TEMPLATES.md).
+For offline natural language justification synthesis, see [Small Language Models (SLM)](SLM_AND_LOCAL_LLM.md).

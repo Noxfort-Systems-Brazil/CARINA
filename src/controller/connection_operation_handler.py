@@ -20,11 +20,11 @@
 
 import logging
 import threading
-from typing import Dict, Any, List, Tuple, Callable
+from typing import Any, Callable, Dict, List, Tuple
 
-from src.utils.network_address_parser import NetworkAddressParser
-from src.drivers.traffic_light_driver import TrafficLightDriver
 from src.controller.connection_config_repo import ConnectionConfigRepository
+from src.drivers.traffic_light_driver import TrafficLightDriver
+from src.utils.network_address_parser import NetworkAddressParser
 
 logger = logging.getLogger("src.controller.connection_manager")
 
@@ -41,7 +41,7 @@ class ConnectionOperationHandler:
         self.locale_manager = locale_manager
 
     def _get_string(self, key: str, default: str = None, **kwargs) -> str:
-        if self.locale_manager and hasattr(self.locale_manager, 'get_string'):
+        if self.locale_manager and hasattr(self.locale_manager, "get_string"):
             return self.locale_manager.get_string(key, default=default, **kwargs)
         return default.format(**kwargs) if default and kwargs else (default or key)
 
@@ -53,31 +53,27 @@ class ConnectionOperationHandler:
             known_intersections (List[str]): Shared list of known intersection IDs.
             toggle_func (Callable): Function reference to toggle_connection.
         """
+
         def _bg_restore():
             try:
                 db_configs = ConnectionConfigRepository.load_all_connections_db(locale_manager=self.locale_manager)
                 if db_configs:
-                    logger.info(f"[HardwareConnectionManager] Found {len(db_configs)} saved hardware connection(s) in Database. Restoring...")
+                    logger.info(
+                        f"[HardwareConnectionManager] Found {len(db_configs)} saved hardware connection(s) in Database. Restoring..."
+                    )
                     for tl_id, ip in db_configs.items():
                         self.saved_ips[tl_id] = ip
                         if tl_id not in known_intersections:
                             known_intersections.append(tl_id)
 
                         t = threading.Thread(
-                            target=toggle_func,
-                            args=(tl_id, ip, "connect"),
-                            daemon=True,
-                            name=f"AutoConnect-{tl_id}"
+                            target=toggle_func, args=(tl_id, ip, "connect"), daemon=True, name=f"AutoConnect-{tl_id}"
                         )
                         t.start()
             except Exception as e:
                 logger.error(f"[HardwareConnectionManager] Asynchronous DB connection restore error: {e}")
 
-        t_db_init = threading.Thread(
-            target=_bg_restore,
-            daemon=True,
-            name="HWConnectionManager-DBRestore"
-        )
+        t_db_init = threading.Thread(target=_bg_restore, daemon=True, name="HWConnectionManager-DBRestore")
         t_db_init.start()
 
     def toggle_connection(
@@ -85,7 +81,7 @@ class ConnectionOperationHandler:
         intersection_id: str,
         ip_address: str = None,
         action: str = "toggle",
-        green_stages_provider: Callable[[str], List[int]] = None
+        green_stages_provider: Callable[[str], List[int]] = None,
     ) -> bool:
         """
         Attempts to connect via SNMP or safely shuts down driver for target intersection.
@@ -99,13 +95,18 @@ class ConnectionOperationHandler:
         Returns:
             bool: Connection success state.
         """
-        is_currently_connected = (
-            intersection_id in self.active_connections and
-            getattr(self.active_connections[intersection_id], "is_connected", False)
+        is_currently_connected = intersection_id in self.active_connections and getattr(
+            self.active_connections[intersection_id], "is_connected", False
         )
 
         if action == "disconnect" or (action == "toggle" and is_currently_connected):
-            logger.info(self._get_string("connection_manager.hw_manager.disconnecting", default="[{id}] Disconnecting hardware control...", id=intersection_id))
+            logger.info(
+                self._get_string(
+                    "connection_manager.hw_manager.disconnecting",
+                    default="[{id}] Disconnecting hardware control...",
+                    id=intersection_id,
+                )
+            )
 
             possible_ids = [intersection_id]
             if str(intersection_id).startswith("tl_"):
@@ -120,7 +121,12 @@ class ConnectionOperationHandler:
                     except Exception as e:
                         logger.warning(f"Error shutting down driver for {pid}: {e}")
                     del self.active_connections[pid]
+                if pid in self.saved_ips:
+                    del self.saved_ips[pid]
                 ConnectionConfigRepository.remove_connection_db(pid, self.locale_manager)
+
+            if intersection_id in self.saved_ips:
+                del self.saved_ips[intersection_id]
 
             return False
 
@@ -130,18 +136,38 @@ class ConnectionOperationHandler:
 
             target_ip = self.saved_ips.get(intersection_id)
             if not target_ip:
-                logger.error(self._get_string("connection_manager.hw_manager.no_ip_error", default="[{id}] Cannot connect: No IP address provided.", id=intersection_id))
+                logger.error(
+                    self._get_string(
+                        "connection_manager.hw_manager.no_ip_error",
+                        default="[{id}] Cannot connect: No IP address provided.",
+                        id=intersection_id,
+                    )
+                )
                 ConnectionConfigRepository.remove_connection_db(intersection_id, self.locale_manager)
                 return False
 
             is_valid, connect_ip, connect_port, clean_saved = NetworkAddressParser.parse_and_validate_ip(target_ip)
             if not is_valid:
-                logger.error(self._get_string("connection_manager.hw_manager.invalid_ip_format", default="[{id}] Invalid IP address: no valid IPv4 found in input.", id=intersection_id))
+                logger.error(
+                    self._get_string(
+                        "connection_manager.hw_manager.invalid_ip_format",
+                        default="[{id}] Invalid IP address: no valid IPv4 found in input.",
+                        id=intersection_id,
+                    )
+                )
                 ConnectionConfigRepository.remove_connection_db(intersection_id, self.locale_manager)
                 return False
 
             self.saved_ips[intersection_id] = clean_saved
-            logger.info(self._get_string("connection_manager.hw_manager.connecting", default="[{id}] Attempting to connect hardware at IP {ip} (Port {port})...", id=intersection_id, ip=connect_ip, port=connect_port))
+            logger.info(
+                self._get_string(
+                    "connection_manager.hw_manager.connecting",
+                    default="[{id}] Attempting to connect hardware at IP {ip} (Port {port})...",
+                    id=intersection_id,
+                    ip=connect_ip,
+                    port=connect_port,
+                )
+            )
 
             green_stages = green_stages_provider(intersection_id) if green_stages_provider else []
 
@@ -150,7 +176,7 @@ class ConnectionOperationHandler:
                 ip_address=connect_ip,
                 port=connect_port,
                 green_stages=green_stages,
-                locale_manager=self.locale_manager
+                locale_manager=self.locale_manager,
             )
 
             if getattr(driver, "is_connected", False):
@@ -164,10 +190,7 @@ class ConnectionOperationHandler:
         return False
 
     def import_csv_and_bulk_connect(
-        self,
-        filepath: str,
-        known_intersections: List[str],
-        toggle_func: Callable[..., bool]
+        self, filepath: str, known_intersections: List[str], toggle_func: Callable[..., bool]
     ) -> Tuple[int, int]:
         """
         Reads CSV file, updates internal IPs, and triggers bulk connection tests.
@@ -190,7 +213,14 @@ class ConnectionOperationHandler:
                 known_intersections.append(tl_id)
 
             total_attempted += 1
-            logger.info(self._get_string("connection_manager.hw_manager.bulk_testing", default="[Bulk Import] Testing connection for {id} at {ip}...", id=tl_id, ip=ip))
+            logger.info(
+                self._get_string(
+                    "connection_manager.hw_manager.bulk_testing",
+                    default="[Bulk Import] Testing connection for {id} at {ip}...",
+                    id=tl_id,
+                    ip=ip,
+                )
+            )
 
             if tl_id in self.active_connections:
                 try:
@@ -203,15 +233,27 @@ class ConnectionOperationHandler:
             if is_connected:
                 success_count += 1
 
-        logger.info(self._get_string("connection_manager.hw_manager.bulk_finished", default="Bulk connection finished: {success}/{total} connected successfully.", success=success_count, total=total_attempted))
+        logger.info(
+            self._get_string(
+                "connection_manager.hw_manager.bulk_finished",
+                default="Bulk connection finished: {success}/{total} connected successfully.",
+                success=success_count,
+                total=total_attempted,
+            )
+        )
         return success_count, total_attempted
 
     def shutdown_all_connections(self) -> None:
-        """Safely terminates all active driver instances."""
-        logger.info(self._get_string("connection_manager.hw_manager.shutdown_all", default="Shutting down all active hardware connections..."))
+        """Safely terminates all active driver instances and clears connection state."""
+        logger.info(
+            self._get_string(
+                "connection_manager.hw_manager.shutdown_all", default="Shutting down all active hardware connections..."
+            )
+        )
         for tl_id, driver in list(self.active_connections.items()):
             try:
                 driver.shutdown()
             except Exception as e:
                 logger.warning(f"Error shutting down driver {tl_id}: {e}")
         self.active_connections.clear()
+        self.saved_ips.clear()

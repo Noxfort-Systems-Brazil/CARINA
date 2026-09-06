@@ -19,33 +19,45 @@
 # Date: 2026-07-02
 
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 from .base import ReportBlock
 
 try:
-    from docx.shared import Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, RGBColor
 except ImportError:
     pass
 
+
 class TitleBlock(ReportBlock):
     """Renders the main document title and emission timestamp."""
+
     def build(self, doc: Any, context: Dict[str, Any], config: Dict[str, Any]) -> None:
         title_text = str(config.get("title") or "LAUDO TÉCNICO DE ENGENHARIA DE TRÂNSITO")
-        
+
         # Official redaction date mask (e.g., Apucarana - PR, 24 de julho de 2026)
         months_pt = [
-            "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-            "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+            "janeiro",
+            "fevereiro",
+            "março",
+            "abril",
+            "maio",
+            "junho",
+            "julho",
+            "agosto",
+            "setembro",
+            "outubro",
+            "novembro",
+            "dezembro",
         ]
         now = datetime.now()
         month_str = months_pt[now.month - 1]
-        
+
         city = config.get("city") or config.get("report_city") or "Apucarana"
         state_uf = config.get("state_uf") or config.get("report_state_uf") or "PR"
         protocol_num = config.get("protocol_number") or config.get("report_protocol_number") or "042/2026"
-        
+
         official_date_str = f"{city} - {state_uf}, {now.day} de {month_str} de {now.year}"
 
         # 1. Date (Right aligned)
@@ -62,11 +74,11 @@ class TitleBlock(ReportBlock):
         p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_title.paragraph_format.space_before = Pt(12)
         p_title.paragraph_format.space_after = Pt(6)
-        
+
         clean_title = title_text.replace("|", "").strip().upper()
         if "Nº" not in clean_title and "NO" not in clean_title:
             clean_title = f"{clean_title} Nº {protocol_num}"
-            
+
         run_title = p_title.add_run(clean_title)
         run_title.bold = True
         run_title.font.size = Pt(14)
@@ -75,11 +87,19 @@ class TitleBlock(ReportBlock):
         # 3. Official Ementa (Right indented block)
         p_ementa = doc.add_paragraph()
         p_ementa.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p_ementa.paragraph_format.left_indent = Pt(180) # Indent to the right half
+        p_ementa.paragraph_format.left_indent = Pt(180)  # Indent to the right half
         p_ementa.paragraph_format.space_before = Pt(6)
         p_ementa.paragraph_format.space_after = Pt(18)
-        
-        ementa_text = config.get("ementa_text") or "Assunto: Análise da Capacidade Operacional, Avaliação de Warrants Técnicos (CONTRAN/MUTCD) e Recomendação Semafórica para a Malha Viária Urbana."
+
+        mode = config.get("mode", "XAI")
+        if config.get("ementa_text"):
+            ementa_text = config.get("ementa_text")
+        elif mode == "XAI":
+            ementa_text = "Assunto: Auditoria de Inteligência Artificial, Explicabilidade Algorítmica (XAI) e Avaliação de Desempenho Operacional da Malha Semafórica Inteligente."
+        elif mode == "MFD":
+            ementa_text = "Assunto: Análise da Capacidade Macroscópica da Rede, Diagrama Fundamental Macroscópico (MFD) e Avaliação de Nível de Serviço."
+        else:
+            ementa_text = "Assunto: Análise da Capacidade Operacional, Avaliação de Warrants Técnicos (CONTRAN/MUTCD) e Recomendação Semafórica para a Malha Viária Urbana."
         run_ementa = p_ementa.add_run(ementa_text)
         run_ementa.font.size = Pt(9.5)
         run_ementa.italic = True

@@ -266,5 +266,16 @@
         "action": "Действие",
         "details": "Подробности",
         "refresh": "Обновить"
+    },
+    "structured_report": {
+        "xai_metadata_title": "1. Общие сведения о сессии",
+        "xai_label_agent": "Идентификатор Агента:",
+        "xai_all_agents_label": "Все Агенты (Вся Сеть)",
+        "xai_label_scenario": "Сценарий работы:",
+        "xai_label_engine": "Аналитический движок:",
+        "mfd_metadata_title": "1. Сведения об анализе MFD",
+        "mfd_label_scenario": "Сценарий симуляции:",
+        "mfd_label_engine": "Аналитический движок MFD:",
+        "mfd_label_control": "Система управления:"
     }
 }

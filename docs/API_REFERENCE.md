@@ -1,19 +1,19 @@
 ---
-tags: [api, grpc, ipc, reference]
-aliases: [API Reference, Synapse HFT, IPC Queues]
+tags: [api, grpc, ipc, reference, protobuf]
+aliases: [API Reference, Synapse HFT, IPC Queues, gRPC Interface]
 ---
 
 # ⚡ API Reference & Synapse HFT Protocol Specifications
 
 This document serves as the authoritative interface specification for CARINA. It covers the **Synapse HFT gRPC Protocol**, the **Prometheus Exporter Metrics**, and the **Inter-Process Communication (IPC) Schemas**.
 
-⬅️ Back to [Main Documentation Hub](CARINA_DOC.md) or [Main Documentation Hub](CARINA_MOC.md)
+⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🚦 See [Hardware Drivers](HARDWARE_DRIVERS.md) | 🛡️ See [Safety & Watchdog](SAFETY_AND_WATCHDOG.md) | 🗄️ See [Database & Schemas](DATABASE_AND_SCHEMAS.md)
 
 ---
 
-## 1. Synapse HFT gRPC Service Definition (`synapse_hft.proto`)
+## 1. Synapse HFT gRPC Service Definition (`proto/synapse_hft.proto`)
 
-CARINA interfaces with physical traffic controllers, simulation environments (SUMO/CityFlow), and external sensors via the **Synapse HFT Protocol** over gRPC.
+CARINA interfaces with external sensors, physical traffic controllers, and microscopic simulation environments (SUMO/CityFlow) via the **Synapse HFT Protocol** over gRPC.
 
 - **Default Port:** `50051` (Configurable in `config/settings.ini`)
 - **Transport:** HTTP/2 over TCP with optional TLS encryption.
@@ -86,7 +86,7 @@ message ScenarioDefinition {
 
 ## 3. Inter-Process Communication (IPC) Queue Specifications
 
-CARINA manages 10 bounded IPC channels created by `ProcessManager`.
+CARINA manages 10 bounded IPC channels created by [`ProcessManager`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/launcher/process_manager.py).
 
 | Queue Name | Max Size | Producer Process | Consumer Process | Payload Schema / Message Type |
 | :--- | :---: | :--- | :--- | :--- |
@@ -102,6 +102,8 @@ CARINA manages 10 bounded IPC channels created by `ProcessManager`.
 | **`sas_results`** | 10 | `AnalysisService` | `CentralController` | Engineering warrant reports & signal timing recommendations |
 | **`mfd_trigger`** | 10 | `CentralController` | `MFD_Worker` | `{"action": "COMPUTE_MFD", "time_window_seconds": 3600}` |
 | **`mfd_results`** | 10 | `MFD_Worker` | `CentralController` | `{"critical_density": float, "max_capacity_flow": float, "curve": list}` |
+
+For physical controller actuation via NTCIP and UTMC, see [Hardware Drivers](HARDWARE_DRIVERS.md).
 
 ---
 

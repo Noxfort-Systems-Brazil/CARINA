@@ -14,14 +14,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# File: src/xai/report_blocks.py
+# File: src/utils/security/__init__.py
 # Author: Gabriel Moraes
-# Date: 2026-06-19
-
-from blocks.base import ReportBlock, get_translated, add_markdown_paragraph
-from blocks.header import HeaderBlock
-from blocks.title import TitleBlock
-from blocks.metadata import MetadataBlock
-from blocks.chart import ChartBlock
-from blocks.content import ContentBlock
-from blocks.signature import SignatureBlock
+# Date: September 2026

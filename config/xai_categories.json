@@ -1,0 +1,206 @@
+{
+  "pt_br": {
+    "occupancy": {
+      "name": "Taxa de Ocupação da Faixa (%)",
+      "desc": "Taxa percentual de ocupação do volume de tráfego nas faixas de aproximação."
+    },
+    "speed": {
+      "name": "Velocidade Média de Escoamento (km/h)",
+      "desc": "Velocidade média dos veículos nas faixas de aproximação."
+    },
+    "queue": {
+      "name": "Fila de Aproximação (veículos)",
+      "desc": "Extensão física de veículos acumulados nas faixas de aproximação."
+    },
+    "phase": {
+      "name": "Tempo de Fase Verde Ativa (segundos)",
+      "desc": "Configuração do tempo e fase semafórica ativa no momento."
+    },
+    "pedestrian": {
+      "name": "Chamadas de Pedestres",
+      "desc": "Requisições registradas para travessia de pedestres na interseção."
+    },
+    "pae": {
+      "name": "Projeções Preditivas de IA (PAE Latente)",
+      "desc": "Componentes preditivos latentes da rede autoencodera da IA."
+    },
+    "strategic": {
+      "name": "Coordenação Gráfica GATv2 Lite (Onda Verde)",
+      "desc": "Vetor de atenção espacial em grafo (GATv2 Lite) responsável pela sincronização de fases e onda verde no corredor viário."
+    },
+    "other": {
+      "name": "Variáveis Auxiliares de Controle",
+      "desc": "Dimensões auxiliares ou variáveis secundárias de controle."
+    }
+  },
+  "en": {
+    "occupancy": {
+      "name": "Lane Occupancy Rate (%)",
+      "desc": "Percentage occupancy rate of traffic volume on approach lanes."
+    },
+    "speed": {
+      "name": "Average Discharge Speed (km/h)",
+      "desc": "Average vehicle speed on approach lanes."
+    },
+    "queue": {
+      "name": "Approach Queue Length (vehicles)",
+      "desc": "Physical extension of accumulated vehicles on approach lanes."
+    },
+    "phase": {
+      "name": "Active Green Phase Duration (seconds)",
+      "desc": "Configuration of active green signal phase and elapsed duration."
+    },
+    "pedestrian": {
+      "name": "Pedestrian Crossing Requests",
+      "desc": "Registered requests for pedestrian crossing at the intersection."
+    },
+    "pae": {
+      "name": "AI Predictive Projections (PAE Latent)",
+      "desc": "Latent predictive components from the AI predictive autoencoder network."
+    },
+    "strategic": {
+      "name": "ST-GATv2 Lite Spatial Attention (Green Wave)",
+      "desc": "Spatial graph attention vector (GATv2 Lite) responsible for corridor green wave phase synchronization."
+    },
+    "other": {
+      "name": "Auxiliary Control Variables",
+      "desc": "Auxiliary dimensions or secondary control variables."
+    }
+  },
+  "es": {
+    "occupancy": {
+      "name": "Tasa de Ocupación de Carril (%)",
+      "desc": "Tasa porcentual de ocupación del volumen de tráfico en los carriles de aproximación."
+    },
+    "speed": {
+      "name": "Velocidad Media de Descarga (km/h)",
+      "desc": "Velocidad media de los vehículos en los carriles de aproximación."
+    },
+    "queue": {
+      "name": "Cola de Aproximación (vehículos)",
+      "desc": "Extensión física de vehículos acumulados en los carriles de aproximación."
+    },
+    "phase": {
+      "name": "Duración de Fase Verde Activa (segundos)",
+      "desc": "Configuración del tiempo y fase semafórica activa en el momento."
+    },
+    "pedestrian": {
+      "name": "Llamadas de Peatones",
+      "desc": "Peticiones registradas para cruce de peatones en la intersección."
+    },
+    "pae": {
+      "name": "Proyecciones Predictivas de IA (PAE Latente)",
+      "desc": "Componentes predictivos latentes de la red autoencoder de la IA."
+    },
+    "strategic": {
+      "name": "Coordinación Gráfica GATv2 Lite (Ola Verde)",
+      "desc": "Vector de atención espacial en grafo (GATv2 Lite) responsable de la sincronización de fases y ola verde en el corredor vial."
+    },
+    "other": {
+      "name": "Variables Auxiliares de Control",
+      "desc": "Dimensiones auxiliares o variables secundarias de control."
+    }
+  },
+  "fr": {
+    "occupancy": {
+      "name": "Taux d'Occupation de la Voie (%)",
+      "desc": "Taux d'occupation en pourcentage du volume de trafic sur les voies d'approche."
+    },
+    "speed": {
+      "name": "Vitesse Moyenne d'Écoulement (km/h)",
+      "desc": "Vitesse moyenne des véhicules sur les voies d'approche."
+    },
+    "queue": {
+      "name": "File d'Attente d'Approche (véhicules)",
+      "desc": "Longueur physique des véhicules accumulés sur les voies d'approche."
+    },
+    "phase": {
+      "name": "Durée de la Phase Verte Active (secondes)",
+      "desc": "Configuration de la durée et de la phase de signalisation active."
+    },
+    "pedestrian": {
+      "name": "Appels Piétons",
+      "desc": "Demandes enregistrées pour la traversée des piétons au carrefour."
+    },
+    "pae": {
+      "name": "Projections Prédictives de l'IA (PAE Latent)",
+      "desc": "Composants prédictifs latents du réseau auto-encodeur de l'IA."
+    },
+    "strategic": {
+      "name": "Coordination Graphique GATv2 Lite (Onde Verte)",
+      "desc": "Vecteur d'attention spatiale sur graphe (GATv2 Lite) pour la synchronisation de l'onde verte dans le couloir routier."
+    },
+    "other": {
+      "name": "Variables Auxiliaires de Contrôle",
+      "desc": "Dimensions auxiliaires ou variables secondaires de régulation."
+    }
+  },
+  "ru": {
+    "occupancy": {
+      "name": "Коэффициент Занятости Полосы (%)",
+      "desc": "Процент занятости полосы объемом транспортного потока."
+    },
+    "speed": {
+      "name": "Средняя Скорость Потока (км/ч)",
+      "desc": "Средняя скорость транспортных средств на полосах подхода."
+    },
+    "queue": {
+      "name": "Длина Очереди на Подходе (авто)",
+      "desc": "Физическая протяженность накопленных транспортных средств."
+    },
+    "phase": {
+      "name": "Длительность Зеленой Фазы (секунды)",
+      "desc": "Текущая длительность активной фазы светофора."
+    },
+    "pedestrian": {
+      "name": "Вызовы Пешеходов",
+      "desc": "Зарегистрированные запросы на пешеходный переход."
+    },
+    "pae": {
+      "name": "Предиктивные Проекции ИИ (PAE Латент)",
+      "desc": "Латентные предиктивные компоненты автоэнкодера ИИ."
+    },
+    "strategic": {
+      "name": "Графовая Координация GATv2 Lite (Зеленая Волна)",
+      "desc": "Вектор графового внимания для синхронизации зеленой волны в коридоре."
+    },
+    "other": {
+      "name": "Вспомогательные Переменные",
+      "desc": "Вспомогательные измерения или вторичные параметры управления."
+    }
+  },
+  "zh": {
+    "occupancy": {
+      "name": "车道占有率 (%)",
+      "desc": "进口道交通量百分比空间占有率。"
+    },
+    "speed": {
+      "name": "平均流速 (km/h)",
+      "desc": "进口车道车辆平均消散速度。"
+    },
+    "queue": {
+      "name": "进口排队长度 (辆)",
+      "desc": "进口车道车辆积压物理长度。"
+    },
+    "phase": {
+      "name": "当前绿灯相位时长 (秒)",
+      "desc": "当前激活绿灯相位的配置与已运行时间。"
+    },
+    "pedestrian": {
+      "name": "行人过街请求",
+      "desc": "交叉口登记的行人通行申请。"
+    },
+    "pae": {
+      "name": "AI 预测投影 (PAE 隐空间)",
+      "desc": "AI 预测自编码网络的隐空间潜在预测分量。"
+    },
+    "strategic": {
+      "name": "ST-GATv2 Lite 空间图注意力 (绿波带)",
+      "desc": "用于协调干道绿波带相位同步的空间图注意力向量。"
+    },
+    "other": {
+      "name": "辅助控制变量",
+      "desc": "辅助维度或次要控制参数。"
+    }
+  }
+}

@@ -19,16 +19,20 @@
 # Date: 2026-06-10
 
 import flet as ft
+
 from src.controller.connection_manager import HardwareConnectionManager
+
 
 class HardwareSettingsHandler:
     """
     SRP: Manages all business logic related to Hardware configuration,
     including CSV spreadsheet import/export and connection toggles.
     """
-    def __init__(self, connection_manager: HardwareConnectionManager, settings_client=None):
+
+    def __init__(self, connection_manager: HardwareConnectionManager, settings_client=None, locale_manager=None):
         self.connection_manager = connection_manager
         self.settings_client = settings_client
+        self.locale_manager = locale_manager
         self.page = None
         self.hardware_card = None
 
@@ -48,41 +52,71 @@ class HardwareSettingsHandler:
             self.hardware_card.load_agents_data(ui_data)
 
     def on_import_click(self, e):
-        self.import_picker.pick_files(
-            dialog_title="Select Configuration CSV",
-            allowed_extensions=["csv"]
-        )
+        dialog_title = "Select Configuration CSV"
+        if self.locale_manager:
+            dialog_title = self.locale_manager.get_string(
+                "settings_view.hardware_card.select_dialog_title", default=dialog_title
+            )
+        self.import_picker.pick_files(dialog_title=dialog_title, allowed_extensions=["csv"])
 
     def _on_import_result(self, e):
         if e.files and len(e.files) > 0:
             filepath = e.files[0].path
             success_count, total = self.connection_manager.import_csv_config(filepath)
             self.refresh_ui()
-            
+
             if self.settings_client:
                 for tl_id, ip in self.connection_manager.saved_ips.items():
                     if tl_id in self.connection_manager.active_connections:
-                        self.settings_client.send_command("set_hardware_connection", {"intersection_id": tl_id, "ip_address": ip})
-            
+                        self.settings_client.send_command(
+                            "set_hardware_connection", {"intersection_id": tl_id, "ip_address": ip}
+                        )
+
             if self.page:
-                self.page.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"Import complete: {success_count} out of {total} traffic lights connected successfully.")
-                )
+                default_msg = f"Import complete: {success_count} out of {total} traffic lights connected successfully."
+                msg = default_msg
+                if self.locale_manager:
+                    msg = self.locale_manager.get_string(
+                        "settings_view.hardware_card.import_success",
+                        default=default_msg,
+                        success=success_count,
+                        total=total,
+                    )
+                self.page.snack_bar = ft.SnackBar(content=ft.Text(msg))
                 self.page.snack_bar.open = True
                 self.page.update()
 
     def on_export_click(self, e):
+        dialog_title = "Save Template CSV"
+        if self.locale_manager:
+            dialog_title = self.locale_manager.get_string(
+                "settings_view.hardware_card.save_dialog_title", default=dialog_title
+            )
         self.export_picker.save_file(
-            dialog_title="Save Template CSV",
-            file_name="carina_hardware_template.csv",
-            allowed_extensions=["csv"]
+            dialog_title=dialog_title, file_name="carina_hardware_template.csv", allowed_extensions=["csv"]
         )
 
     def _on_export_result(self, e):
         if e.path:
-            success = self.connection_manager.export_csv_template(e.path)
+            save_path = e.path if e.path.lower().endswith(".csv") else f"{e.path}.csv"
+            success = self.connection_manager.export_csv_template(save_path)
             if self.page:
-                msg = "Template exported successfully!" if success else "Error exporting template."
+                if success:
+                    msg = (
+                        self.locale_manager.get_string(
+                            "settings_view.hardware_card.export_success", default="Template exported successfully!"
+                        )
+                        if self.locale_manager
+                        else "Template exported successfully!"
+                    )
+                else:
+                    msg = (
+                        self.locale_manager.get_string(
+                            "settings_view.hardware_card.export_error", default="Error exporting template."
+                        )
+                        if self.locale_manager
+                        else "Error exporting template."
+                    )
                 self.page.snack_bar = ft.SnackBar(content=ft.Text(msg))
                 self.page.snack_bar.open = True
                 self.page.update()
@@ -91,4 +125,7 @@ class HardwareSettingsHandler:
         self.connection_manager.toggle_connection(intersection_id, ip_address, action=action)
         self.refresh_ui()
         if self.settings_client:
-            self.settings_client.send_command("set_hardware_connection", {"intersection_id": intersection_id, "ip_address": ip_address, "action": action})
+            self.settings_client.send_command(
+                "set_hardware_connection",
+                {"intersection_id": intersection_id, "ip_address": ip_address, "action": action},
+            )

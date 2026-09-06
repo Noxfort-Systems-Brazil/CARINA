@@ -266,5 +266,16 @@
         "action": "Acción",
         "details": "Detalles",
         "refresh": "Actualizar"
+    },
+    "structured_report": {
+        "xai_metadata_title": "1. Detalles Generales de la Sesión",
+        "xai_label_agent": "Identificador del Agente:",
+        "xai_all_agents_label": "Todos los Agentes (Red Completa)",
+        "xai_label_scenario": "Escenario de Operación:",
+        "xai_label_engine": "Motor Analítico:",
+        "mfd_metadata_title": "1. Detalles del Análisis de Rendimiento MFD",
+        "mfd_label_scenario": "Escenario de Simulación:",
+        "mfd_label_engine": "Motor Analítico MFD:",
+        "mfd_label_control": "Sistema de Control:"
     }
 }

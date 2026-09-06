@@ -23,30 +23,55 @@ Low-level SNMP client wrapper to manage asynchronous GET and SET calls.
 Extracts network transport concerns to satisfy SRP.
 """
 
-import logging
 import asyncio
+import logging
 from typing import Any, Tuple
 
 # Modern PySNMP (v7+) compatibility for Python 3.12+
 try:
     from pysnmp.hlapi.v3arch.asyncio import (
-        SnmpEngine, CommunityData, UdpTransportTarget, ContextData,
-        ObjectType, ObjectIdentity, get_cmd, set_cmd
+        CommunityData,
+        ContextData,
+        ObjectIdentity,
+        ObjectType,
+        SnmpEngine,
+        UdpTransportTarget,
+        get_cmd,
+        set_cmd,
     )
 except ImportError:
     # Fallback for PySNMP v6.x
     from pysnmp.hlapi.v3arch.asyncio import (
-        SnmpEngine, CommunityData, UdpTransportTarget, ContextData,
-        ObjectType, ObjectIdentity, getCmd as get_cmd, setCmd as set_cmd
+        CommunityData,
+        ContextData,
+        ObjectIdentity,
+        ObjectType,
+        SnmpEngine,
+        UdpTransportTarget,
     )
+    from pysnmp.hlapi.v3arch.asyncio import getCmd as get_cmd
+    from pysnmp.hlapi.v3arch.asyncio import setCmd as set_cmd
+
+# PySNMP Data Types Compatibility Block
+try:
+    from pysnmp.proto.rfc1902 import Integer32, OctetString
+except ImportError:
+    try:
+        from pysnmp.hlapi.v3arch.asyncio import Integer32, OctetString
+    except ImportError:
+        from pysnmp.hlapi import Integer32, OctetString
 
 logger = logging.getLogger(__name__)
+
 
 class SnmpClient:
     """
     Handles standard SNMP GET and SET requests asynchronously, wrapping them for synchronous callers.
     """
-    def __init__(self, ip_address: str, port: int, community_string: str = 'public', timeout: int = 2, retries: int = 1):
+
+    def __init__(
+        self, ip_address: str, port: int, community_string: str = "public", timeout: int = 2, retries: int = 1
+    ):
         self.ip_address = ip_address
         self.port = port
         self.community_string = community_string
@@ -58,26 +83,25 @@ class SnmpClient:
         Performs a synchronous SNMP GET request.
         Returns a tuple: (Success Boolean, Value or Error Message)
         """
+
         async def _async_get():
             engine = SnmpEngine()
             try:
                 transport = await UdpTransportTarget.create(
-                    (self.ip_address, self.port),
-                    timeout=self.timeout,
-                    retries=self.retries
+                    (self.ip_address, self.port), timeout=self.timeout, retries=self.retries
                 )
                 error_ind, error_stat, error_idx, binds = await get_cmd(
                     engine,
-                    CommunityData(self.community_string, mpModel=1), # SNMPv2c
+                    CommunityData(self.community_string, mpModel=1),  # SNMPv2c
                     transport,
                     ContextData(),
-                    ObjectType(ObjectIdentity(oid))
+                    ObjectType(ObjectIdentity(oid)),
                 )
                 return error_ind, error_stat, error_idx, binds
             finally:
-                if hasattr(engine, 'close_dispatcher'):
+                if hasattr(engine, "close_dispatcher"):
                     engine.close_dispatcher()
-                elif hasattr(engine, 'transportDispatcher') and engine.transportDispatcher:
+                elif hasattr(engine, "transportDispatcher") and engine.transportDispatcher:
                     engine.transportDispatcher.closeDispatcher()
 
         try:
@@ -97,31 +121,38 @@ class SnmpClient:
             return False, str(e)
         return False, "Unknown Error"
 
-    def set(self, oid: str, value: Any, value_type: Any) -> Tuple[bool, Any]:
+    def set(self, oid: str, value: Any, value_type: Any = None) -> Tuple[bool, Any]:
         """
         Performs a synchronous SNMP SET request.
+        If value_type is None, automatically infers Integer32 for integers and OctetString for strings.
         Returns a tuple: (Success Boolean, Value or Error Message)
         """
+        if value_type is None:
+            if isinstance(value, int):
+                value_type = Integer32
+            elif isinstance(value, str):
+                value_type = OctetString
+            else:
+                value_type = Integer32
+
         async def _async_set():
             engine = SnmpEngine()
             try:
                 transport = await UdpTransportTarget.create(
-                    (self.ip_address, self.port),
-                    timeout=self.timeout,
-                    retries=self.retries
+                    (self.ip_address, self.port), timeout=self.timeout, retries=self.retries
                 )
                 error_ind, error_stat, error_idx, binds = await set_cmd(
                     engine,
                     CommunityData(self.community_string, mpModel=1),
                     transport,
                     ContextData(),
-                    ObjectType(ObjectIdentity(oid), value_type(value))
+                    ObjectType(ObjectIdentity(oid), value_type(value)),
                 )
                 return error_ind, error_stat, error_idx, binds
             finally:
-                if hasattr(engine, 'close_dispatcher'):
+                if hasattr(engine, "close_dispatcher"):
                     engine.close_dispatcher()
-                elif hasattr(engine, 'transportDispatcher') and engine.transportDispatcher:
+                elif hasattr(engine, "transportDispatcher") and engine.transportDispatcher:
                     engine.transportDispatcher.closeDispatcher()
 
         try:

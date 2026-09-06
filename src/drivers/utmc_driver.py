@@ -16,201 +16,131 @@
 
 # File: src/drivers/utmc_driver.py
 # Author: Gabriel Moraes
-# Date: 2026-02-22
+# Date: 2026-08-14
 
 """
 UTMC2 protocol implementation for traffic light controllers.
-Translates CARINA commands into UTMC-compliant SNMP OID requests.
+Acts as a Facade / Orchestrator uniting configuration, HAL translation,
+telemetry parsing, and action execution (SOLID architecture).
 """
 
 import logging
-import json
-import os
-from typing import Dict, Any
-from src.drivers.base_driver import BaseTrafficDriver
+from typing import Any, Dict, List, Optional
 
-# --- PySNMP Data Types Compatibility Block ---
-# Ensures Integer32 is loaded regardless of the PySNMP version (v6 or v7+)
-try:
-    # Core protocol definition (Works on PySNMP v7+ and older)
-    from pysnmp.proto.rfc1902 import Integer32
-except ImportError:
-    try:
-        # Fallback for specific Asyncio/LeXtudio modern branches
-        from pysnmp.hlapi.v3arch.asyncio import Integer32
-    except ImportError:
-        # Legacy PySNMP fallback (v5/v6)
-        from pysnmp.hlapi import Integer32
+from src.drivers.base_driver import BaseTrafficDriver
+from src.drivers.utmc_action_executor import UtmcActionExecutor
+from src.drivers.utmc_config import UtmcConfig
+from src.drivers.utmc_stage_mapper import UtmcStageMapper
+from src.drivers.utmc_telemetry import UtmcTelemetryCollector
 
 logger = logging.getLogger(__name__)
+
 
 class UtmcDriver(BaseTrafficDriver):
     """
     Driver specifically built to handle the UTMC2 protocol.
-    Uses Standard OIDs defined in the UTMC TS004 / TS005 specifications.
-    Note: UTMC often refers to 'Stages' rather than 'Phases'.
+    Acts as a Facade / Orchestrator that delegates specialized responsibilities
+    to UtmcConfig, UtmcStageMapper, UtmcActionExecutor, and UtmcTelemetryCollector.
     """
 
-    def __init__(self, ip_address: str, port: int, intersection_id: str = "Desconhecido", community_string: str = 'public', green_stages: list = None) -> None:
+    def __init__(
+        self,
+        ip_address: str,
+        port: int,
+        intersection_id: str = "Desconhecido",
+        community_string: str = "public",
+        green_stages: Optional[List[int]] = None,
+        config: Optional[UtmcConfig] = None,
+        stage_mapper: Optional[UtmcStageMapper] = None,
+        action_executor: Optional[UtmcActionExecutor] = None,
+        telemetry_collector: Optional[UtmcTelemetryCollector] = None,
+    ) -> None:
         super().__init__(ip_address, port, intersection_id, community_string, green_stages=green_stages)
-        self._load_oids()
-        logger.info(f"[{self.ip_address}:{self.port}] Initialized UTMC2 Driver.")
 
-    def _load_oids(self) -> None:
-        """Loads OIDs from an external JSON file to satisfy Open-Closed Principle."""
-        json_path = os.path.join(os.path.dirname(__file__), "configs", "utmc_oids.json")
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                self.oids = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load UTMC OIDs from {json_path}: {e}")
-            self.oids = {"stage_control": {}, "telemetry": {}, "system": {}}
+        # 1. Configuration / OID Repository (SRP & DIP)
+        self.config = config or UtmcConfig()
+
+        # 2. Stage-to-Phase HAL Mapper (SRP & OCP)
+        self.stage_mapper = stage_mapper or UtmcStageMapper()
+
+        # 3. Action / Command Executor (SRP & OCP)
+        self.action_executor = action_executor or UtmcActionExecutor(
+            snmp_set_fn=lambda oid, val, vt=None: self.snmp_set(oid, val, vt),
+            config=self.config,
+            ip_address=self.ip_address,
+            stop_heartbeat_cb=self.stop_heartbeat,
+            green_stages=self.green_stages,
+        )
+
+        # 4. Telemetry Collector (SRP)
+        self.telemetry_collector = telemetry_collector or UtmcTelemetryCollector(
+            snmp_get_fn=lambda oid: self.snmp_get(oid), config=self.config, ip_address=self.ip_address
+        )
+
+        logger.info(f"[{self.ip_address}:{self.port}] Initialized UTMC2 Driver (Facade Architecture).")
+
+    # =========================================================================
+    # Properties for Backwards Compatibility
+    # =========================================================================
+
+    @property
+    def oids(self) -> Dict[str, Any]:
+        """Exposes OID mappings for backward compatibility."""
+        return self.config.oids
+
+    @oids.setter
+    def oids(self, value: Dict[str, Any]) -> None:
+        self.config.oids = value
+
+    # =========================================================================
+    # Protocol Interface Implementations
+    # =========================================================================
 
     def get_protocol_name(self) -> str:
         return "UTMC2"
 
-    def convert_stage_to_hardware_mask(self, stage_idx: int, green_stages: list, stage_codes: dict = None) -> int:
+    def convert_stage_to_hardware_mask(
+        self, stage_idx: int, green_stages: Optional[List[int]] = None, stage_codes: Optional[Dict[int, str]] = None
+    ) -> int:
         """
-        HAL Translation: Converts a SUMO stage index and its corresponding state string
-        to a UTMC2 stage bitmask.
+        HAL Translation: Delegates stage index conversion to the dedicated UtmcStageMapper.
         """
-        # UTMC2 expects a stage bitmask where stage_idx corresponds to bit `stage_idx`.
-        # This is agnostic to the number of stages.
-        mask = 1 << stage_idx
-        if stage_codes and stage_idx in stage_codes:
-            state_str = stage_codes[stage_idx]
-            logger.debug(f"[HAL UTMC2] Translating stage index {stage_idx} (state: '{state_str}') -> stage mask: {mask}")
-        else:
-            logger.debug(f"[HAL UTMC2] Translating stage index {stage_idx} (no state string) -> stage mask: {mask}")
-        return mask
+        return self.stage_mapper.convert_stage_to_hardware_mask(
+            stage_idx=stage_idx, green_stages=green_stages, stage_codes=stage_codes
+        )
 
     def send_action(self, action_data: Dict[str, Any]) -> bool:
         """
-        Translates CARINA's neural network action into UTMC2 stage commands.
-        Expected action_data format: {'action_type': 'hold', 'phase': 2}
-        (Note: 'phase' here is mapped to UTMC 'stage')
+        Translates and dispatches CARINA actions by delegating to UtmcActionExecutor.
         """
-        action_type = action_data.get('action_type')
-        stage = action_data.get('stage', 0)
-
-        if not action_type:
-            logger.error(f"[{self.ip_address}] Invalid action data provided to UTMC2 Driver.")
-            return False
-
-        # Calculate bitmask for the specific stage (HAL support)
-        if 'stage_mask' in action_data:
-            stage_bitmask = action_data['stage_mask']
-        else:
-            stage_bitmask = 1 << (stage - 1) if stage > 0 else 0
-
-        success = False
-        result = None
-
-        if action_type == 'flash':
-            logger.debug(f"[{self.ip_address}] Sending UTMC FLASH MODE command")
-            success, result = self.snmp_set(self.oids["system"].get("flash"), 1, Integer32)
-        elif action_type == 'release_flash':
-            logger.debug(f"[{self.ip_address}] Sending UTMC RELEASE FLASH MODE command")
-            success, result = self.snmp_set(self.oids["system"].get("flash"), 0, Integer32)
-        elif action_type == 'dark':
-            logger.debug(f"[{self.ip_address}] Sending UTMC DARK MODE command")
-            success, result = self.snmp_set(self.oids["system"].get("dark"), 1, Integer32)
-        elif action_type == 'release_dark':
-            logger.debug(f"[{self.ip_address}] Sending UTMC RELEASE DARK MODE command")
-            success, result = self.snmp_set(self.oids["system"].get("dark"), 0, Integer32)
-        elif action_type == 'release_hold':
-            logger.debug(f"[{self.ip_address}] Sending UTMC RELEASE HOLD command")
-            success, result = self.snmp_set(self.oids["stage_control"].get("hold"), 0, Integer32)
-        elif stage == 0 and 'stage_mask' not in action_data:
-            logger.error(f"[{self.ip_address}] Stage required for UTMC action: {action_type}")
-            return False
-        elif action_type == 'hold':
-            logger.debug(f"[{self.ip_address}] Sending UTMC HOLD for stage {stage}")
-            success, result = self.snmp_set(self.oids["stage_control"].get("hold"), stage_bitmask, Integer32)
-        elif action_type == 'force_off':
-            logger.debug(f"[{self.ip_address}] Sending UTMC FORCE-OFF for stage {stage}")
-            success, result = self.snmp_set(self.oids["stage_control"].get("force_off"), stage_bitmask, Integer32)
-        elif action_type == 'omit':
-            logger.debug(f"[{self.ip_address}] Sending UTMC OMIT for stage {stage}")
-            success, result = self.snmp_set(self.oids["stage_control"].get("omit"), stage_bitmask, Integer32)
-        elif action_type in ('demand', 'veh_call'):
-            logger.debug(f"[{self.ip_address}] Sending UTMC DEMAND (Call) for stage {stage}")
-            success, result = self.snmp_set(self.oids["telemetry"].get("status_demand"), stage_bitmask, Integer32)
-        elif action_type == 'extend':
-            logger.debug(f"[{self.ip_address}] Sending UTMC EXTEND for stage {stage}")
-            success, result = self.snmp_set(self.oids["stage_control"].get("extend"), stage_bitmask, Integer32)
-        elif action_type == 'ACTIVATE_LOCAL_FIXED_TIME':
-            logger.critical(f"[{self.ip_address}] EXECUTING FAILSAFE: Forcing ALL RED for 2 seconds, then releasing to local plans.")
-            import time
-            # Compute all-red mask based on green stages count
-            num_stages = len(self.green_stages) if hasattr(self, 'green_stages') else 8
-            all_red_mask = (1 << num_stages) - 1 if num_stages > 0 else 65535
-
-            self.snmp_set(self.oids["stage_control"].get("force_off"), all_red_mask, Integer32)
-            self.snmp_set(self.oids["stage_control"].get("omit"), all_red_mask, Integer32)
-            time.sleep(2.0)
-            # Release omit so local controller can resume its fixed-time cycle
-            success, result = self.snmp_set(self.oids["stage_control"].get("omit"), 0, Integer32)
-            # Stop the heartbeat so the controller fully reverts to local mode
-            self.stop_heartbeat()
-        else:
-            logger.warning(f"[{self.ip_address}] Unknown action type: {action_type}")
-            return False
-
-        if not success:
-            logger.error(f"[{self.ip_address}] Failed to send UTMC action: {result}")
-            
-        return success
+        return self.action_executor.execute(action_data)
 
     def get_telemetry(self) -> Dict[str, Any]:
         """
-        Fetches the current status of the intersection using UTMC OIDs.
+        Fetches current intersection status by delegating to UtmcTelemetryCollector.
         """
-        telemetry: Dict[str, Any] = {
-            "protocol": self.get_protocol_name(),
-            "status": "unknown",
-            "active_greens": 0,
-            "active_yellows": 0,
-            "active_reds": 0,  # Can be inferred or polled depending on the UTMC controller spec
-            "active_ped_calls": 0
-        }
-
-        # Fetch active stage (green)
-        success_active, val_active = self.snmp_get(self.oids["telemetry"].get("status_active"))
-        if success_active:
-            telemetry["active_greens"] = int(val_active)
-            telemetry["status"] = "online"
-
-        # Fetch leaving stage (yellow/amber)
-        success_leaving, val_leaving = self.snmp_get(self.oids["telemetry"].get("status_leaving"))
-        if success_leaving:
-            telemetry["active_yellows"] = int(val_leaving)
-
-        # Fetch active ped calls
-        success_ped, val_ped = self.snmp_get(self.oids["telemetry"].get("status_ped_demand"))
-        if success_ped:
-            telemetry["active_ped_calls"] = int(val_ped)
-
-        if not success_active and not success_leaving:
-            telemetry["status"] = "offline"
-            logger.warning(f"[{self.ip_address}] Failed to fetch UTMC telemetry.")
-
-        return telemetry
+        return self.telemetry_collector.collect()
 
     def send_heartbeat_pulse(self) -> bool:
         """
         Sends a heartbeat pulse to maintain remote control over the UTMC controller.
         Writes a pulse value to the UTMC watchdog OID.
         """
-        pulse_value = 1 
-        success, result = self.snmp_set(self.oids["system"].get("watchdog"), pulse_value, Integer32)
-        
+        watchdog_oid = self.config.get_system_oid("watchdog")
+        if not watchdog_oid:
+            logger.error(f"[{self.ip_address}] Missing watchdog OID in UTMC configuration.")
+            return False
+
+        pulse_value = 1
+        success, result = self.snmp_set(watchdog_oid, pulse_value)
         if not success:
             logger.error(f"[{self.ip_address}] UTMC Heartbeat pulse failed: {result}")
-            
+
         return success
 
-    def apply_logical_action(self, action: int, current_stage_idx: int, green_stages: list, stage_codes: dict = None) -> bool:
+    def apply_logical_action(
+        self, action: int, current_stage_idx: int, green_stages: List[int], stage_codes: Optional[Dict[int, str]] = None
+    ) -> bool:
         """
         Implements UTMC-specific logical action sequence translation.
         Translates raw AI actions (0 = NEXT_STAGE, 1 = HOLD) using UTMC stage commands.
@@ -221,38 +151,72 @@ class UtmcDriver(BaseTrafficDriver):
         try:
             current_list_idx = green_stages.index(current_stage_idx)
 
-            # Determine the target stage index for this action
             if action == 0:  # NEXT_STAGE
                 next_list_idx = (current_list_idx + 1) % len(green_stages)
                 target_stage_idx = green_stages[next_list_idx]
-            else:  # HOLD
-                target_stage_idx = current_stage_idx
-
-            # HAL Translation: Convert target stage index to hardware mask
-            stage_mask = self.convert_stage_to_hardware_mask(target_stage_idx, green_stages, stage_codes)
-
-            if action == 0:  # NEXT_STAGE
-                next_list_idx = (current_list_idx + 1) % len(green_stages)
                 next_stage_mask = self.convert_stage_to_hardware_mask(target_stage_idx, green_stages, stage_codes)
                 current_stage_mask = self.convert_stage_to_hardware_mask(current_stage_idx, green_stages, stage_codes)
 
-                logger.info(f"[{self.ip_address}] UTMC HAL translating NEXT_STAGE: stage {current_stage_idx} -> {target_stage_idx} (mask {current_stage_mask} -> {next_stage_mask})")
-                
+                logger.info(
+                    f"[{self.ip_address}] UTMC HAL translating NEXT_STAGE: stage {current_stage_idx} -> "
+                    f"{target_stage_idx} (mask {current_stage_mask} -> {next_stage_mask})"
+                )
+
                 # Protocol specific sequence translation:
                 # 1. Release active hold
-                self.send_action({'action_type': 'release_hold'})
-                
+                self.send_action({"action_type": "release_hold"})
+
                 # 2. Send FORCE_OFF command for current stage
-                self.send_action({'action_type': 'force_off', 'stage_mask': current_stage_mask})
-                
+                self.send_action({"action_type": "force_off", "stage_mask": current_stage_mask})
+
                 # 3. Call next stage to trigger transition
-                self.send_action({'action_type': 'veh_call', 'stage_mask': next_stage_mask})
+                self.send_action({"action_type": "veh_call", "stage_mask": next_stage_mask})
                 return True
 
             else:  # HOLD
-                logger.debug(f"[{self.ip_address}] UTMC HAL translating HOLD for stage {current_stage_idx} (mask {stage_mask})")
-                return self.send_action({'action_type': 'hold', 'stage_mask': stage_mask})
+                stage_mask = self.convert_stage_to_hardware_mask(current_stage_idx, green_stages, stage_codes)
+                logger.debug(
+                    f"[{self.ip_address}] UTMC HAL translating HOLD for stage {current_stage_idx} (mask {stage_mask})"
+                )
+                return self.send_action({"action_type": "hold", "stage_mask": stage_mask})
 
         except Exception as e:
             logger.error(f"[{self.ip_address}] Error in UTMC apply_logical_action: {e}")
             return False
+
+    def release_control(self) -> bool:
+        """
+        Releases remote control holds, overrides, and force-offs on the UTMC controller,
+        safely returning the intersection to its local autonomous plan.
+        """
+        logger.info(
+            f"[{self.ip_address}] Releasing UTMC2 remote control commands (Release HOLD, OMIT, FORCE-OFF, FLASH, DARK)..."
+        )
+        success = True
+        try:
+            hold_oid = self.config.get_stage_oid("hold")
+            if hold_oid:
+                self.snmp_set(hold_oid, 0)
+
+            force_off_oid = self.config.get_stage_oid("force_off")
+            if force_off_oid:
+                self.snmp_set(force_off_oid, 0)
+
+            omit_oid = self.config.get_stage_oid("omit")
+            if omit_oid:
+                self.snmp_set(omit_oid, 0)
+
+            flash_oid = self.config.get_system_oid("flash")
+            if flash_oid:
+                self.snmp_set(flash_oid, 0)
+
+            dark_oid = self.config.get_system_oid("dark")
+            if dark_oid:
+                self.snmp_set(dark_oid, 0)
+
+            logger.info(f"[{self.ip_address}] UTMC2 remote control released successfully.")
+        except Exception as e:
+            logger.error(f"[{self.ip_address}] Error releasing UTMC2 control: {e}")
+            success = False
+
+        return success

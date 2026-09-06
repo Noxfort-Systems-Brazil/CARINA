@@ -26,55 +26,93 @@ The 'save_settings' method now only collects and validates UI data,
 returning a dictionary ready to be sent to the backend via SettingsClient.
 """
 
-import logging
-from typing import Dict, Any
 import configparser
+import logging
 import os
+from typing import Any, Dict
+
 
 class SettingsHandler:
     """
     Manages the logic to load and validate UI settings.
     """
+
     # The map of keys to sections is still useful for initial reading
     _KEY_TO_SECTION_MAP = {
-        'language': 'UI', 'theme_dark': 'UI',
-        'min_green_time': 'TRAFFIC_RULES', 'yellow_time_seconds': 'TRAFFIC_RULES',
-        'heatmap_strategy': 'HEATMAP_SCALING', 'heatmap_saturation': 'HEATMAP_SCALING',
-        'performance_margin': 'MATURITY', 'child_phase_episodes': 'MATURITY',
-        'teen_phase_min_episodes': 'MATURITY', 'child_promotion_max_entropy': 'MATURITY',
-        'performance_check_window': 'MATURITY',
-        'calibration_window_size': 'CALIBRATION',
-        'ppo_gamma': 'AI_TRAINING', 'ppo_k_epochs': 'AI_TRAINING', 'ppo_eps_clip': 'AI_TRAINING',
-        'dqn_epsilon_decay': 'GUARDIAN_AGENT', 'dqn_batch_size': 'GUARDIAN_AGENT',
-        'pbt_frequency': 'PBT', 'pbt_exploitation': 'PBT',
-        'watchdog_grace': 'WATCHDOG',
-        'analysis_interval_value': 'ANALYSIS_SCHEDULE', 'analysis_interval_unit': 'ANALYSIS_SCHEDULE',
-        'weight_waiting_time': 'REWARD_WEIGHTS', 'weight_flow': 'REWARD_WEIGHTS',
-        'monitor_enabled': 'EXTERNAL_MONITOR', 'monitor_mqtt_host': 'EXTERNAL_MONITOR',
-        'db_type': 'DATABASE', 'db_host': 'DATABASE', 'db_port': 'DATABASE',
-        'db_user': 'DATABASE', 'db_password': 'DATABASE', 'db_name': 'DATABASE', 'db_connected': 'DATABASE',
-        'tensorboard_enabled': 'TENSORBOARD', 'tensorboard_log_dir': 'TENSORBOARD',
-        'report_logo_path': 'REPORT_FORMATTING', 'report_city': 'REPORT_FORMATTING',
-        'report_state_uf': 'REPORT_FORMATTING', 'report_secretary_name': 'REPORT_FORMATTING',
-        'report_secretary_title': 'REPORT_FORMATTING', 'report_agency_name': 'REPORT_FORMATTING',
-        'report_department_name': 'REPORT_FORMATTING', 'report_title': 'REPORT_FORMATTING',
-        'report_block_order': 'REPORT_FORMATTING', 'report_font_name': 'REPORT_FORMATTING',
-        'report_font_size': 'REPORT_FORMATTING', 'report_margin_top': 'REPORT_FORMATTING',
-        'report_margin_bottom': 'REPORT_FORMATTING', 'report_margin_left': 'REPORT_FORMATTING',
-        'report_margin_right': 'REPORT_FORMATTING', 'report_line_spacing': 'REPORT_FORMATTING',
-        'report_alignment': 'REPORT_FORMATTING', 'report_speed_unit': 'REPORT_FORMATTING',
-        'report_ordinance_enabled': 'REPORT_FORMATTING', 'report_ordinance_number': 'REPORT_FORMATTING',
-        'report_slm_device': 'REPORT_FORMATTING', 'report_slm_gpu_layers': 'REPORT_FORMATTING',
-        
+        "language": "UI",
+        "theme_dark": "UI",
+        "min_green_time": "TRAFFIC_RULES",
+        "yellow_time_seconds": "TRAFFIC_RULES",
+        "heatmap_strategy": "HEATMAP_SCALING",
+        "heatmap_saturation": "HEATMAP_SCALING",
+        "performance_margin": "MATURITY",
+        "child_phase_episodes": "MATURITY",
+        "teen_phase_min_episodes": "MATURITY",
+        "child_promotion_max_entropy": "MATURITY",
+        "performance_check_window": "MATURITY",
+        "calibration_window_size": "CALIBRATION",
+        "ppo_gamma": "AI_TRAINING",
+        "ppo_k_epochs": "AI_TRAINING",
+        "ppo_eps_clip": "AI_TRAINING",
+        "dqn_epsilon_decay": "GUARDIAN_AGENT",
+        "dqn_batch_size": "GUARDIAN_AGENT",
+        "pbt_frequency": "PBT",
+        "pbt_exploitation": "PBT",
+        "watchdog_grace": "WATCHDOG",
+        "analysis_interval_value": "ANALYSIS_SCHEDULE",
+        "analysis_interval_unit": "ANALYSIS_SCHEDULE",
+        "weight_waiting_time": "REWARD_WEIGHTS",
+        "weight_flow": "REWARD_WEIGHTS",
+        "monitor_enabled": "EXTERNAL_MONITOR",
+        "monitor_mqtt_host": "EXTERNAL_MONITOR",
+        "db_type": "DATABASE",
+        "db_host": "DATABASE",
+        "db_port": "DATABASE",
+        "db_user": "DATABASE",
+        "db_password": "DATABASE",
+        "db_name": "DATABASE",
+        "db_connected": "DATABASE",
+        "tensorboard_enabled": "TENSORBOARD",
+        "tensorboard_log_dir": "TENSORBOARD",
+        "report_logo_path": "REPORT_FORMATTING",
+        "report_city": "REPORT_FORMATTING",
+        "report_state_uf": "REPORT_FORMATTING",
+        "report_secretary_name": "REPORT_FORMATTING",
+        "report_secretary_title": "REPORT_FORMATTING",
+        "report_agency_name": "REPORT_FORMATTING",
+        "report_department_name": "REPORT_FORMATTING",
+        "report_title": "REPORT_FORMATTING",
+        "report_block_order": "REPORT_FORMATTING",
+        "report_font_name": "REPORT_FORMATTING",
+        "report_font_size": "REPORT_FORMATTING",
+        "report_margin_top": "REPORT_FORMATTING",
+        "report_margin_bottom": "REPORT_FORMATTING",
+        "report_margin_left": "REPORT_FORMATTING",
+        "report_margin_right": "REPORT_FORMATTING",
+        "report_line_spacing": "REPORT_FORMATTING",
+        "report_alignment": "REPORT_FORMATTING",
+        "report_speed_unit": "REPORT_FORMATTING",
+        "report_ordinance_enabled": "REPORT_FORMATTING",
+        "report_ordinance_number": "REPORT_FORMATTING",
+        "report_slm_device": "REPORT_FORMATTING",
+        "report_slm_gpu_layers": "REPORT_FORMATTING",
         # Legacy XAI key aliases mapped to REPORT_FORMATTING section
-        'xai_logo_path': 'REPORT_FORMATTING', 'xai_secretary_name': 'REPORT_FORMATTING',
-        'xai_secretary_title': 'REPORT_FORMATTING', 'xai_agency_name': 'REPORT_FORMATTING',
-        'xai_department_name': 'REPORT_FORMATTING', 'xai_report_title': 'REPORT_FORMATTING',
-        'xai_block_order': 'REPORT_FORMATTING', 'xai_font_name': 'REPORT_FORMATTING',
-        'xai_font_size': 'REPORT_FORMATTING', 'report_margin_top': 'REPORT_FORMATTING',
-        'xai_margin_bottom': 'REPORT_FORMATTING', 'xai_margin_left': 'REPORT_FORMATTING',
-        'xai_margin_right': 'REPORT_FORMATTING', 'xai_line_spacing': 'REPORT_FORMATTING',
-        'xai_alignment': 'REPORT_FORMATTING', 'xai_speed_unit': 'REPORT_FORMATTING'
+        "xai_logo_path": "REPORT_FORMATTING",
+        "xai_secretary_name": "REPORT_FORMATTING",
+        "xai_secretary_title": "REPORT_FORMATTING",
+        "xai_agency_name": "REPORT_FORMATTING",
+        "xai_department_name": "REPORT_FORMATTING",
+        "xai_report_title": "REPORT_FORMATTING",
+        "xai_block_order": "REPORT_FORMATTING",
+        "xai_font_name": "REPORT_FORMATTING",
+        "xai_font_size": "REPORT_FORMATTING",
+        "report_margin_top": "REPORT_FORMATTING",
+        "xai_margin_bottom": "REPORT_FORMATTING",
+        "xai_margin_left": "REPORT_FORMATTING",
+        "xai_margin_right": "REPORT_FORMATTING",
+        "xai_line_spacing": "REPORT_FORMATTING",
+        "xai_alignment": "REPORT_FORMATTING",
+        "xai_speed_unit": "REPORT_FORMATTING",
     }
 
     def __init__(self):
@@ -92,25 +130,67 @@ class SettingsHandler:
                 logging.warning(f"[SettingsHandler] File {self.config_path} not found. Using defaults.")
                 return self.get_default_settings()
 
-            self.config.read(self.config_path, encoding='utf-8')
+            self.config.read(self.config_path, encoding="utf-8")
             loaded_settings = {}
             for key, section in self._KEY_TO_SECTION_MAP.items():
                 if self.config.has_option(section, key):
                     value = self.config.get(section, key)
-                    if value.lower() in ['true', 'false']:
+                    if value.lower() in ["true", "false"]:
                         loaded_settings[key] = self.config.getboolean(section, key)
-                    elif '.' in value:
-                        try: loaded_settings[key] = self.config.getfloat(section, key)
-                        except ValueError: loaded_settings[key] = value
+                    elif "." in value:
+                        try:
+                            loaded_settings[key] = self.config.getfloat(section, key)
+                        except ValueError:
+                            loaded_settings[key] = value
                     else:
-                        try: loaded_settings[key] = self.config.getint(section, key)
-                        except ValueError: loaded_settings[key] = value
+                        try:
+                            loaded_settings[key] = self.config.getint(section, key)
+                        except ValueError:
+                            loaded_settings[key] = value
                 else:
                     loaded_settings[key] = self._defaults.get(key)
-            
+
             for key, value in self._defaults.items():
                 if key not in loaded_settings:
                     loaded_settings[key] = value
+
+            # Apply .env overrides if present
+            try:
+                from dotenv import load_dotenv
+
+                load_dotenv()
+            except ImportError:
+                pass
+            project_root = os.path.dirname(os.path.dirname(self.config_path))
+            env_file_path = os.path.join(project_root, ".env")
+            if os.path.isfile(env_file_path):
+                try:
+                    with open(env_file_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line or line.startswith("#") or "=" not in line:
+                                continue
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+                except Exception:
+                    pass
+
+            env_map = {
+                "CARINA_DB_USER": "db_user",
+                "CARINA_DB_PASSWORD": "db_password",
+                "CARINA_DB_HOST": "db_host",
+                "CARINA_DB_PORT": "db_port",
+                "CARINA_DB_NAME": "db_name",
+                "CARINA_DB_SCHEMA": "db_schema",
+                "CARINA_DB_TYPE": "db_type",
+            }
+            for env_k, set_k in env_map.items():
+                val = os.getenv(env_k)
+                if val is not None and val != "":
+                    loaded_settings[set_k] = val
 
             return loaded_settings
         except Exception as e:
@@ -139,30 +219,55 @@ class SettingsHandler:
     def _get_default_settings_map(self) -> Dict[str, Any]:
         """Returns the default settings dictionary."""
         return {
-            'theme_dark': True, 'language': 'pt_br', 'min_green_time': '10',
-            'yellow_time_seconds': '3', 'heatmap_strategy': 'max', 'heatmap_saturation': '100.0',
-            'performance_margin': '-100.0', 'child_phase_episodes': '1',
-            'teen_phase_min_episodes': '1', 'child_promotion_max_entropy': '2.0',
-            'performance_check_window': '1', 'calibration_window_size': '10',
-            'ppo_gamma': '0.99', 'ppo_k_epochs': '4', 'ppo_eps_clip': '0.2',
-            'dqn_epsilon_decay': '30000', 'dqn_batch_size': '128',
-            'pbt_frequency': '10', 'pbt_exploitation': '25',
-            'watchdog_grace': '30',
-            'analysis_interval_value': '7', 'analysis_interval_unit': 'days',
-            'weight_waiting_time': '-2.0', 'weight_flow': '2.0',
-            'monitor_enabled': 'False', 'monitor_mqtt_host': 'localhost',
-            'db_type': 'sqlite', 'db_host': 'localhost', 'db_port': '5432',
-            'db_user': 'admin', 'db_password': 'admin', 'db_name': 'carina_data', 'db_connected': 'False',
-            'tensorboard_enabled': 'False', 'tensorboard_log_dir': 'results/tensorboard',
-            'xai_logo_path': '', 'xai_secretary_name': 'Dr. Gabriel Moraes',
-            'xai_secretary_title': 'Secretário de Mobilidade e Trânsito',
-            'xai_agency_name': 'Prefeitura Municipal / Secretaria de Trânsito',
-            'xai_department_name': 'Departamento de Mobilidade Inteligente',
-            'xai_report_title': 'LAUDO TÉCNICO DE EXPLICABILIDADE DE IA (XAI)',
-            'xai_block_order': 'header,title,metadata,chart,content,signature',
-            'xai_font_name': 'Arial', 'xai_font_size': '11',
-            'xai_margin_top': '3.0', 'xai_margin_bottom': '2.0',
-            'xai_margin_left': '3.0', 'xai_margin_right': '2.0',
-            'xai_line_spacing': '1.15', 'xai_alignment': 'justify',
-            'xai_speed_unit': 'm/s'
+            "theme_dark": True,
+            "language": "pt_br",
+            "min_green_time": "10",
+            "yellow_time_seconds": "3",
+            "heatmap_strategy": "max",
+            "heatmap_saturation": "100.0",
+            "performance_margin": "-100.0",
+            "child_phase_episodes": "1",
+            "teen_phase_min_episodes": "1",
+            "child_promotion_max_entropy": "2.0",
+            "performance_check_window": "1",
+            "calibration_window_size": "10",
+            "ppo_gamma": "0.99",
+            "ppo_k_epochs": "4",
+            "ppo_eps_clip": "0.2",
+            "dqn_epsilon_decay": "30000",
+            "dqn_batch_size": "128",
+            "pbt_frequency": "10",
+            "pbt_exploitation": "25",
+            "watchdog_grace": "30",
+            "analysis_interval_value": "7",
+            "analysis_interval_unit": "days",
+            "weight_waiting_time": "-2.0",
+            "weight_flow": "2.0",
+            "monitor_enabled": "False",
+            "monitor_mqtt_host": "localhost",
+            "db_type": "sqlite",
+            "db_host": "localhost",
+            "db_port": "5432",
+            "db_user": "admin",
+            "db_password": "admin",
+            "db_name": "carina_data",
+            "db_connected": "False",
+            "tensorboard_enabled": "False",
+            "tensorboard_log_dir": "results/tensorboard",
+            "xai_logo_path": "",
+            "xai_secretary_name": "Dr. Gabriel Moraes",
+            "xai_secretary_title": "Secretário de Mobilidade e Trânsito",
+            "xai_agency_name": "Prefeitura Municipal / Secretaria de Trânsito",
+            "xai_department_name": "Departamento de Mobilidade Inteligente",
+            "xai_report_title": "LAUDO TÉCNICO DE EXPLICABILIDADE DE IA (XAI)",
+            "xai_block_order": "header,title,metadata,chart,content,signature",
+            "xai_font_name": "Arial",
+            "xai_font_size": "11",
+            "xai_margin_top": "3.0",
+            "xai_margin_bottom": "2.0",
+            "xai_margin_left": "3.0",
+            "xai_margin_right": "2.0",
+            "xai_line_spacing": "1.15",
+            "xai_alignment": "justify",
+            "xai_speed_unit": "m/s",
         }

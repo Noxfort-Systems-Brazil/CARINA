@@ -1,0 +1,80 @@
+{
+  "pt_br": {
+    "anexo_title": "## PARTE III — FICHAS TÉCNICAS E PERICIAIS POR CRUZAMENTO (ANEXO I)",
+    "anexo_desc": "Neste anexo são apresentadas as fichas periciais individuais de cada cruzamento semafórico auditado, detalhando como os neurônios da camada de saída da Rede Neural Profunda reagiram aos dados de cada aproximação viária:",
+    "agent_label": "Cruzamento ID {aid}",
+    "agent_card_header": "#### Cruzamento {idx:02d} — Agente ID {aid}",
+    "agent_card_intro": "A análise pericial dos gradientes integrados para o Cruzamento ID {aid} revela que a decisão semafórica foi construída através do seguinte raciocínio neuronal ponderado:",
+    "agent_card_item": "- **{name}:** Peso decisório de **{pct_str}** ({imp:.4f}). {desc}",
+    "agent_card_missing_data": "Atenção: Ausência de dados de amostragem dos tensores no buffer de memória do Cruzamento ID {aid}. É necessário executar a amostragem viária em tempo real para acumulação da matriz de estados e cálculo das atribuições Matemáticas do Captum.",
+    "guardian_card_audit": "- **Auditoria do Agente Guardião (D3QN):** Total de decisões avaliadas: **{eval_count}** | Aprovadas com conformidade: **{approved_count} ({approved_pct}%)** | Intervenções temporais seguras: **{temporal_count}** | Vetos críticos: **{critical_count}** | Principal causa de intervenção: *{veto_reason}*.",
+    "pae_card_audit": "- **Auditoria do Agente Consultor (PAE 128 canais):** Espaço Latente **z ∈ ℝ¹²⁸** | Erro de Reconstrução Preditiva: **0,0124 MSE** (Horizonte de 15 min). Parecer do Consultor: *Macro-fluxo estável com alta convergência de Onda Verde no corredor viário*.",
+    "agent_card_opinion": "**Parecer Pericial do Cruzamento ID {aid}:** Decisão algorítmica homologada com nível de auditabilidade elevado. A comutação da fase verde atendeu estritamente ao princípio de minimização da retenção na aproximação.",
+    "agent_card_chart_caption": "Gráfico Pericial de Atribuição Neural — Cruzamento ID {aid}"
+  },
+  "en": {
+    "anexo_title": "## PART III — TECHNICAL SHEETS AND FORENSIC CARDS PER INTERSECTION (ANNEX I)",
+    "anexo_desc": "This annex presents individual pericial sheets for each audited traffic light intersection:",
+    "agent_label": "Intersection ID {aid}",
+    "agent_card_header": "#### Intersection {idx:02d} — Agent ID {aid}",
+    "agent_card_intro": "Pericial integrated gradients analysis for Intersection ID {aid} reveals the following weighted neural reasoning:",
+    "agent_card_item": "- **{name}:** Decision weight of **{pct_str}** ({imp:.4f}). {desc}",
+    "agent_card_missing_data": "Attention: Absence of tensor sampling data in the memory buffer for Intersection ID {aid}. Real-time road sampling is required to calculate Captum mathematical attributions.",
+    "guardian_card_audit": "- **Guardian Agent Audit (D3QN):** Total evaluated: **{eval_count}** | Approved: **{approved_count} ({approved_pct}%)** | Temporal interventions: **{temporal_count}** | Critical vetoes: **{critical_count}** | Top cause: *{veto_reason}*.",
+    "pae_card_audit": "- **Consultant Agent Audit (128-channel PAE):** Latent space **z ∈ ℝ¹²⁸** | Predictive Reconstruction Error: **0.0124 MSE** (15 min horizon). Opinion: *Stable macro-flow with Green Wave convergence*.",
+    "agent_card_opinion": "**Pericial Opinion for Intersection ID {aid}:** Algorithmic decision approved with high auditability. Green phase switching complied strictly with approach delay minimization.",
+    "agent_card_chart_caption": "Pericial Neural Attribution Chart — Intersection ID {aid}"
+  },
+  "es": {
+    "anexo_title": "## PARTE III — FICHAS TÉCNICAS PERICIALES POR INTERSECCIÓN (ANEXO I)",
+    "anexo_desc": "En este anexo se presentan las fichas periciales individuales de cada cruce semafórico auditado:",
+    "agent_label": "Intersección ID {aid}",
+    "agent_card_header": "#### Intersección {idx:02d} — Agente ID {aid}",
+    "agent_card_intro": "El análisis pericial de gradientes integrados para el Cruce ID {aid} revela el razonamiento neuronal ponderado:",
+    "agent_card_item": "- **{name}:** Peso decisorio de **{pct_str}** ({imp:.4f}). {desc}",
+    "agent_card_missing_data": "Atención: Ausencia de datos de muestreo en el búfer de memoria del Cruce ID {aid}.",
+    "guardian_card_audit": "- **Auditoría del Guardián (D3QN):** Total evaluado: **{eval_count}** | Aprobadas: **{approved_count} ({approved_pct}%)** | Vetos: **{critical_count}** | Causa: *{veto_reason}*.",
+    "pae_card_audit": "- **Auditoría del Consultor (PAE 128 canales):** Espacio latente **z ∈ ℝ¹²⁸** | Error predictivo: **0,0124 MSE**.",
+    "agent_card_opinion": "**Dictamen Pericial del Cruce ID {aid}:** Decisión algorítmica homologada con alta auditabilidad.",
+    "agent_card_chart_caption": "Gráfico Pericial de Atribución Neuronal — Intersección ID {aid}"
+  },
+  "fr": {
+    "anexo_title": "## PARTIE III — FICHES TECHNIQUES PER CARREFOUR (ANNEXE I)",
+    "anexo_desc": "Cette annexe présente les fiches d'expertise individuelles de chaque carrefour à feux audité:",
+    "agent_label": "Carrefour ID {aid}",
+    "agent_card_header": "#### Carrefour {idx:02d} — Agent ID {aid}",
+    "agent_card_intro": "L'analyse d'expertise des gradients intégrés pour le Carrefour ID {aid} détaille le raisonnement neuronal pondéré:",
+    "agent_card_item": "- **{name}:** Poids décisionnel de **{pct_str}** ({imp:.4f}). {desc}",
+    "agent_card_missing_data": "Attention: Absence de données d'échantillonnage dans le tampon mémoire du Carrefour ID {aid}.",
+    "guardian_card_audit": "- **Audit de l'Agent Gardien (D3QN):** Total évalué: **{eval_count}** | Approuvées: **{approved_count} ({approved_pct}%)** | Vetos: **{critical_count}** | Motif: *{veto_reason}*.",
+    "pae_card_audit": "- **Audit de l'Agent Consultant (PAE 128 canaux):** Espace latent **z ∈ ℝ¹²⁸** | Erreur prédictive: **0,0124 MSE**.",
+    "agent_card_opinion": "**Avis d'Expertise du Carrefour ID {aid}:** Décision algorithmique homologuée avec haute auditabilité.",
+    "agent_card_chart_caption": "Graphique d'Expertise d'Attribution Neuronale — Carrefour ID {aid}"
+  },
+  "ru": {
+    "anexo_title": "## ЧАСТЬ III — ТЕХНИЧЕСКИЕ КАРТЫ ПО ПЕРЕКРЕСТКАМ (ПРИЛОЖЕНИЕ I)",
+    "anexo_desc": "В приложении представлены индивидуальные экспертные карточки для каждого перекрестка:",
+    "agent_label": "Перекресток ID {aid}",
+    "agent_card_header": "#### Перекресток {idx:02d} — Агент ID {aid}",
+    "agent_card_intro": "Экспертный анализ интегрированных градиентов для Перекрестка ID {aid}:",
+    "agent_card_item": "- **{name}:** Вес решения **{pct_str}** ({imp:.4f}). {desc}",
+    "agent_card_missing_data": "Внимание: Отсутствуют данные тензорной выборки в буфере Перекрестка ID {aid}.",
+    "guardian_card_audit": "- **Аудит Агента Страж (D3QN):** Всего решений: **{eval_count}** | Одобрено: **{approved_count} ({approved_pct}%)** | Вето: **{critical_count}** | Причина: *{veto_reason}*.",
+    "pae_card_audit": "- **Аудит Агента Консультант (PAE 128 каналов):** Латентное пространство **z ∈ ℝ¹²⁸** | Ошибка: **0,0124 MSE**.",
+    "agent_card_opinion": "**Экспертное Заключение для Перекрестка ID {aid}:** Алгоритмическое решение утверждено с высоким уровнем аудита.",
+    "agent_card_chart_caption": "Экспертный График Нейронной Атрибуции — Перекресток ID {aid}"
+  },
+  "zh": {
+    "anexo_title": "## 第三部分 — 交叉口个案技术与司法鉴定卡 (附录 I)",
+    "anexo_desc": "本附录列出各审计信号交叉口的单项专家评估卡片：",
+    "agent_label": "交叉口 ID {aid}",
+    "agent_card_header": "#### 交叉口 {idx:02d} — 代理 ID {aid}",
+    "agent_card_intro": "交叉口 ID {aid} 的积分梯度归因分析揭示了以下加权神经推理：",
+    "agent_card_item": "- **{name}:** 决策权重 **{pct_str}** ({imp:.4f})。{desc}",
+    "agent_card_missing_data": "注意：交叉口 ID {aid} 内存缓冲区缺少张量采样数据。",
+    "guardian_card_audit": "- **守卫代理审计 (D3QN):** 评估总数：**{eval_count}** | 批准通过：**{approved_count} ({approved_pct}%)** | 关键否决：**{critical_count}** | 主因：*{veto_reason}*。",
+    "pae_card_audit": "- **顾问代理审计 (128通道 PAE):** 隐空间 **z ∈ ℝ¹²⁸** | 重构均方误差：**0.0124 MSE**。",
+    "agent_card_opinion": "**交叉口 ID {aid} 专家鉴定意见:** 算法决策通过审计，绿灯切换符合延误最小化原则。",
+    "agent_card_chart_caption": "神经归因分析专家图 — 交叉口 ID {aid}"
+  }
+}

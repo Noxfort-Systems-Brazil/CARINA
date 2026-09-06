@@ -18,13 +18,14 @@
 # Author: Gabriel Moraes
 # Date: April 15, 2026
 
-import time
 import logging
+import time
 from multiprocessing.connection import Connection
 from typing import Any
 
-from manager.agent_manager import AgentManager
 from engine.step_processor import StepProcessor
+from manager.agent_manager import AgentManager
+
 
 class EventRouter:
     """
@@ -32,7 +33,10 @@ class EventRouter:
     a valid message arrives and routing it to the internal Simulation step (StepProcessor)
     or Map update step (Trainer root).
     """
-    def __init__(self, pipe_conn: Connection, trainer_instance: Any, agent_manager: AgentManager, step_processor: StepProcessor):
+
+    def __init__(
+        self, pipe_conn: Connection, trainer_instance: Any, agent_manager: AgentManager, step_processor: StepProcessor
+    ):
         self.pipe_conn = pipe_conn
         self.trainer = trainer_instance
         self.agent_manager = agent_manager
@@ -44,12 +48,12 @@ class EventRouter:
         """
         logging.info("Trainer entering Active Standby mode (Event-Driven)...")
         last_warn_time = 0
-        
+
         while self.trainer.is_running:
             try:
                 # 1. HIBERNATE: Block until data arrives
                 if self.pipe_conn.poll(timeout=None):
-                    
+
                     # 2. DRAIN BUFFER (Conflation)
                     commands = []
                     try:
@@ -64,18 +68,19 @@ class EventRouter:
                         except EOFError:
                             self.trainer.is_running = False
                             break
-                    
-                    if not self.trainer.is_running: break
+
+                    if not self.trainer.is_running:
+                        break
 
                     hft_command = None
                     dropped_frames = 0
-                    
+
                     for cmd in commands:
                         if not isinstance(cmd, (list, tuple)) or len(cmd) < 3:
                             continue
-                            
+
                         module, func, args = cmd[0], cmd[1], cmd[2]
-                        
+
                         if module == "custom" and func == "hft_step":
                             if hft_command is not None:
                                 dropped_frames += 1
@@ -83,7 +88,7 @@ class EventRouter:
                         else:
                             # 3. ROUTE ADMIN COMMANDS IMMEDIATELY
                             self._execute_command(module, func, args)
-                            
+
                     if dropped_frames > 0:
                         logging.debug(f"[SYNC] Drained {dropped_frames} stale frames.")
 
@@ -96,37 +101,40 @@ class EventRouter:
                 break
             except Exception as e:
                 logging.error(f"Event Loop Error: {e}", exc_info=True)
-                
+
     def _execute_command(self, module: str, func: str, args: tuple):
         """Routes unpacked commands to the correct modules."""
         if module == "custom" and func == "hft_step":
             if not self.trainer.agents:
-                if not hasattr(self, '_last_warn_time'): self._last_warn_time = 0
+                if not hasattr(self, "_last_warn_time"):
+                    self._last_warn_time = 0
                 if time.time() - self._last_warn_time > 5:
                     logging.warning("[HFT] Data received but AGENTS not loaded.")
                     self._last_warn_time = time.time()
             else:
-                if not getattr(self, '_ai_started_logged', False):
+                if not getattr(self, "_ai_started_logged", False):
                     logging.info("--- AI Engine Started Operating (HFT Mode) ---")
                     print("[AI Process] --- AI Engine Started Operating (HFT Mode) ---")
                     self._ai_started_logged = True
                 self.step_processor.process_hft_step(args[0], self.trainer.agents)
-                
+
         elif module == "custom" and func == "load_map":
             self.trainer._load_map(args[0])
-        
+
         elif module == "system" and func == "save_checkpoint":
             self.agent_manager.save_system_state(
                 self.trainer.current_map_path, self.trainer.agents, self.trainer.strategist
             )
-            
+
         elif module == "hardware" and func == "toggle_connection":
             action = args[2] if len(args) > 2 else "toggle"
-            self.trainer.connection_manager.toggle_connection(args[0], args[1], action=action)
+            is_conn = self.trainer.connection_manager.toggle_connection(args[0], args[1], action=action)
+            if not is_conn and getattr(self.trainer, "action_supervisor", None):
+                self.trainer.action_supervisor.cleanup_intersection(args[0])
 
         elif module == "hardware" and func == "apply_override":
             if self.trainer.action_supervisor:
                 self.trainer.action_supervisor.apply_hardware_override(args[0], args[1])
-            
+
         elif module == "system" and func == "shutdown":
             self.trainer.is_running = False
