@@ -5,7 +5,7 @@ aliases: [Projeto CARINA, Root]
 
 <div align="center">
 
-<img src="docs/assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="120" />
+<img src="docs/assets/carina-logo.png" alt="CARINA CORE Logo" width="130" />
 
 # CARINA CORE
 ### Cognitive Autonomous Real-time Intersection Network Architecture

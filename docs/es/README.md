@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="110" />
+<img src="../assets/carina-logo.png" alt="CARINA CORE Logo" width="120" />
 
 # CARINA — Suite de Documentación Técnica
 ### Arquitectura de Sistemas, Integración de Hardware y Marco de Seguridad

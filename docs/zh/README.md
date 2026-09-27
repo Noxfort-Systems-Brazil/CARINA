@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="110" />
+<img src="../assets/carina-logo.png" alt="CARINA CORE Logo" width="120" />
 
 # CARINA — 官方技术文档套件
 ### 系统核心架构、硬件集成与神经符号安全机制
