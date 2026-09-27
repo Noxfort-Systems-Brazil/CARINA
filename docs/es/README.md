@@ -1,10 +1,12 @@
 <div align="center">
 
+<img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="110" />
+
 # CARINA — Suite de Documentación Técnica
 ### Arquitectura de Sistemas, Integración de Hardware y Marco de Seguridad
 *Noxfort Systems — A State Of Art Company*
 
-[![Status](https://img.shields.io/badge/Status-Activo-brightgreen?style=flat&logo=github)](https://github.com/Noxfort/CARINA)
+[![Status](https://img.shields.io/badge/Status-Activo-brightgreen?style=flat&logo=github)](https://github.com/Noxfort-Systems-Brazil/CARINA)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat&logo=python&logoColor=white)](https://python.org/)
 [![Go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -36,6 +38,7 @@ Este directorio contiene la suite completa de documentación técnica en **Espa�
 ---
 
 <div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingeniería de Movilidad Inteligente • CARINA CORE v1.2.0</i>
 </div>

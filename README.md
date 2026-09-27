@@ -3,26 +3,29 @@ tags: [readme, home, carina]
 aliases: [Projeto CARINA, Root]
 ---
 
-# 🚗 CARINA: Cognitive Autonomous Real-time Intersection Network Architecture
+<div align="center">
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge&logo=github" alt="Status" />
-  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" alt="PyTorch" />
-  <img src="https://img.shields.io/badge/Flet-UI-00D2B4?style=for-the-badge&logo=flutter&logoColor=white" alt="Flet UI" />
-  <img src="https://img.shields.io/badge/gRPC-HFT-2DA6B0?style=for-the-badge&logo=grpc&logoColor=white" alt="gRPC" />
-  <img src="https://img.shields.io/badge/License-AGPL_v3-blue?style=for-the-badge" alt="License" />
-</p>
+<img src="docs/assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="120" />
 
-<p align="center">
-  <a href="https://github.com/Noxfort/CARINA">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=Noxfort&repo=CARINA&theme=dark" alt="CARINA GitHub Repository Card" />
-  </a>
-</p>
+# CARINA CORE
+### Cognitive Autonomous Real-time Intersection Network Architecture
+*Noxfort Systems — A State Of Art Company*
 
-<p align="center">
-  🌐 <b>Translations / Idiomas:</b> <b><a href="README.md">🇺🇸 English</a></b> • <b><a href="docs/pt-br/README.md">🇧🇷 Português do Brasil</a></b> • <b><a href="docs/es/README.md">🇪🇸 Español</a></b> • <b><a href="docs/fr/README.md">🇫🇷 Français</a></b> • <b><a href="docs/ru/README.md">🇷🇺 Русский</a></b> • <b><a href="docs/zh/README.md">🇨🇳 简体中文</a></b> • <b><a href="docs/README.md">📚 Documentation Hub</a></b>
-</p>
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat&logo=github)](https://github.com/Noxfort-Systems-Brazil/CARINA)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat&logo=python&logoColor=white)](https://python.org/)
+[![Go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![License](https://img.shields.io/badge/License-AGPL_v3-blue?style=flat)](LICENSE)
+
+[![CARINA GitHub Repository Card](https://github-readme-stats.vercel.app/api/pin/?username=Noxfort-Systems-Brazil&repo=CARINA&theme=dark)](https://github.com/Noxfort-Systems-Brazil/CARINA)
+
+---
+
+🌐 **Translations / Idiomas:** **[🇺🇸 English](README.md)** • **[🇧🇷 Português do Brasil](docs/pt-br/README.md)** • **[🇪🇸 Español](docs/es/README.md)** • **[🇫🇷 Français](docs/fr/README.md)** • **[🇷🇺 Русский](docs/ru/README.md)** • **[🇨🇳 简体中文](docs/zh/README.md)** • **[📚 Documentation Hub](docs/README.md)**
+
+---
+
+</div>
 
 **CARINA** is a massively distributed Deep Reinforcement Learning ecosystem designed for real-time traffic control and smart city orchestration. Bypassing Python's Global Interpreter Lock (GIL) via 8 concurrent OS processes, it integrates a Tactical PPO agent, an ST-GATv2 Lite Graph Coordinator, a Global Consultant Agent (PAE 128-channel), and a Guardian Agent (D3QN) to provide 100% ABNT-compliant forensic auditability and neuro-symbolic safety.
 
@@ -87,4 +90,9 @@ python carina.py
 
 ---
 
-**CARINA** is licensed under the [GNU Affero General Public License v3.0](LICENSE). © 2026 Noxfort.
+<div align="center">
+  <img src="docs/assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="48" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Cognitive Autonomous Real-time Intersection Network Architecture • CARINA CORE v1.2.0</i><br/>
+  <small>Licensed under the <a href="LICENSE">GNU Affero General Public License v3.0</a>. © 2026 Noxfort Systems.</small>
+</div>
