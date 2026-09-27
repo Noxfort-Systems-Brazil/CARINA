@@ -20,6 +20,10 @@ aliases: [Projeto CARINA, Root]
   </a>
 </p>
 
+<p align="center">
+  🌐 <b>Translations / Idiomas:</b> <b><a href="README.md">🇺🇸 English</a></b> • <b><a href="docs/pt-br/README.md">🇧🇷 Português do Brasil</a></b> • <b><a href="docs/es/README.md">🇪🇸 Español</a></b> • <b><a href="docs/fr/README.md">🇫🇷 Français</a></b> • <b><a href="docs/ru/README.md">🇷🇺 Русский</a></b> • <b><a href="docs/zh/README.md">🇨🇳 简体中文</a></b> • <b><a href="docs/README.md">📚 Documentation Hub</a></b>
+</p>
+
 **CARINA** is a massively distributed Deep Reinforcement Learning ecosystem designed for real-time traffic control and smart city orchestration. Bypassing Python's Global Interpreter Lock (GIL) via 8 concurrent OS processes, it integrates a Tactical PPO agent, an ST-GATv2 Lite Graph Coordinator, a Global Consultant Agent (PAE 128-channel), and a Guardian Agent (D3QN) to provide 100% ABNT-compliant forensic auditability and neuro-symbolic safety.
 
 ---
@@ -59,6 +63,10 @@ Explore the full architecture, internal mechanics, and developer guides for the 
 - **Guardian Layer (Neuro-Symbolic D3QN):** Inviolable safety firewall validating or vetoing actions against traffic codes and spillback risks.
 - **Explainable AI (XAI Engine):** Google Captum Integrated Gradients exporting ABNT NBR 14724 reports with 5 formal neural equations and Guardian veto audit tables.
 - **PostgreSQL Delta Storage:** Non-blocking async queue with 1-byte Smallint enums and run-length encoding achieving **97.9% storage reduction** (~380 MB/day for 200 intersections).
+- **Go Hardware Gateway (Industrial Safety):** Dedicated, compiled CGO-free Go binary (`bin/carina-go`) handling field controller I/O (NTCIP 1202 & UTMC2 over UDP 161/162) with zero host open ports via OS pipe NDJSON IPC and atomic fail-safe reversion on disconnect.
+- **Polymorphic Monitoring & Transports:** Dynamic dual-mode telemetry dispatcher supporting MQTT brokers and HTTP/HTTPS REST/Webhook cloud endpoints (Ngrok, Cloud services) with automatic protocol resolution and incident deduplication.
+- **Modular Settings Subsystem (SOLID):** Decoupled configuration architecture combining typed schemas (`SettingsSchema`), INI storage, and 12-Factor `.env` secret providers with backward-compatible facades.
+- **F.E.N.I.X. Self-Healing Subsystem (High Availability):** Autonomous process supervisor (`FenixSupervisor`) monitoring AI engine health, with windowed exponential backoff crash recovery and zero-collision stage boundary handover.
 
 ---
 

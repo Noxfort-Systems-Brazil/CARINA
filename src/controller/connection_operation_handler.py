@@ -95,8 +95,15 @@ class ConnectionOperationHandler:
         Returns:
             bool: Connection success state.
         """
-        is_currently_connected = intersection_id in self.active_connections and getattr(
-            self.active_connections[intersection_id], "is_connected", False
+        possible_ids = [str(intersection_id)]
+        if str(intersection_id).startswith("tl_"):
+            possible_ids.append(str(intersection_id).replace("tl_", ""))
+        else:
+            possible_ids.append(f"tl_{intersection_id}")
+
+        is_currently_connected = any(
+            pid in self.active_connections and getattr(self.active_connections[pid], "is_connected", False)
+            for pid in possible_ids
         )
 
         if action == "disconnect" or (action == "toggle" and is_currently_connected):
@@ -107,12 +114,6 @@ class ConnectionOperationHandler:
                     id=intersection_id,
                 )
             )
-
-            possible_ids = [intersection_id]
-            if str(intersection_id).startswith("tl_"):
-                possible_ids.append(str(intersection_id).replace("tl_", ""))
-            else:
-                possible_ids.append(f"tl_{intersection_id}")
 
             for pid in possible_ids:
                 if pid in self.active_connections:
@@ -127,6 +128,17 @@ class ConnectionOperationHandler:
 
             if intersection_id in self.saved_ips:
                 del self.saved_ips[intersection_id]
+
+            # Direct fallback ensuring Go Gateway releases and terminates any lingering driver
+            try:
+                from src.drivers.go_gateway_client import GoGatewayClient
+
+                client = GoGatewayClient.get_instance()
+                if client.is_running():
+                    for pid in possible_ids:
+                        client.disconnect_intersection(pid)
+            except Exception as e:
+                logger.debug(f"Direct Go gateway disconnect fallback: {e}")
 
             return False
 

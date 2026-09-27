@@ -5,7 +5,7 @@ aliases: [Security & Authentication, User Management, Access Control, Security M
 
 # 🔐 Security Architecture, Authentication & User Management
 
-This document specifies CARINA's enterprise security architecture located in [`src/utils/security/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/utils/security) and [`src/utils/security_manager.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/utils/security_manager.py). It details user authentication, cryptographic password hashing, brute-force defense, database schema isolation, and the 12-Factor App configuration paradigm.
+This document specifies CARINA's enterprise security architecture located in [`src/utils/security/`](../src/utils/security) and [`src/utils/security_manager.py`](../src/utils/security_manager.py). It details user authentication, cryptographic password hashing, brute-force defense, database schema isolation, and the 12-Factor App configuration paradigm.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🗄️ See [Database & Schemas](DATABASE_AND_SCHEMAS.md) | 🛠️ See [Developer Guides](DEVELOPER_GUIDES.md)
 
@@ -38,26 +38,26 @@ CARINA governs safety-critical municipal infrastructure. Unauthorized access or 
 ## 2. Core Modules Breakdown
 
 ### 2.1 Password Hashing & Cryptography (`hasher.py`)
-Located in [`src/utils/security/hasher.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/utils/security/hasher.py):
+Located in [`src/utils/security/hasher.py`](../src/utils/security/hasher.py):
 - Implements secure hashing with `bcrypt`.
 - Automatic salt generation ($2^{12}$ rounds by default).
 - Timing-attack-resistant string comparison for password verification.
 
 ### 2.2 Brute-Force Protection (`lockdown.py`)
-Located in [`src/utils/security/lockdown.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/utils/security/lockdown.py):
+Located in [`src/utils/security/lockdown.py`](../src/utils/security/lockdown.py):
 - Tracks failed login attempts per username and client source.
 - Triggers automatic account lockout after 5 consecutive failures.
 - Enforces an escalating lockout period (default: 15 minutes).
 
 ### 2.3 User Service & Repository (`user_service.py` & `user_repository.py`)
-- [`src/utils/security/user_repository.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/utils/security/user_repository.py): Direct SQL persistence for user records, active sessions, and access logs.
-- [`src/utils/security/migrator.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/utils/security/migrator.py): Auto-initializes and migrates the `users` and `audit_log` tables across SQLite and PostgreSQL schemas.
+- [`src/utils/security/user_repository.py`](../src/utils/security/user_repository.py): Direct SQL persistence for user records, active sessions, and access logs.
+- [`src/utils/security/migrator.py`](../src/utils/security/migrator.py): Auto-initializes and migrates the `users` and `audit_log` tables across SQLite and PostgreSQL schemas.
 
 ---
 
 ## 3. 12-Factor Configuration & Environment Variables
 
-All sensitive credentials must be set in [`.env`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/.env.example) and must never be committed to git:
+All sensitive credentials must be set in [`.env`](../.env.example) and must never be committed to git:
 
 ```bash
 # --- Execution Mode ---
@@ -80,6 +80,12 @@ CARINA_DB_SCHEMA=schema_carina
 
 # --- SNMP / Physical Controller Secret ---
 CARINA_SNMP_COMMUNITY=YourSnmpCommunityString
+
+# --- External Monitor Telemetry Credentials ---
+CARINA_MQTT_HOST=127.0.0.1                     # Local broker or https://tunnel.ngrok-free.dev/api/telemetry
+CARINA_MQTT_PORT=1883
+CARINA_MQTT_USER=
+CARINA_MQTT_PASSWORD=
 ```
 
 ---

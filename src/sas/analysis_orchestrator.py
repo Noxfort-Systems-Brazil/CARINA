@@ -18,23 +18,23 @@
 # Author: Gabriel Moraes
 # Date: February 19, 2026
 
-import logging
-from multiprocessing import Queue
 import configparser
-import sys
+import logging
 import os
+import sys
+from multiprocessing import Queue
 from typing import TYPE_CHECKING
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from sas.data_collector import DataCollector
-from sas.analyzer_engine import AnalyzerEngine
-from sas.analysis_handler import AnalysisHandler
 from database.database_manager import DatabaseManager
+from sas.analysis_handler import AnalysisHandler
+from sas.analyzer_engine import AnalyzerEngine
+from sas.data_collector import DataCollector
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -43,27 +43,34 @@ if TYPE_CHECKING:
 class AnalysisOrchestrator:
     """The maestro that manages the workflow of the SAS service, delegating processing to AnalysisHandler."""
 
-    def __init__(self, sas_data_queue: Queue, settings: configparser.ConfigParser, db_data_queue: Queue, locale_manager: 'LocaleManagerBackend', sas_result_queue: Queue = None):
+    def __init__(
+        self,
+        sas_data_queue: Queue,
+        settings: configparser.ConfigParser,
+        db_data_queue: Queue,
+        locale_manager: "LocaleManagerBackend",
+        sas_result_queue: Queue = None,
+    ):
         self.data_queue = sas_data_queue
         self.settings = settings
         self.locale_manager = locale_manager
         lm = self.locale_manager
-        
+
         self.collector = DataCollector(self.locale_manager)
         self.engine = AnalyzerEngine(self.settings, db_data_queue, self.locale_manager, sas_result_queue)
-        
+
         # DatabaseManager for V2 DB-based analysis (historical traffic samples)
         try:
             self.db_manager = DatabaseManager(self.locale_manager)
         except Exception as e:
             logging.warning(f"[SAS_ORCH] Failed to initialize DatabaseManager for V2 analysis: {e}")
             self.db_manager = None
-        
+
         # --- Analysis Timing (from settings.ini [ANALYSIS_SCHEDULE]) ---
         self.frequency = self._load_analysis_interval_seconds()
-        self.initial_delay = 60    # seconds before first analysis is eligible
+        self.initial_delay = 60  # seconds before first analysis is eligible
         logging.info(lm.get_string("sas_orchestrator.init.analysis_frequency_set", freq=self.frequency))
-            
+
         self.last_analysis_time = 0
         self.last_scenario_name = "hft_live_session"
         self.last_net_file_path = None
@@ -78,26 +85,26 @@ class AnalysisOrchestrator:
         """
         Reads the analysis schedule from [ANALYSIS_SCHEDULE] in settings.ini
         and converts it to seconds.
-        
+
         Supports units: days, weeks, months, years.
         Falls back to 7 days (604800s) if the section is missing or invalid.
         """
         UNIT_TO_SECONDS = {
-            'days': 86400,
-            'weeks': 604800,
-            'months': 2592000,   # 30 days
-            'years': 31536000,   # 365 days
+            "days": 86400,
+            "weeks": 604800,
+            "months": 2592000,  # 30 days
+            "years": 31536000,  # 365 days
         }
         DEFAULT_SECONDS = 7 * 86400  # 7 days
-        
+
         try:
-            section = self.settings['ANALYSIS_SCHEDULE']
-            value = section.getint('analysis_interval_value', 7)
-            unit = section.get('analysis_interval_unit', 'days').strip().lower()
-            
+            section = self.settings["ANALYSIS_SCHEDULE"]
+            value = section.getint("analysis_interval_value", 7)
+            unit = section.get("analysis_interval_unit", "days").strip().lower()
+
             multiplier = UNIT_TO_SECONDS.get(unit, 86400)
             result = max(value, 1) * multiplier
-            
+
             logging.info(f"[SAS_ORCH] Analysis interval configured: {value} {unit} ({result}s)")
             return result
         except (KeyError, configparser.NoSectionError, ValueError) as e:

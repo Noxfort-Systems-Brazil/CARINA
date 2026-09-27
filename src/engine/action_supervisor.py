@@ -118,8 +118,21 @@ class ActionSupervisor:
 
         driver = self.connection_manager.active_connections.get(tl_id)
         if driver:
-            # Pass 1-based stage to allow the driver to handle the hardware bitmask conversion
-            driver.apply_action({"action_type": "hold", "stage": stage_idx + 1})
+            if hasattr(driver, "apply_decision"):
+                driver.apply_decision("HOLD")
+            else:
+                driver.apply_action({"action_type": "hold", "stage": stage_idx + 1})
+
+    def send_decision(self, tl_id: str, decision: str) -> None:
+        """Sends pure high-level AI decision ('HOLD' or 'ADVANCE') to the driver."""
+        if self.override_states.get(tl_id) in ("ALERT", "OFF"):
+            return
+        driver = self.connection_manager.active_connections.get(tl_id)
+        if driver:
+            if hasattr(driver, "apply_decision"):
+                driver.apply_decision(decision)
+            elif decision.upper() == "HOLD":
+                driver.apply_action({"action_type": "hold"})
 
     def cleanup_intersection(self, tl_id: str) -> None:
         """Removes all cached states and override flags for a disconnected intersection."""

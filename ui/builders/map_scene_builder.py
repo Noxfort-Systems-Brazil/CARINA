@@ -98,6 +98,8 @@ class MapSceneBuilder:
 
         # 2. Initialize Canvas and interaction handler viewport dimensions
         canvas = cv.Canvas(shapes=[], width=viewport_width, height=viewport_height)
+        map_stack.width = viewport_width
+        map_stack.height = viewport_height
         interaction_handler.base_width = viewport_width
         interaction_handler.base_height = viewport_height
 

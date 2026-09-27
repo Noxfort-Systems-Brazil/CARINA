@@ -18,11 +18,12 @@
 # Author: Gabriel Moraes
 # Date: April 15, 2026
 
+import json
+import logging
 import os
 import time
-import logging
-import json
 from typing import List, Optional
+
 
 class RequestScanner:
     """
@@ -61,7 +62,7 @@ class RequestScanner:
         """Writes the final output payload back to the response directory atomically."""
         response_path = os.path.join(self.responses_dir, f"{agent_id}.response")
         response_tmp_path = response_path + ".tmp"
-        
+
         try:
             with open(response_tmp_path, "w", encoding="utf-8") as f:
                 json.dump(response_data, f, indent=4)

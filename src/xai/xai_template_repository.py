@@ -47,6 +47,9 @@ class XaiTemplateRepository:
         """Resolves absolute path of configuration file across environment directories."""
         base_dir = os.path.dirname(os.path.abspath(__file__))
         candidates = [
+            os.path.join(base_dir, "..", "..", "config", "templates", "xai", filename),
+            os.path.join(base_dir, "..", "config", "templates", "xai", filename),
+            os.path.join(os.getcwd(), "config", "templates", "xai", filename),
             os.path.join(base_dir, "..", "..", "config", filename),
             os.path.join(base_dir, "..", "config", filename),
             os.path.join(os.getcwd(), "config", filename),

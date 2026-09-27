@@ -18,9 +18,11 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-from typing import Dict, Any
-from mfd.mfd_template_repository import MFDTemplateRepository
+from typing import Any, Dict
+
 from blocks.report_post_processor import ReportPostProcessor
+from mfd.mfd_template_repository import MFDTemplateRepository
+
 
 class MFDJustificationResolver:
     """
@@ -49,41 +51,51 @@ class MFDJustificationResolver:
         gain_str = f"+{fmt(gain_pct)}%" if gain_pct > 0 else f"{fmt(gain_pct)}%"
         entropy_adult = fmt(row.get("entropy_adult", row.get("entropy", 0.08)), 2)
 
-        delay_child = fmt(row.get('delay_child_s', 78.0))
-        delay_adult = fmt(row.get('delay_adult_s', 24.5))
-        if row.get('delay_child_s', 78.0) == 0.0 and row.get('delay_adult_s', 24.5) == 0.0:
-            delay_phrase = cfg.get("free_flow_delay_phrase", "mantendo a operação viária em fluxo livre sem retenções de tráfego")
+        delay_child = fmt(row.get("delay_child_s", 78.0))
+        delay_adult = fmt(row.get("delay_adult_s", 24.5))
+        if row.get("delay_child_s", 78.0) == 0.0 and row.get("delay_adult_s", 24.5) == 0.0:
+            delay_phrase = cfg.get(
+                "free_flow_delay_phrase", "mantendo a operação viária em fluxo livre sem retenções de tráfego"
+            )
         else:
-            delay_tmpl = cfg.get("reduced_delay_phrase", "aliviando o atraso médio de {delay_child} s para {delay_adult} s")
+            delay_tmpl = cfg.get(
+                "reduced_delay_phrase", "aliviando o atraso médio de {delay_child} s para {delay_adult} s"
+            )
             try:
                 delay_phrase = delay_tmpl.format(delay_child=delay_child, delay_adult=delay_adult)
             except Exception:
                 delay_phrase = delay_tmpl
 
         if mat == "ADULT":
-            adult_tmpl = cfg.get("adult", (
-                "A atuação do agente neural no nó semafórico {inter_id} eliminou a sobrecriticação "
-                "observada na Fase Criança (X={sat_child}). Ao redistribuir dinamicamente as fases de verde em tempo real, "
-                "o motor MFD reduziu a taxa de saturação para X={sat_adult}, {delay_phrase} "
-                "e estabilizou a Entropia da Política em H={entropy_adult} (cumprindo H < 0,15) com ganho líquido de {gain_str} na fluidez viária."
-            ))
+            adult_tmpl = cfg.get(
+                "adult",
+                (
+                    "A atuação do agente neural no nó semafórico {inter_id} eliminou a sobrecriticação "
+                    "observada na Fase Criança (X={sat_child}). Ao redistribuir dinamicamente as fases de verde em tempo real, "
+                    "o motor MFD reduziu a taxa de saturação para X={sat_adult}, {delay_phrase} "
+                    "e estabilizou a Entropia da Política em H={entropy_adult} (cumprindo H < 0,15) com ganho líquido de {gain_str} na fluidez viária."
+                ),
+            )
             return adult_tmpl.format(
                 inter_id=inter_id,
                 sat_child=sat_child,
                 sat_adult=sat_adult,
                 delay_phrase=delay_phrase,
                 entropy_adult=entropy_adult,
-                gain_str=gain_str
+                gain_str=gain_str,
             )
         else:
-            teen_tmpl = cfg.get("teen", (
-                "O nó semafórico {inter_id} encontra-se em Fase Adolescente (Autonomia Supervisada do Modelo RL), apresentando "
-                "aprendizado ativo com evolução na velocidade de {speed_child} km/h para {speed_teen} km/h "
-                "e redução da entropia para H={entropy_teen}."
-            ))
+            teen_tmpl = cfg.get(
+                "teen",
+                (
+                    "O nó semafórico {inter_id} encontra-se em Fase Adolescente (Autonomia Supervisada do Modelo RL), apresentando "
+                    "aprendizado ativo com evolução na velocidade de {speed_child} km/h para {speed_teen} km/h "
+                    "e redução da entropia para H={entropy_teen}."
+                ),
+            )
             return teen_tmpl.format(
                 inter_id=inter_id,
-                speed_child=fmt(row.get('speed_child_kmh', 20.9)),
-                speed_teen=fmt(row.get('speed_teen_kmh', 32.4)),
-                entropy_teen=fmt(row.get('entropy_teen', 0.22), 2)
+                speed_child=fmt(row.get("speed_child_kmh", 20.9)),
+                speed_teen=fmt(row.get("speed_teen_kmh", 32.4)),
+                entropy_teen=fmt(row.get("entropy_teen", 0.22), 2),
             )

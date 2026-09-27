@@ -29,11 +29,11 @@ def derive_yellow_state(green_state: str) -> str:
     """
     Derive the yellow transition state from a green state.
     Replace all G/g with 'y', keep 'r' as 'r'.
-    
+
     Args:
         green_state: The green state string
-        
+
     Returns:
         The derived yellow state string
     """
-    return ''.join('y' if c in ('G', 'g') else 'r' for c in green_state)
+    return "".join("y" if c in ("G", "g") else "r" for c in green_state)

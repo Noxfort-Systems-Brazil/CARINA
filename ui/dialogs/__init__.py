@@ -17,4 +17,3 @@
 # File: ui/dialogs/__init__.py
 # Author: Gabriel Moraes
 # Date: 2026-06-09
-

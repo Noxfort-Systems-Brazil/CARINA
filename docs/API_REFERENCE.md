@@ -86,7 +86,7 @@ message ScenarioDefinition {
 
 ## 3. Inter-Process Communication (IPC) Queue Specifications
 
-CARINA manages 10 bounded IPC channels created by [`ProcessManager`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/launcher/process_manager.py).
+CARINA manages 10 bounded IPC channels created by [`ProcessManager`](../src/launcher/process_manager.py).
 
 | Queue Name | Max Size | Producer Process | Consumer Process | Payload Schema / Message Type |
 | :--- | :---: | :--- | :--- | :--- |
@@ -95,13 +95,14 @@ CARINA manages 10 bounded IPC channels created by [`ProcessManager`](file:///hom
 | **`wd`** | 500 | All Microservices | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
 | **`sds`** | 500 | `CentralController` | `DashboardService` | `{"timestamp": float, "telemetry": dict, "active_phase": int}` |
 | **`sas`** | 500 | `CentralController` | `AnalysisService` | Historical traffic metrics for PostgreSQL aggregation |
-| **`ui`** | 500 | `DashboardService` | `UITrayManager` | UI state updates, system tray notifications & log events |
+| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | UI commands, overrides, manual timing & settings |
+| **`ui_telemetry`** | 500 | `DashboardService` | `LiveDataProvider` | Zero-port in-memory real-time telemetry packets, congestion & maturity |
 | **`db`** | 500 | `AI_Process` | `DatabaseWorker` | `(state_tensor, action_int, reward_float, next_state_tensor)` |
 | **`g_state`** | 500 | `AI_Process` | `GuardianWorker` | `(lane_queues, pae_latent_vector_z, strategic_gat_vector)` |
 | **`g_signal`** | 500 | `GuardianWorker` | `AI_Process` | `{"veto": bool, "forced_phase": int, "risk_score": float}` |
-| **`sas_results`** | 10 | `AnalysisService` | `CentralController` | Engineering warrant reports & signal timing recommendations |
-| **`mfd_trigger`** | 10 | `CentralController` | `MFD_Worker` | `{"action": "COMPUTE_MFD", "time_window_seconds": 3600}` |
-| **`mfd_results`** | 10 | `MFD_Worker` | `CentralController` | `{"critical_density": float, "max_capacity_flow": float, "curve": list}` |
+| **`sas_results`** | 10 | `AnalysisService` | `InfrastructureClient` | Engineering warrant reports & signal timing recommendations |
+| **`mfd_trigger`** | 10 | `MfdAnalysisClient` / `CC` | `MFD_Worker` | `{"action": "COMPUTE_MFD", "time_window_seconds": 3600}` |
+| **`mfd_results`** | 10 | `MFD_Worker` | `MfdAnalysisClient` / `CC` | `{"critical_density": float, "max_capacity_flow": float, "curve": list}` |
 
 For physical controller actuation via NTCIP and UTMC, see [Hardware Drivers](HARDWARE_DRIVERS.md).
 
@@ -121,3 +122,48 @@ carina_mfd_network_density_veh_km               # Macroscopic network density
 carina_mfd_network_flow_veh_hr                   # Macroscopic network throughput
 carina_active_processes_count                    # Count of alive backend microservices
 ```
+
+---
+
+## 5. External Monitor Telemetry & Polling Protocols (`src/transports/`)
+
+CARINA dispatches real-time state heartbeats and hardware alerts to external operations dashboards and cloud telemetry platforms via [`MonitorClient`](../src/communication/monitor_client.py) and [`src/transports/`](../src/transports).
+
+### 5.1 Telemetry Payloads
+
+#### Incident Alert Payload (`noxfort/incidents/` or HTTP POST)
+```json
+{
+  "intersection_id": "cruzamento_av_jk_01",
+  "level": "CRITICAL",
+  "category": "HARDWARE_DISCONNECT",
+  "message": "[FailsafeManager] Controller dropped connection. Reverting to fixed-time.",
+  "occurred_at": "2026-09-15T01:30:00Z",
+  "is_active": true
+}
+```
+
+#### Heartbeat Telemetry Payload (`noxfort/telemetry/` or HTTP POST)
+```json
+{
+  "message": "heartbeat",
+  "timestamp": 1789458600.0,
+  "system_status": "ONLINE",
+  "active_intersections": 12,
+  "failsafe_active": false
+}
+```
+
+### 5.2 Transport Protocols
+
+| Protocol | Config Example (`CARINA_MQTT_HOST`) | Implementation | Characteristics |
+| :--- | :--- | :--- | :--- |
+| **MQTT Broker** | `127.0.0.1:1883` or `broker.emqx.io` | [`MonitorMqttTransport`](../src/transports/mqtt_transport.py) | Paho MQTT v2, keepalive 60s, topics `noxfort/telemetry/` and `noxfort/incidents/`. |
+| **HTTP / HTTPS REST** | `https://monitor.noxfort.com/api/telemetry` | [`MonitorHttpTransport`](../src/transports/http_transport.py) | JSON `POST`, persistent `requests.Session`, exponential backoff, timeout 3.0s. |
+| **Cloud Tunnels (Ngrok)** | `https://xxxx.ngrok-free.dev/api/telemetry` | [`MonitorHttpTransport`](../src/transports/http_transport.py) | Automatic detection via `endpoint_resolver.py` routing through secure HTTPS tunnel. |
+
+### 5.3 Endpoint Classification Rules
+The factory function [`create_monitor_transport()`](../src/transports/factory.py) automatically resolves the correct transport:
+1. If the host string starts with `http://` or `https://` $\implies$ **HTTP Transport**.
+2. If the host string contains `.ngrok`, `.run.app`, or an `/api/` path $\implies$ **HTTP Transport** (auto-prepends `https://` if protocol scheme was omitted).
+3. If the host string contains an IP address or domain with optional port (e.g. `10.0.0.1:1883`) $\implies$ **MQTT Transport**.

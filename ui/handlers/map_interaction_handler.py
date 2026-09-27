@@ -69,9 +69,14 @@ class MapInteractionHandler:
         """Calculates the new map scale and aligns the Vector Offset (Zoom to Pointer)."""
         old_scale = self.scale.scale
 
-        if mouse_x is None:
+        if getattr(e, "local_x", None) is not None:
+            mouse_x = e.local_x
+        elif mouse_x is None:
             mouse_x = self.base_width / 2.0
-        if mouse_y is None:
+
+        if getattr(e, "local_y", None) is not None:
+            mouse_y = e.local_y
+        elif mouse_y is None:
             mouse_y = self.base_height / 2.0
 
         if e.scroll_delta_y < 0:
@@ -85,17 +90,18 @@ class MapInteractionHandler:
         self.scale.scale = new_scale
 
         # True Zoom Math (Pointer Anchoring)
-        # Flet Scale with alignment=center grows in both directions from the center.
-        # Translates the offset to compensate for the visual directional magnitude of the mouse.
+        # Exact vector anchoring: preserving the exact map point under the mouse cursor across zoom levels (0 drift)
         center_x = self.base_width / 2.0
         center_y = self.base_height / 2.0
 
         dx = mouse_x - center_x
         dy = mouse_y - center_y
 
-        # The true offset logic compensates for the scale difference relative to the center
-        self.offset.x -= (dx * (new_scale - old_scale)) / (self.base_width * new_scale)
-        self.offset.y -= (dy * (new_scale - old_scale)) / (self.base_height * new_scale)
+        # Mathematically exact offset compensation:
+        # mx = (mouse_x - cx) / old_scale + cx - old_offset * W == (mouse_x - cx) / new_scale + cx - new_offset * W
+        # => delta_offset = - dx * (new_scale - old_scale) / (W * old_scale * new_scale)
+        self.offset.x -= (dx * (new_scale - old_scale)) / (self.base_width * old_scale * new_scale)
+        self.offset.y -= (dy * (new_scale - old_scale)) / (self.base_height * old_scale * new_scale)
 
         self.on_update()
 

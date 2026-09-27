@@ -18,10 +18,11 @@
 # Author: Gabriel Moraes
 # Date: December 17, 2025
 
-import os
-import torch
 import logging
+import os
 import warnings
+
+import torch
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*weight_norm.*")
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch.nn.utils.weight_norm")
@@ -30,20 +31,21 @@ from agents.local_agent import LocalAgent
 from models.pae import PredictiveAutoencoder
 from utils.locale_manager_backend import LocaleManagerBackend
 
+
 class AgentReconstructor:
     """
     Responsibility: Load physical PyTorch Checkpoints (.pth) from the disk,
-    validate their structure, and instantiate 'Blind' LocalAgents (disconnected 
+    validate their structure, and instantiate 'Blind' LocalAgents (disconnected
     from the live SUMO/Synapse network) strictly for Mathematical Analysis.
     """
 
     def __init__(self, checkpoints_dir: str):
         self.checkpoints_dir = checkpoints_dir
         self.locale_manager = LocaleManagerBackend()
-        
+
         # --- Load PAE Universal from checkpoint ---
         self.shared_pae = self._load_pae()
-    
+
     def _load_pae(self):
         """
         Loads the Universal PAE from the pae_universal.pth checkpoint.
@@ -53,39 +55,44 @@ class AgentReconstructor:
         if not os.path.exists(pae_path):
             logging.info("[AgentReconstructor] PAE checkpoint not found. Agents will be reconstructed without PAE.")
             return None
-        
+
         try:
             # Load state_dict to inspect dimensions
-            state_dict = torch.load(pae_path, map_location=torch.device('cpu'), weights_only=True)
-            
+            state_dict = torch.load(pae_path, map_location=torch.device("cpu"), weights_only=True)
+
             # Infer dimensions from encoder weights
-            input_dim = state_dict['encoder.0.weight'].shape[1]
-            latent_dim = state_dict['encoder.3.weight'].shape[0]
-            
+            input_dim = state_dict["encoder.0.weight"].shape[1]
+            latent_dim = state_dict["encoder.3.weight"].shape[0]
+
             pae = PredictiveAutoencoder(input_dim=input_dim, latent_dim=latent_dim)
             pae.load_state_dict(state_dict)
             pae.eval()  # Inference-only for XAI analysis
-            
+
             logging.info(f"[AgentReconstructor] Universal PAE loaded (input={input_dim}, latent={latent_dim})")
             return pae
         except Exception as e:
             logging.warning(f"[AgentReconstructor] Failed to load PAE: {e}. Continuing without PAE.")
             return None
-        
+
     def reconstruct_agent(self, agent_id: str) -> LocalAgent:
         """Loads weights from disk and reconstructs the Agent memory (with PAE integration)."""
         checkpoint_path = os.path.join(self.checkpoints_dir, f"agent_{agent_id}.pth")
-        
+
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
         try:
-            checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)
+            try:
+                checkpoint = torch.load(checkpoint_path, map_location=torch.device("cpu"), weights_only=True)
+            except Exception:
+                checkpoint = torch.load(
+                    checkpoint_path, map_location=torch.device("cpu"), weights_only=False
+                )  # nosec B614
         except Exception as e:
             raise RuntimeError(f"Corrupted checkpoint for {agent_id}: {e}")
-            
-        n_observations = checkpoint.get('n_observations')
-        
+
+        n_observations = checkpoint.get("n_observations")
+
         if n_observations is None:
             raise ValueError(f"Invalid checkpoint structure for {agent_id}. Missing 'n_observations'.")
 
@@ -93,13 +100,13 @@ class AgentReconstructor:
         agent = LocalAgent(
             tlight_id=agent_id,
             n_observations=n_observations,
-            n_actions=3, 
+            n_actions=3,
             initial_hyperparams={},
             log_dir="",
             locale_manager=self.locale_manager,
-            shared_pae=self.shared_pae
+            shared_pae=self.shared_pae,
         )
-        
+
         agent.load_checkpoint(checkpoint_path)
         pae_status = "with PAE" if self.shared_pae else "without PAE"
         logging.info(f"[AgentReconstructor] Agent {agent_id} reconstructed ({pae_status}).")

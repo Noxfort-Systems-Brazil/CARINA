@@ -19,12 +19,26 @@
 # Date: September 2026
 
 import json
+import os
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.communication.monitor_client import MonitorClient
-from src.communication.monitor_payload import MonitorPayloadBuilder
-from src.communication.monitor_transport import MonitorMqttTransport
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+src_path = os.path.join(project_root, "src")
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+try:
+    from communication.monitor_client import MonitorClient
+    from communication.monitor_payload import MonitorPayloadBuilder
+    from communication.monitor_transport import MonitorHttpTransport
+except ImportError:
+    from src.communication.monitor_client import MonitorClient
+    from src.communication.monitor_payload import MonitorPayloadBuilder
+    from src.communication.monitor_transport import MonitorHttpTransport
 
 
 class TestMonitorPayloadBuilder(unittest.TestCase):
@@ -46,32 +60,6 @@ class TestMonitorPayloadBuilder(unittest.TestCase):
         self.assertEqual(data["message"], "Sensor failure")
 
 
-class TestMonitorMqttTransport(unittest.TestCase):
-    def test_parse_host_port(self):
-        host, port = MonitorMqttTransport.parse_host_port("192.168.1.10:1883")
-        self.assertEqual(host, "192.168.1.10")
-        self.assertEqual(port, 1883)
-
-        host_def, port_def = MonitorMqttTransport.parse_host_port("localhost")
-        self.assertEqual(host_def, "localhost")
-        self.assertEqual(port_def, 1883)
-
-    @patch("src.communication.monitor_transport.mqtt.Client")
-    def test_publish_success(self, mock_mqtt_client_cls):
-        mock_client = MagicMock()
-        mock_mqtt_client_cls.return_value = mock_client
-        mock_info = MagicMock()
-        mock_client.publish.return_value = mock_info
-
-        transport = MonitorMqttTransport(host="localhost", port=1883)
-        transport.setup_mqtt()
-        transport._is_connected = True
-
-        res = transport.publish("test/topic", '{"msg": "hi"}')
-        self.assertTrue(res)
-        mock_client.publish.assert_called_once_with("test/topic", '{"msg": "hi"}', qos=1)
-
-
 class TestMonitorClientFacade(unittest.TestCase):
     def setUp(self):
         MonitorClient._instance = None
@@ -79,19 +67,59 @@ class TestMonitorClientFacade(unittest.TestCase):
     def tearDown(self):
         MonitorClient._instance = None
 
-    @patch("src.communication.monitor_client.SettingsManager")
-    @patch("src.communication.monitor_client.MonitorMqttTransport")
-    def test_client_initialization_disabled(self, mock_transport_cls, mock_settings_cls):
+    @patch("communication.monitor_client.SettingsManager")
+    @patch("communication.monitor_client.create_monitor_transport")
+    def test_client_initialization_disabled(self, mock_create_transport, mock_settings_cls):
         mock_settings = MagicMock()
-        mock_settings.load_settings.return_value = {"monitor_enabled": "False"}
+        mock_settings.load_settings.return_value = {"monitor_enabled": "False", "monitor_mqtt_host": "localhost"}
         mock_settings_cls.return_value = mock_settings
 
         mock_transport = MagicMock()
-        mock_transport_cls.return_value = mock_transport
+        mock_create_transport.return_value = mock_transport
 
         client = MonitorClient(settings_manager=mock_settings)
         self.assertFalse(client.enabled)
         self.assertEqual(MonitorClient.get_instance(), client)
+        mock_create_transport.assert_called_once()
+
+    @patch("communication.monitor_client.SettingsManager")
+    @patch("transports.http_transport.requests.Session.post")
+    def test_client_initialization_with_http_endpoint(self, mock_post, mock_settings_cls):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_post.return_value = mock_resp
+
+        mock_settings = MagicMock()
+        mock_settings.load_settings.return_value = {
+            "monitor_enabled": "True",
+            "monitor_mqtt_host": "https://monitor.noxfort.com/api/telemetry",
+        }
+        mock_settings_cls.return_value = mock_settings
+
+        client = MonitorClient(settings_manager=mock_settings)
+        self.assertTrue(client.enabled)
+        self.assertIsInstance(client.transport, MonitorHttpTransport)
+        self.assertTrue(client.is_connected)
+        client.stop()
+
+    @patch("communication.monitor_client.SettingsManager")
+    @patch("communication.monitor_client.create_monitor_transport")
+    def test_client_disconnect_manual_stops_and_preserves_instance(self, mock_create_transport, mock_settings_cls):
+        mock_settings = MagicMock()
+        mock_settings.load_settings.return_value = {"monitor_enabled": "True", "monitor_mqtt_host": "localhost"}
+        mock_settings_cls.return_value = mock_settings
+
+        mock_transport = MagicMock()
+        mock_create_transport.return_value = mock_transport
+
+        client = MonitorClient(settings_manager=mock_settings)
+        self.assertTrue(client.enabled)
+
+        client.disconnect_manual()
+        self.assertFalse(client.enabled)
+        self.assertFalse(client._running)
+        mock_transport.disconnect.assert_called()
+        self.assertIs(MonitorClient.get_instance(), client)
 
 
 if __name__ == "__main__":

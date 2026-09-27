@@ -16,30 +16,30 @@
 
 # File: src/drivers/traffic_light_driver.py
 # Author: Gabriel Moraes
-# Date: 2026-02-22
+# Date: 2026-02-22 (Refactored 2026-09-25)
 
 """
 High-level manager for a single traffic light intersection.
-Acts as a wrapper that utilizes the DriverFactory to establish
-and maintain the hardware connection (NTCIP or UTMC2).
+Acts as a pure orchestrator between the CARINA engine and underlying hardware drivers.
+Refactored to comply with SOLID and Clean Architecture by delegating I/O and parsing concerns.
 """
 
 import logging
-import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.drivers.base_driver import BaseTrafficDriver
 from src.drivers.driver_factory import DriverFactory
-from src.utils.paths import get_base_output_dir
+from src.drivers.traffic_color_logger import TrafficColorLogger
+from src.drivers.traffic_map_loader import TrafficMapLoader
 
 logger = logging.getLogger(__name__)
-cmd_logger = None  # Will be injected by ConnectionManager
+cmd_logger = None  # Injected optionally by ConnectionManager
 
 
 class TrafficLightDriver:
     """
-    Represents a logical intersection controller in the CARINA engine.
-    Abstracts the underlying hardware protocol from the AI agents.
+    Logical intersection controller in the CARINA engine.
+    Orchestrates hardware drivers, map phase states, and telemetry.
     """
 
     def __init__(
@@ -48,7 +48,7 @@ class TrafficLightDriver:
         ip_address: str,
         port: int,
         community_string: str = "public",
-        green_stages: list = None,
+        green_stages: Optional[List[int]] = None,
         locale_manager: Any = None,
     ) -> None:
         self.intersection_id = intersection_id
@@ -60,9 +60,9 @@ class TrafficLightDriver:
         self.hardware_driver: Optional[BaseTrafficDriver] = None
         self.is_connected = False
 
-        self.current_stage = None
-        self.green_stages = green_stages if green_stages is not None else []
-        self.stage_states = self._load_stage_states_from_map()
+        self.current_stage: Optional[int] = None
+        self.green_stages: List[int] = green_stages if green_stages is not None else []
+        self.stage_states: Dict[int, str] = self._load_stage_states_from_map()
 
         logger.info(
             self._get_string(
@@ -79,11 +79,14 @@ class TrafficLightDriver:
         return default.format(**kwargs) if default and kwargs else (default or key)
 
     def _connect(self) -> None:
-        """
-        Attempts to connect to the hardware using the factory discovery.
-        """
+        """Connects to hardware driver via DriverFactory discovery."""
         self.hardware_driver = DriverFactory.create_and_connect_driver(
-            self.ip_address, self.port, self.community_string, self.intersection_id, green_stages=self.green_stages
+            self.ip_address,
+            self.port,
+            self.community_string,
+            self.intersection_id,
+            green_stages=self.green_stages,
+            locale_manager=self.locale_manager,
         )
 
         if self.hardware_driver is not None:
@@ -109,60 +112,18 @@ class TrafficLightDriver:
                 )
             )
 
-    def _load_stage_states_from_map(self) -> dict:
-        """
-        Parses the SUMO network map (.net.xml or .net.xml.gz) to extract
-        the phase states for this intersection.
-        """
-        try:
-            from src.controller.map_discoverer import MapTopologyDiscoverer
-
-            map_file = MapTopologyDiscoverer.get_map_file()
-            if not map_file or not os.path.exists(map_file):
-                logger.warning(
-                    self._get_string(
-                        "drivers.traffic_light.map_not_found",
-                        default="[Intersection {id}] Map file not found: {path}",
-                        id=self.intersection_id,
-                        path=map_file,
-                    )
-                )
-                return {}
-
-            import gzip
-            import xml.etree.ElementTree as ET
-
-            opener = gzip.open if map_file.endswith(".gz") else open
-            with opener(map_file, "rt", encoding="utf-8") as f:
-                tree = ET.parse(f)
-
-            root = tree.getroot()
-            states = {}
-            for tl in root.findall("tlLogic"):
-                if tl.get("id") == self.intersection_id:
-                    for idx, phase in enumerate(tl.findall("phase")):
-                        state = phase.get("state")
-                        if state:
-                            states[idx] = state
-            return states
-        except Exception as e:
-            logger.error(
-                self._get_string(
-                    "drivers.traffic_light.map_load_failed",
-                    default="[Intersection {id}] Failed to load stage states from map: {error}",
-                    id=self.intersection_id,
-                    error=e,
-                )
-            )
-            return {}
+    def _load_stage_states_from_map(self) -> Dict[int, str]:
+        """Delegates SUMO map phase parsing to TrafficMapLoader (SRP)."""
+        return TrafficMapLoader.load_stage_states(self.intersection_id, locale_manager=self.locale_manager)
 
     def apply_logical_action(
-        self, action: int, current_stage_idx: int, green_stages: list, stage_codes: dict = None
+        self,
+        action: int,
+        current_stage_idx: int,
+        green_stages: List[int],
+        stage_codes: Optional[Dict[int, str]] = None,
     ) -> bool:
-        """
-        Translates a high-level logical AI action (0 = NEXT_STAGE, 1 = HOLD)
-        into protocol-specific actions and dispatches them to the physical hardware.
-        """
+        """Dispatches high-level AI logical action (0 = NEXT_STAGE, 1 = HOLD) to hardware."""
         self.current_stage = current_stage_idx
         self.green_stages = green_stages
 
@@ -178,70 +139,14 @@ class TrafficLightDriver:
 
         return self.hardware_driver.apply_logical_action(action, current_stage_idx, green_stages, stage_codes)
 
-    def log_carina_colors(self, current_stage_idx: int, stage_codes: dict = None) -> None:
-        """
-        Logs the commanded stage state to carina_colors.log in SUMO format.
-        """
-        # Load from map file if not already done
-        if not hasattr(self, "stage_states") or not self.stage_states:
-            self.stage_states = self._load_stage_states_from_map()
-
-        # Determine which states mapping to use (prefer map file, fallback to stage_codes)
-        active_states = self.stage_states if self.stage_states else (stage_codes if stage_codes else {})
-
-        if not active_states:
-            return
-
-        log_dir = os.path.join(get_base_output_dir(), "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, "carina_colors.log")
-
-        try:
-            if current_stage_idx in active_states:
-                state_str = active_states[current_stage_idx]
-                if state_str and all(c.lower() == "r" for c in state_str):
-                    stage_num = 0
-                else:
-                    stage_num = current_stage_idx + 1
-
-                with open(log_file, "a", encoding="utf-8") as f:
-                    f.write(f"estágio {stage_num}: {state_str}\n")
-        except Exception as e:
-            logger.error(
-                self._get_string(
-                    "drivers.traffic_light.colors_log_error",
-                    default="[Intersection {id}] Error writing to carina_colors.log: {error}",
-                    id=self.intersection_id,
-                    error=e,
-                )
-            )
-
-    def log_carina_override(self, override_type: str) -> None:
-        """
-        Logs a manual override (flash or dark/desligado) to carina_colors.log.
-        """
-        log_dir = os.path.join(get_base_output_dir(), "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, "carina_colors.log")
-
-        label = "flash" if override_type == "ALERT" else "desligado"
-        try:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(f"estágio {label}: {label}\n")
-        except Exception as e:
-            logger.error(
-                self._get_string(
-                    "drivers.traffic_light.override_log_error",
-                    default="[Intersection {id}] Error writing override to carina_colors.log: {error}",
-                    id=self.intersection_id,
-                    error=e,
-                )
-            )
+    def apply_decision(self, action: str) -> bool:
+        """Dispatches pure neural network decision ('HOLD' or 'ADVANCE') to hardware driver."""
+        if not self.is_connected or self.hardware_driver is None:
+            return False
+        return self.hardware_driver.apply_decision(action)
 
     def apply_action(self, action_data: Dict[str, Any]) -> bool:
-        """
-        Receives an action from the CARINA AI engine and forwards it to the hardware.
-        """
+        """Dispatches raw command action dictionary to hardware driver."""
         if not self.is_connected or self.hardware_driver is None:
             logger.warning(
                 self._get_string(
@@ -273,10 +178,29 @@ class TrafficLightDriver:
 
         return self.hardware_driver.send_action(action_data)
 
+    def log_carina_colors(self, current_stage_idx: int, stage_codes: Optional[Dict[int, str]] = None) -> None:
+        """Delegates stage color logging to TrafficColorLogger (SRP)."""
+        if not hasattr(self, "stage_states") or not self.stage_states:
+            self.stage_states = self._load_stage_states_from_map()
+
+        active_states = self.stage_states if self.stage_states else (stage_codes or {})
+        TrafficColorLogger.log_stage(
+            intersection_id=self.intersection_id,
+            current_stage_idx=current_stage_idx,
+            active_states=active_states,
+            locale_manager=self.locale_manager,
+        )
+
+    def log_carina_override(self, override_type: str) -> None:
+        """Delegates manual override logging to TrafficColorLogger (SRP)."""
+        TrafficColorLogger.log_override(
+            intersection_id=self.intersection_id,
+            override_type=override_type,
+            locale_manager=self.locale_manager,
+        )
+
     def get_status(self) -> Dict[str, Any]:
-        """
-        Retrieves current telemetry from the hardware to feed the state extractor and HMI.
-        """
+        """Retrieves real-time telemetry from hardware driver."""
         if not self.is_connected or self.hardware_driver is None:
             return {
                 "intersection_id": self.intersection_id,
@@ -297,10 +221,7 @@ class TrafficLightDriver:
         return telemetry
 
     def shutdown(self) -> None:
-        """
-        Safely disconnects the driver, releasing hardware control holds,
-        stopping the heartbeat and returning control to local mode.
-        """
+        """Safely shuts down hardware driver, releasing control and stopping watchdog."""
         if self.hardware_driver is not None:
             logger.info(
                 self._get_string(
@@ -326,6 +247,12 @@ class TrafficLightDriver:
                 self.hardware_driver.stop_heartbeat()
             except Exception as e:
                 logger.warning(f"Error stopping heartbeat for intersection {self.intersection_id}: {e}")
+
+            try:
+                if hasattr(self.hardware_driver, "shutdown") and callable(self.hardware_driver.shutdown):
+                    self.hardware_driver.shutdown()
+            except Exception as e:
+                logger.warning(f"Error shutting down hardware driver for intersection {self.intersection_id}: {e}")
 
             self.is_connected = False
             self.hardware_driver = None

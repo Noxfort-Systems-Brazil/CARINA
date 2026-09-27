@@ -18,9 +18,10 @@
 # Author: Gabriel Moraes
 # Date: 2026
 
-import os
 import logging
+import os
 from typing import List
+
 
 class MFDMapResolver:
     """
@@ -38,6 +39,7 @@ class MFDMapResolver:
         """
         try:
             from utils.paths import get_base_output_dir
+
             results_dir = os.path.join(get_base_output_dir(), "results")
             if os.path.exists(results_dir):
                 for root, dirs, files in os.walk(results_dir):
@@ -46,10 +48,13 @@ class MFDMapResolver:
                             net_file = os.path.join(root, f)
                             try:
                                 import sumolib
+
                                 net = sumolib.net.readNet(net_file, withInternal=False)
                                 tls = [node.getID() for node in net.getNodes() if node.getType() == "traffic_light"]
                                 if tls:
-                                    logging.info(f"[MFDMapResolver] Dynamically discovered {len(tls)} signalized IDs from {net_file}: {tls}")
+                                    logging.info(
+                                        f"[MFDMapResolver] Dynamically discovered {len(tls)} signalized IDs from {net_file}: {tls}"
+                                    )
                                     return tls
                             except Exception as e:
                                 logging.debug(f"[MFDMapResolver] sumolib read error on {net_file}: {e}")

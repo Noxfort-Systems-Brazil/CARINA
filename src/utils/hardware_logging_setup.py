@@ -18,13 +18,13 @@
 # Author: Gabriel Moraes
 # Date: August 10, 2026
 
-import os
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from typing import Tuple
 
-from src.utils.paths import get_base_output_dir
 from src.utils.logging_setup import gzip_namer, gzip_rotator
+from src.utils.paths import get_base_output_dir
 
 
 def setup_hardware_loggers() -> Tuple[logging.Logger, logging.Logger]:
@@ -43,15 +43,15 @@ def setup_hardware_loggers() -> Tuple[logging.Logger, logging.Logger]:
     logger = logging.getLogger("src.controller.connection_manager")
 
     if not any(isinstance(h, RotatingFileHandler) and h.baseFilename == hw_log_path for h in logger.handlers):
-        hw_handler = RotatingFileHandler(
-            hw_log_path, maxBytes=10 * 1024 * 1024, backupCount=100, encoding='utf-8'
-        )
+        hw_handler = RotatingFileHandler(hw_log_path, maxBytes=10 * 1024 * 1024, backupCount=100, encoding="utf-8")
         hw_handler.namer = gzip_namer
         hw_handler.rotator = gzip_rotator
-        hw_handler.setFormatter(logging.Formatter('%(asctime)s - [%(name)s] - [%(levelname)s] - %(message)s'))
+        hw_handler.setFormatter(logging.Formatter("%(asctime)s - [%(name)s] - [%(levelname)s] - %(message)s"))
         logger.addHandler(hw_handler)
     else:
-        hw_handler = next(h for h in logger.handlers if isinstance(h, RotatingFileHandler) and h.baseFilename == hw_log_path)
+        hw_handler = next(
+            h for h in logger.handlers if isinstance(h, RotatingFileHandler) and h.baseFilename == hw_log_path
+        )
 
     # 2. Setup dedicated commands logger
     cmd_log_path = os.path.abspath(os.path.join(log_dir, "commands.log"))
@@ -60,18 +60,20 @@ def setup_hardware_loggers() -> Tuple[logging.Logger, logging.Logger]:
     cmd_logger.propagate = False
 
     if not any(isinstance(h, RotatingFileHandler) and h.baseFilename == cmd_log_path for h in cmd_logger.handlers):
-        cmd_handler = RotatingFileHandler(
-            cmd_log_path, maxBytes=10 * 1024 * 1024, backupCount=100, encoding='utf-8'
-        )
+        cmd_handler = RotatingFileHandler(cmd_log_path, maxBytes=10 * 1024 * 1024, backupCount=100, encoding="utf-8")
         cmd_handler.namer = gzip_namer
         cmd_handler.rotator = gzip_rotator
-        cmd_handler.setFormatter(logging.Formatter('%(asctime)s - [CARINA_CORE] - %(message)s'))
+        cmd_handler.setFormatter(logging.Formatter("%(asctime)s - [CARINA_CORE] - %(message)s"))
         cmd_logger.addHandler(cmd_handler)
 
     # 3. Bind hardware handlers to driver modules
     try:
         import src.drivers.traffic_light_driver
-        if not any(isinstance(h, RotatingFileHandler) and h.baseFilename == hw_log_path for h in src.drivers.traffic_light_driver.logger.handlers):
+
+        if not any(
+            isinstance(h, RotatingFileHandler) and h.baseFilename == hw_log_path
+            for h in src.drivers.traffic_light_driver.logger.handlers
+        ):
             src.drivers.traffic_light_driver.logger.addHandler(hw_handler)
         src.drivers.traffic_light_driver.cmd_logger = cmd_logger
     except Exception as e:
@@ -79,7 +81,11 @@ def setup_hardware_loggers() -> Tuple[logging.Logger, logging.Logger]:
 
     try:
         import src.drivers.driver_factory
-        if not any(isinstance(h, logging.FileHandler) and h.baseFilename == hw_log_path for h in src.drivers.driver_factory.logger.handlers):
+
+        if not any(
+            isinstance(h, logging.FileHandler) and h.baseFilename == hw_log_path
+            for h in src.drivers.driver_factory.logger.handlers
+        ):
             src.drivers.driver_factory.logger.addHandler(hw_handler)
     except Exception as e:
         logger.warning(f"[HARDWARE_LOGGING] Warning binding handlers to driver_factory: {e}")

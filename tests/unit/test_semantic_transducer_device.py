@@ -172,6 +172,7 @@ def test_transducer_prompt_truncation_and_dynamic_max_tokens():
 
     # 2. Test dynamic max_tokens calculation
     mock_model = MagicMock()
+    del mock_model.generate_report
     # Mock tokenization to return a list of 2000 tokens
     mock_model.tokenize.return_value = [1] * 2000
     mock_model.create_chat_completion.return_value = {

@@ -18,7 +18,8 @@
 # Author: Gabriel Moraes
 # Date: August 8, 2026
 
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 
 class MFDZoneCalculator:
     """
@@ -36,11 +37,7 @@ class MFDZoneCalculator:
         :return: Dict containing green_zone_pct, yellow_zone_pct, and red_zone_pct
         """
         if not history or peak_accum <= 0:
-            return {
-                "green_zone_pct": 33.3,
-                "yellow_zone_pct": 33.3,
-                "red_zone_pct": 33.4
-            }
+            return {"green_zone_pct": 33.3, "yellow_zone_pct": 33.3, "red_zone_pct": 33.4}
 
         green_count = 0
         yellow_count = 0
@@ -61,5 +58,5 @@ class MFDZoneCalculator:
         return {
             "green_zone_pct": round((green_count / total) * 100.0, 1),
             "yellow_zone_pct": round((yellow_count / total) * 100.0, 1),
-            "red_zone_pct": round((red_count / total) * 100.0, 1)
+            "red_zone_pct": round((red_count / total) * 100.0, 1),
         }

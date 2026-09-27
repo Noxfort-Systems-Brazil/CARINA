@@ -21,8 +21,7 @@
 import logging
 import time
 from multiprocessing.connection import Connection
-from typing import Optional, Any, Dict
-
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +32,14 @@ class FailsafeManager:
         - AUTOMATIC: AI Neural Network controls traffic signals
         - WATCHDOG: Fixed-time fallback (Synapse connection lost)
         - MANUAL: Operator override (future)
-    
+
     Owns the FixedTimeController and coordinates the transition between
     AI-controlled and fixed-time modes with strict safety guarantees.
     """
 
-    def __init__(self, ai_pipe_conn: Connection, monitor_client: Optional[Any] = None, locale_manager: Optional[Any] = None):
+    def __init__(
+        self, ai_pipe_conn: Connection, monitor_client: Optional[Any] = None, locale_manager: Optional[Any] = None
+    ):
         self.current_operation_mode = "AUTOMATIC"
         self.failsafe_active = False
 
@@ -51,8 +52,6 @@ class FailsafeManager:
         # Used by CentralController to detect Synapse silence in-process.
         self._last_frame_time: Optional[float] = None
         self._failsafe_timeout: float = 0.30  # 300ms default, overridden by settings
-
-
 
         # --- Failsafe Statistics ---
         self._failsafe_activation_time: Optional[float] = None
@@ -80,7 +79,7 @@ class FailsafeManager:
         """
         Check if Synapse has been silent beyond the timeout threshold.
         Called periodically from CentralController main loop.
-        
+
         Returns:
             True if healthy (frames arriving), False if timeout exceeded.
         """
@@ -92,7 +91,7 @@ class FailsafeManager:
         return elapsed <= self._failsafe_timeout
 
     def _get_string(self, key: str, default: str = None, **kwargs) -> str:
-        if self.locale_manager and hasattr(self.locale_manager, 'get_string'):
+        if self.locale_manager and hasattr(self.locale_manager, "get_string"):
             return self.locale_manager.get_string(key, default=default, **kwargs)
         return default.format(**kwargs) if default and kwargs else (default or key)
 
@@ -109,7 +108,7 @@ class FailsafeManager:
                 self._get_string(
                     "failsafe_manager.entering_watchdog",
                     default="[FailsafeManager] 🚨 ENTERING WATCHDOG MODE (Fixed-Time Fallback). AI Neural Network PAUSED. Event #{event}.",
-                    event=self._total_failsafe_events
+                    event=self._total_failsafe_events,
                 )
             )
 
@@ -117,7 +116,12 @@ class FailsafeManager:
             self.current_operation_mode = "WATCHDOG"
 
             # TODO: Emit command to hardware controller to activate ALL_RED then local fixed-plans
-            logger.critical(self._get_string("failsafe_manager.commanding_all_red", default="[FailsafeManager] ⚠️ COMMANDING LOCAL CONTROLLER: Execute ALL_RED transition followed by local fixed-time plans."))
+            logger.critical(
+                self._get_string(
+                    "failsafe_manager.commanding_all_red",
+                    default="[FailsafeManager] ⚠️ COMMANDING LOCAL CONTROLLER: Execute ALL_RED transition followed by local fixed-time plans.",
+                )
+            )
 
             # Report Critical Incident to External Monitor (MQTT)
             if self.monitor_client:
@@ -129,17 +133,23 @@ class FailsafeManager:
                             "monitor.watchdog_trigger",
                             default="Watchdog timeout triggered (>{timeout}ms silence). Switching to Fixed-Time fallback. Event #{event}.",
                             timeout=f"{self._failsafe_timeout * 1000:.0f}",
-                            event=self._total_failsafe_events
-                        )
+                            event=self._total_failsafe_events,
+                        ),
                     )
                 except Exception as e:
-                    logger.error(self._get_string("failsafe_manager.mqtt_incident_error", default="Error reporting failsafe incident via MQTT: {error}", error=e))
+                    logger.error(
+                        self._get_string(
+                            "failsafe_manager.mqtt_incident_error",
+                            default="Error reporting failsafe incident via MQTT: {error}",
+                            error=e,
+                        )
+                    )
 
     def attempt_recovery(self) -> bool:
         """
         Attempts to recover the system from Watchdog mode.
         Called when a new TrafficFrame arrives during failsafe.
-        
+
         Returns True if recovery occurred in this call.
         """
         if self.failsafe_active:
@@ -149,12 +159,17 @@ class FailsafeManager:
                 self._get_string(
                     "failsafe_manager.signal_restored",
                     default="[FailsafeManager] ✅ SYNAPSE SIGNAL RESTORED after {elapsed:.1f}s. Resuming AI Neural Network control.",
-                    elapsed=elapsed
+                    elapsed=elapsed,
                 )
             )
 
             # TODO: Emit command to hardware controller to resume remote control
-            logger.info(self._get_string("failsafe_manager.commanding_resume", default="[FailsafeManager] ✅ COMMANDING LOCAL CONTROLLER: Resume remote AI control."))
+            logger.info(
+                self._get_string(
+                    "failsafe_manager.commanding_resume",
+                    default="[FailsafeManager] ✅ COMMANDING LOCAL CONTROLLER: Resume remote AI control.",
+                )
+            )
 
             self.failsafe_active = False
             self.current_operation_mode = "AUTOMATIC"
@@ -168,17 +183,27 @@ class FailsafeManager:
                         message=self._get_string(
                             "monitor.synapse_restored",
                             default="Synapse signal restored after {elapsed}s. Watchdog mode disabled, resuming AI Neural Network.",
-                            elapsed=f"{elapsed:.1f}"
-                        )
+                            elapsed=f"{elapsed:.1f}",
+                        ),
                     )
                 except Exception as e:
-                    logger.error(self._get_string("failsafe_manager.mqtt_recovery_error", default="Error reporting recovery incident via MQTT: {error}", error=e))
+                    logger.error(
+                        self._get_string(
+                            "failsafe_manager.mqtt_recovery_error",
+                            default="Error reporting recovery incident via MQTT: {error}",
+                            error=e,
+                        )
+                    )
 
             # Wake up AI process
             try:
-                self.ai_pipe_conn.send(('system', 'wakeup', (), {}))
+                self.ai_pipe_conn.send(("system", "wakeup", (), {}))
             except Exception as e:
-                logger.error(self._get_string("failsafe_manager.wakeup_error", default="Error sending wakeup signal to AI: {error}", error=e))
+                logger.error(
+                    self._get_string(
+                        "failsafe_manager.wakeup_error", default="Error sending wakeup signal to AI: {error}", error=e
+                    )
+                )
 
             return True
         return False
@@ -197,5 +222,5 @@ class FailsafeManager:
             "operation_mode": self.current_operation_mode,
             "failsafe_active": self.failsafe_active,
             "total_failsafe_events": self._total_failsafe_events,
-            "fixed_time": {} # Kept for dashboard compatibility
+            "fixed_time": {},  # Kept for dashboard compatibility
         }

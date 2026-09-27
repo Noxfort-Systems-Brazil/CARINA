@@ -22,22 +22,25 @@
 Defines the ValidationEvaluator class, responsible for evaluating an agent's
 performance in an environment, without the agent learning during the evaluation.
 """
-import torch
 import logging
 from collections import deque
+
 import numpy as np
+import torch
+
 
 class ValidationEvaluator:
     """
     Executes validation episodes to measure the agents' generalization performance.
     """
+
     def __init__(self, settings):
         """
         Inicializa o Avaliador.
         :param settings: As configurações globais do projeto.
         """
         self.settings = settings
-        self.sequence_length = self.settings.getint('AI_TRAINING', 'sequence_length', fallback=4)
+        self.sequence_length = self.settings.getint("AI_TRAINING", "sequence_length", fallback=4)
         self.state_history = {}
         logging.info("[EVAL] Módulo ValidationEvaluator criado.")
 
@@ -48,7 +51,7 @@ class ValidationEvaluator:
             if state:
                 history = deque(maxlen=self.sequence_length)
                 # Creates a zeroed state with the same size as the observed state
-                zero_state = np.zeros_like(state) if isinstance(state, (list, np.ndarray)) else [0.0]*len(state)
+                zero_state = np.zeros_like(state) if isinstance(state, (list, np.ndarray)) else [0.0] * len(state)
                 for _ in range(self.sequence_length):
                     history.append(zero_state)
                 self.state_history[tl_id] = history
@@ -65,11 +68,11 @@ class ValidationEvaluator:
 
         # Puts policy_net in evaluation mode
         for agent in agents.values():
-            if hasattr(agent, 'policy_net'):
+            if hasattr(agent, "policy_net"):
                 agent.policy_net.eval()
 
         cycle_rewards = []
-        episode_max_steps = self.settings.getint('AI_TRAINING', 'episode_max_steps', fallback=5000)
+        episode_max_steps = self.settings.getint("AI_TRAINING", "episode_max_steps", fallback=5000)
 
         for i_episode in range(num_episodes):
             env.reset()
@@ -77,9 +80,9 @@ class ValidationEvaluator:
             if not current_states:
                 logging.warning(f"[EVAL] Ambiente retornou estado inicial vazio no episódio {i_episode+1}.")
                 continue
-                
+
             self._initialize_state_history(current_states)
-            
+
             episode_reward = 0
             step = 0
             done = False
@@ -88,32 +91,35 @@ class ValidationEvaluator:
                 actions_to_apply = {}
                 for tl_id, agent in agents.items():
                     state = current_states.get(tl_id, [])
-                    if not state: continue
-                    
+                    if not state:
+                        continue
+
                     if tl_id in self.state_history:
                         self.state_history[tl_id].append(state)
                         state_sequence = list(self.state_history[tl_id])
-                        
+
                         state_tensor = torch.tensor([state_sequence], dtype=torch.float32).to(agent.device)
                         action, _, _, _ = agent.choose_action(state_tensor)
                         actions_to_apply[tl_id] = action.item()
 
                 next_states, rewards, done = env.step(actions=actions_to_apply)
-                
+
                 if rewards:
                     episode_reward += sum(rewards.values())
-                    
+
                 if next_states:
                     current_states = next_states
-                    
+
                 step += 1
-            
+
             cycle_rewards.append(episode_reward)
-            logging.info(f"[EVAL] Episódio de validação {i_episode+1}/{num_episodes} finalizado após {step} passos. Recompensa: {episode_reward:.2f}")
+            logging.info(
+                f"[EVAL] Episódio de validação {i_episode+1}/{num_episodes} finalizado após {step} passos. Recompensa: {episode_reward:.2f}"
+            )
 
         # Puts policy_net back into training mode
         for agent in agents.values():
-            if hasattr(agent, 'policy_net'):
+            if hasattr(agent, "policy_net"):
                 agent.policy_net.train()
 
         average_reward = np.mean(cycle_rewards) if cycle_rewards else 0

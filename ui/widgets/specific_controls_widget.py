@@ -18,15 +18,17 @@
 # Author: Gabriel Moraes
 # Date: 2026-06-09
 
-import flet as ft
 from typing import Callable, Dict
 
-from ui.handlers.locale_manager import LocaleManager
-from ui.components.semaphore_info_display import SemaphoreInfoDisplayWidget
-from ui.components.semaphore_actions import SemaphoreActionsWidget
-from ui.dialogs.confirmation_dialog_manager import ConfirmationDialogManager
+import flet as ft
+
 from ui.clients.control_client import ControlClient
+from ui.components.semaphore_actions import SemaphoreActionsWidget
+from ui.components.semaphore_info_display import SemaphoreInfoDisplayWidget
+from ui.dialogs.confirmation_dialog_manager import ConfirmationDialogManager
+from ui.handlers.locale_manager import LocaleManager
 from ui.handlers.specific_controls_handler import SpecificControlsHandler
+
 
 class SpecificControlsWidget(ft.Card):
     def __init__(
@@ -35,11 +37,9 @@ class SpecificControlsWidget(ft.Card):
         locale_manager: LocaleManager,
         security_ui=None,
         on_close: Callable[[], None] = None,
-        on_specific_command: Callable[[str, str], None] = None
+        on_specific_command: Callable[[str, str], None] = None,
     ):
-        super().__init__(
-            elevation=4, visible=False, animate_opacity=300
-        )
+        super().__init__(elevation=4, visible=False, animate_opacity=300)
 
         self.locale_manager = locale_manager
         self.security_ui = security_ui
@@ -50,8 +50,7 @@ class SpecificControlsWidget(ft.Card):
 
         self.info_display = SemaphoreInfoDisplayWidget(locale_manager=self.locale_manager)
         self.actions = SemaphoreActionsWidget(
-            locale_manager=self.locale_manager,
-            on_action_requested=self._handle_action_request
+            locale_manager=self.locale_manager, on_action_requested=self._handle_action_request
         )
 
         # Save button removed as per request
@@ -65,8 +64,8 @@ class SpecificControlsWidget(ft.Card):
                     self.actions,
                     self.close_button,
                 ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER
-            )
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
         )
 
     def did_mount(self):
@@ -78,23 +77,26 @@ class SpecificControlsWidget(ft.Card):
                 locale_manager=self.locale_manager,
                 security_ui=self.security_ui,
                 on_update_view=self.update,
-                on_specific_command=self.on_specific_command
+                on_specific_command=self.on_specific_command,
             )
         self.update_translations(self.locale_manager)
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     def update_translations(self, lm: LocaleManager):
         self.close_button.tooltip = lm.get_string("dashboard_view.close_panel_tooltip")
         self.info_display.update_translations(lm)
         self.actions.update_translations(lm)
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     def exibir_controles_semaforo(self, semaphore_id: str, semaphore_data: Dict, phase: str, mode: str):
-        if not self.handler: return
+        if not self.handler:
+            return
         self.handler.open_for_semaphore(semaphore_id, semaphore_data)
 
         mode_manual_translated = self.locale_manager.get_string("dashboard_view.mode_manual")
-        is_editable = True # Emergency overrides (ALERT/OFF) are always allowed
+        is_editable = True  # Emergency overrides (ALERT/OFF) are always allowed
 
         override_state = self.handler.get_current_override_state()
 
@@ -109,17 +111,21 @@ class SpecificControlsWidget(ft.Card):
         self.actions.deactivate_button.disabled = not is_editable
 
         self.visible = True
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     def _handle_action_request(self, action: str):
-        if not self.handler: return
+        if not self.handler:
+            return
         self.handler.request_confirmation(action)
 
     def _execute_and_refresh_ui(self, action: str):
-        #...(internal logic remains the same)
+        # ...(internal logic remains the same)
         pass
 
     def ocultar_controles_semaforo(self, e=None):
         self.visible = False
-        if self.page: self.update()
-        if self.on_close: self.on_close()
+        if self.page:
+            self.update()
+        if self.on_close:
+            self.on_close()

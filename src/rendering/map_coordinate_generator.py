@@ -18,49 +18,54 @@
 # Author: Gabriel Moraes
 # Date: July 20, 2026
 
-import os
 import json
 import logging
+import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.utils.locale_manager_backend import LocaleManagerBackend
 
+
 class MapCoordinateGenerator:
     """Specialist responsible for generating standard pixel coordinates JSON for traffic light nodes."""
 
-    def __init__(self, locale_manager: 'LocaleManagerBackend'):
+    def __init__(self, locale_manager: "LocaleManagerBackend"):
         self.locale_manager = locale_manager
 
     def generate_coordinates_file(
-        self, map_data: tuple, traffic_light_ids: list,
-        scenario_results_dir: str, image_width: int = 3840, image_height: int = 2160
+        self,
+        map_data: tuple,
+        traffic_light_ids: list,
+        scenario_results_dir: str,
+        image_width: int = 3840,
+        image_height: int = 2160,
     ) -> str | None:
         lm = self.locale_manager
         try:
             if not isinstance(map_data, tuple) or len(map_data) != 2:
-                 logging.error("Dados do mapa inválidos para gerar coordenadas.")
-                 return None
+                logging.error("Dados do mapa inválidos para gerar coordenadas.")
+                return None
             nodes, edges = map_data
             if not nodes or not edges:
-                 logging.error("Nós ou arestas ausentes nos dados do mapa para gerar coordenadas.")
-                 return None
+                logging.error("Nós ou arestas ausentes nos dados do mapa para gerar coordenadas.")
+                return None
 
             # Collects all x and y coordinates to find the limits
-            all_x = [n['x'] for n in nodes.values() if 'x' in n]
-            all_y = [n['y'] for n in nodes.values() if 'y' in n]
+            all_x = [n["x"] for n in nodes.values() if "x" in n]
+            all_y = [n["y"] for n in nodes.values() if "y" in n]
             for e in edges:
-                if 'shape' in e and e['shape']:
+                if "shape" in e and e["shape"]:
                     try:
-                        x_coords, y_coords = zip(*e['shape'])
+                        x_coords, y_coords = zip(*e["shape"])
                         all_x.extend(x_coords)
                         all_y.extend(y_coords)
                     except ValueError:
-                         pass
+                        pass
 
             if not all_x or not all_y:
-                 logging.error("Não foi possível extrair coordenadas dos nós/arestas.")
-                 return None
+                logging.error("Não foi possível extrair coordenadas dos nós/arestas.")
+                return None
 
             min_x, max_x = min(all_x), max(all_x)
             min_y, max_y = min(all_y), max(all_y)
@@ -68,8 +73,10 @@ class MapCoordinateGenerator:
             map_width = max_x - min_x
             map_height = max_y - min_y
             if map_width <= 0 or map_height <= 0:
-                 logging.warning(f"Dimensões do mapa inválidas calculadas: W={map_width}, H={map_height}. Não é possível gerar coordenadas.")
-                 return None
+                logging.warning(
+                    f"Dimensões do mapa inválidas calculadas: W={map_width}, H={map_height}. Não é possível gerar coordenadas."
+                )
+                return None
 
             padding_ratio = (0.1 * 2) / 9.6
             padding = image_width * padding_ratio / 2
@@ -94,12 +101,12 @@ class MapCoordinateGenerator:
             for tl_id in traffic_light_ids:
                 if tl_id in nodes:
                     node = nodes[tl_id]
-                    if 'x' in node and 'y' in node:
-                        pixel_x = node['x'] * scale + offset_x
-                        pixel_y = offset_y - (node['y'] * scale)
-                        coordinates[tl_id] = {'x': round(pixel_x, 2), 'y': round(pixel_y, 2)}
+                    if "x" in node and "y" in node:
+                        pixel_x = node["x"] * scale + offset_x
+                        pixel_y = offset_y - (node["y"] * scale)
+                        coordinates[tl_id] = {"x": round(pixel_x, 2), "y": round(pixel_y, 2)}
                     else:
-                         logging.warning(f"Nó '{tl_id}' não possui coordenadas 'x' ou 'y'.")
+                        logging.warning(f"Nó '{tl_id}' não possui coordenadas 'x' ou 'y'.")
 
             maps_output_dir = os.path.join(scenario_results_dir, "maps")
             os.makedirs(maps_output_dir, exist_ok=True)

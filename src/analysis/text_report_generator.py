@@ -18,13 +18,13 @@
 # Author: Gabriel Moraes
 # Date: July 25, 2026
 
-import sys
 import os
-from typing import TYPE_CHECKING, Dict, Any
+import sys
+from typing import TYPE_CHECKING, Any, Dict
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
@@ -33,10 +33,17 @@ if TYPE_CHECKING:
 
 from analysis.text_report_formatter import TextReportFormatter
 
+
 class TextReportGenerator:
     """Formats analysis results into a professional text report."""
 
-    def __init__(self, analysis_results: Dict[str, Any], analysis_params: Dict[str, Any], scenario_name: str, locale_manager: 'LocaleManagerBackend'):
+    def __init__(
+        self,
+        analysis_results: Dict[str, Any],
+        analysis_params: Dict[str, Any],
+        scenario_name: str,
+        locale_manager: "LocaleManagerBackend",
+    ):
         self.results = analysis_results
         self.params = analysis_params
         self.scenario_name = scenario_name
@@ -48,5 +55,5 @@ class TextReportGenerator:
             results=self.results,
             params=self.params,
             scenario_name=self.scenario_name,
-            locale_manager=self.locale_manager
+            locale_manager=self.locale_manager,
         )

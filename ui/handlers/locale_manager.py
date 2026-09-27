@@ -24,17 +24,19 @@ In this version, the get_string method was updated to accept the 'default'
 argument (formerly 'fallback') for compatibility with the Views.
 """
 
-import os
 import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any, Dict, List
 
 from ui.handlers.settings_handler import SettingsHandler
+
 
 class LocaleManager:
     """
     Manages loading and accessing the UI translation strings.
     """
+
     def __init__(self):
         """
         Initializes the translation manager by reading the saved
@@ -42,14 +44,14 @@ class LocaleManager:
         """
         self.locales_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "locales"))
         self.fallback_lang_code = "en_us"
-        
+
         self.current_lang_data: Dict[str, Any] = {}
         self.fallback_lang_data: Dict[str, Any] = {}
 
         settings_handler = SettingsHandler()
         current_settings = settings_handler.get_current_settings()
-        initial_lang_code = current_settings.get('language', 'pt_br')
-        
+        initial_lang_code = current_settings.get("language", "pt_br")
+
         logging.info(f"[LocaleManager] Initial language set to '{initial_lang_code}' from settings.")
         self.load_language(initial_lang_code)
 
@@ -61,7 +63,7 @@ class LocaleManager:
         if not os.path.exists(file_path):
             logging.error(f"[LocaleManager] Translation file not found: {file_path}")
             return {}
-        
+
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -75,7 +77,7 @@ class LocaleManager:
         is always loaded as a backup.
         """
         logging.info(f"[LocaleManager] Loading language: '{lang_code}'...")
-        
+
         self.fallback_lang_data = self._load_file(self.fallback_lang_code)
         if not self.fallback_lang_data:
             logging.critical("[LocaleManager] CRITICAL FAILURE: Could not load the fallback language (en_us).")
@@ -84,7 +86,7 @@ class LocaleManager:
             self.current_lang_data = self.fallback_lang_data
         else:
             self.current_lang_data = self._load_file(lang_code)
-        
+
         logging.info(f"'{lang_code}' loaded successfully.")
 
     def _get_nested_value(self, data: Dict, keys: List[str]) -> str | None:
@@ -105,19 +107,19 @@ class LocaleManager:
         Implements fallback logic to English and to a default value.
         Formats the resulting string with any provided kwargs.
         """
-        keys = key.split('.')
-        
+        keys = key.split(".")
+
         # 1. Try the translation in the current language
         translation = self._get_nested_value(self.current_lang_data, keys)
         if translation is not None:
             return translation.format(**kwargs) if kwargs else translation
-            
+
         # 2. If it fails, try the translation in the fallback language (English)
         # logging.warning(f"[LocaleManager] Key '{key}' not found in current language. Trying to fallback to English...")
         fallback_translation = self._get_nested_value(self.fallback_lang_data, keys)
         if fallback_translation is not None:
             return fallback_translation.format(**kwargs) if kwargs else fallback_translation
-            
+
         # 3. If it fails again, use the default value provided in the call
         if default is not None:
             # logging.warning(f"[LocaleManager] Key '{key}' not found in English. Using default value.")

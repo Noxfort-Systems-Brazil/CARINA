@@ -18,17 +18,19 @@
 # Author: Gabriel Moraes
 # Date: August 6, 2026
 
-import os
-import sys
-import time
 import logging
+import os
 import signal
+import sys
 import threading
+import time
 
 # Conditional imports for UI and System Tray
 try:
-    import ui.main_ui as ui_module
     import flet as ft
+
+    import ui.main_ui as ui_module
+
     UI_AVAILABLE = True
 except ImportError as e:
     UI_AVAILABLE = False
@@ -37,6 +39,7 @@ except ImportError as e:
 
 try:
     from ui.handlers.tray_handler import TrayHandler
+
     TRAY_AVAILABLE = True
 except ImportError:
     TRAY_AVAILABLE = False
@@ -49,6 +52,7 @@ class UITrayManager:
     Manages the lifecycle of Flet UI, System Tray icon,
     and OS signal handling (SIGINT/SIGTERM).
     """
+
     def __init__(self, process_manager, bundle_root: str):
         self.process_manager = process_manager
         self.bundle_root = bundle_root
@@ -58,23 +62,25 @@ class UITrayManager:
 
         try:
             from ui.providers.live_data_provider import LiveDataProvider
+
             LiveDataProvider.GLOBAL_SHUTDOWN_EVENT = self.shutdown_requested
         except Exception:
             pass
 
     def setup_signal_handlers(self):
         """Registers OS signal handlers for graceful shutdown (Ctrl+C / SIGTERM)."""
+
         def handle_shutdown_signal(signum, frame):
             logging.info(f"[Launcher] Interrupt signal ({signum}) received via terminal. Shutting down CARINA...")
             self.shutdown_requested.set()
             # Force close Flet UI window immediately if active
             try:
-                for mod_name in ['ui.main_ui', 'main_ui']:
+                for mod_name in ["ui.main_ui", "main_ui"]:
                     if mod_name in sys.modules:
                         ui_mod = sys.modules[mod_name]
-                        page = getattr(ui_mod, 'active_page', None)
+                        page = getattr(ui_mod, "active_page", None)
                         if page:
-                            if hasattr(page, 'window') and page.window is not None:
+                            if hasattr(page, "window") and page.window is not None:
                                 page.window.prevent_close = False
                                 page.window.destroy()
                             else:
@@ -86,7 +92,7 @@ class UITrayManager:
 
         try:
             signal.signal(signal.SIGINT, handle_shutdown_signal)
-            if hasattr(signal, 'SIGTERM'):
+            if hasattr(signal, "SIGTERM"):
                 signal.signal(signal.SIGTERM, handle_shutdown_signal)
         except Exception as e:
             logging.warning(f"[Launcher] Could not register signal handler: {e}")
@@ -103,13 +109,13 @@ class UITrayManager:
 
         # 1. Direct window destruction to unblock Flet event loop on main thread
         try:
-            for mod_name in ['ui.main_ui', 'main_ui']:
+            for mod_name in ["ui.main_ui", "main_ui"]:
                 if mod_name in sys.modules:
                     ui_mod = sys.modules[mod_name]
-                    page = getattr(ui_mod, 'active_page', None)
+                    page = getattr(ui_mod, "active_page", None)
                     if page:
                         try:
-                            if hasattr(page, 'window') and page.window is not None:
+                            if hasattr(page, "window") and page.window is not None:
                                 page.window.prevent_close = False
                                 page.window.destroy()
                             else:
@@ -130,12 +136,13 @@ class UITrayManager:
         # 3. Kill lingering child processes
         try:
             import psutil
+
             current_proc = psutil.Process(os.getpid())
             children = current_proc.children(recursive=True)
             for child in children:
                 try:
                     if child.is_running():
-                        cmdline = " ".join(child.cmdline()) if hasattr(child, 'cmdline') else ""
+                        cmdline = " ".join(child.cmdline()) if hasattr(child, "cmdline") else ""
                         if "resource_tracker" not in cmdline:
                             child.kill()
                 except Exception:
@@ -153,9 +160,11 @@ class UITrayManager:
         assets_dir = os.path.join(self.bundle_root, "ui", "assets")
         ui_module.restore_event = self.restore_requested
         ui_module.shutdown_event = self.shutdown_requested
-        ui_module.sas_result_queue = self.process_manager.queues.get('sas_results')
-        ui_module.mfd_result_queue = self.process_manager.queues.get('mfd_results')
-        ui_module.mfd_trigger_queue = self.process_manager.queues.get('mfd_trigger')
+        ui_module.sas_result_queue = self.process_manager.queues.get("sas_results")
+        ui_module.mfd_result_queue = self.process_manager.queues.get("mfd_results")
+        ui_module.mfd_trigger_queue = self.process_manager.queues.get("mfd_trigger")
+        ui_module.ui_telemetry_queue = self.process_manager.queues.get("ui_telemetry")
+        ui_module.ui_command_queue = self.process_manager.queues.get("ui")
         try:
             ft.app(target=ui_module.main, assets_dir=assets_dir)
         except RuntimeError as e:
@@ -197,7 +206,9 @@ class UITrayManager:
                                 break
                             time.sleep(0.1)
                     else:
-                        logging.info("[Launcher] Window closed and System Tray is not active. Terminating application...")
+                        logging.info(
+                            "[Launcher] Window closed and System Tray is not active. Terminating application..."
+                        )
                         self.shutdown_requested.set()
                         break
                 else:

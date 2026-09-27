@@ -20,40 +20,38 @@
 
 import os
 import sys
+
 import pytest
 
 # Ensure src is in sys.path so we import 'sds' identically to the backend layers
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from sds.tls_state_provider import TlsStateProvider
 from sds.tls_map_extractor import TlsMapExtractor
+from sds.tls_state_provider import TlsStateProvider
+
 
 @pytest.mark.unit
 def test_get_live_states_for_junction_direct_mapping():
     # Setup test scenario
     tl_id = "J_TEST"
-    
+
     # Manually populate TlsMapExtractor cached topology details
-    TlsMapExtractor._tl_phases[tl_id] = {
-        0: "GGggrrrr",
-        1: "yyyyrrrr",
-        2: "rrrrGGgg"
-    }
-    
+    TlsMapExtractor._tl_phases[tl_id] = {0: "GGggrrrr", 1: "yyyyrrrr", 2: "rrrrGGgg"}
+
     TlsMapExtractor._tl_connections[tl_id] = {
-        0: {'edge': 'edge_east', 'dir': 's'},
-        1: {'edge': 'edge_east', 'dir': 'l'},
-        2: {'edge': 'edge_west', 'dir': 's'},
-        3: {'edge': 'edge_west', 'dir': 'l'},
-        4: {'edge': 'edge_north', 'dir': 's'},
-        5: {'edge': 'edge_north', 'dir': 'l'},
-        6: {'edge': 'edge_south', 'dir': 's'},
-        7: {'edge': 'edge_south', 'dir': 'l'},
+        0: {"edge": "edge_east", "dir": "s"},
+        1: {"edge": "edge_east", "dir": "l"},
+        2: {"edge": "edge_west", "dir": "s"},
+        3: {"edge": "edge_west", "dir": "l"},
+        4: {"edge": "edge_north", "dir": "s"},
+        5: {"edge": "edge_north", "dir": "l"},
+        6: {"edge": "edge_south", "dir": "s"},
+        7: {"edge": "edge_south", "dir": "l"},
     }
-    
+
     # 1. Test phase index 0 (Green for East/West)
     state = TlsStateProvider.get_live_states_for_junction([], tl_id, 0)
     assert state["display_state"] == "GREEN"
@@ -61,13 +59,13 @@ def test_get_live_states_for_junction_direct_mapping():
     assert state["lanes_state"]["edge_west (S)"] == "G"
     assert state["lanes_state"]["edge_north (S)"] == "r"
     assert state["lanes_state"]["edge_south (S)"] == "r"
-    
+
     # 2. Test phase index 1 (Yellow for East/West)
     state = TlsStateProvider.get_live_states_for_junction([], tl_id, 1)
     assert state["display_state"] == "YELLOW"
     assert state["lanes_state"]["edge_east (S)"] == "y"
     assert state["lanes_state"]["edge_north (S)"] == "r"
-    
+
     # 3. Test phase index 2 (Green for North/South)
     state = TlsStateProvider.get_live_states_for_junction([], tl_id, 2)
     assert state["display_state"] == "GREEN"

@@ -33,14 +33,14 @@ from src.controller.common_types import StageDefinition
 logger = logging.getLogger(__name__)
 
 # Valid SUMO signal characters
-_VALID_SIGNAL_CHARS = frozenset({'G', 'g', 'r', 'y', 'o', 's', 'u'})
-_GREEN_CHARS = frozenset({'G', 'g'})
+_VALID_SIGNAL_CHARS = frozenset({"G", "g", "r", "y", "o", "s", "u"})
+_GREEN_CHARS = frozenset({"G", "g"})
 
 
 def validate_stages(tls_id: str, phases: List[StageDefinition], locale_manager=None) -> bool:
     """
     Defense-in-depth validation of stage definitions.
-    
+
     Checks:
         1. All state strings have the same length (same number of signal links)
         2. All characters are valid SUMO signal characters
@@ -48,12 +48,13 @@ def validate_stages(tls_id: str, phases: List[StageDefinition], locale_manager=N
            (conflict between phases — if link i is green in stage A and
            also green in stage B, then A and B conflict and must never
            overlap. This is guaranteed by the state machine, but we verify.)
-    
+
     Returns:
         True if all phases pass validation.
     """
+
     def _get_string(key: str, default: str = None, **kwargs) -> str:
-        if locale_manager and hasattr(locale_manager, 'get_string'):
+        if locale_manager and hasattr(locale_manager, "get_string"):
             return locale_manager.get_string(key, default=default, **kwargs)
         return default.format(**kwargs) if default and kwargs else (default or key)
 
@@ -72,7 +73,7 @@ def validate_stages(tls_id: str, phases: List[StageDefinition], locale_manager=N
                     tls_id=tls_id,
                     index=i,
                     len=len(stage.state_string),
-                    expected=expected_len
+                    expected=expected_len,
                 )
             )
             return False
@@ -87,7 +88,7 @@ def validate_stages(tls_id: str, phases: List[StageDefinition], locale_manager=N
                         tls_id=tls_id,
                         index=i,
                         char=char,
-                        pos=j
+                        pos=j,
                     )
                 )
                 return False
@@ -114,7 +115,7 @@ def validate_stages(tls_id: str, phases: List[StageDefinition], locale_manager=N
                         tls_id=tls_id,
                         overlap=overlap,
                         i=i,
-                        j=j
+                        j=j,
                     )
                 )
 

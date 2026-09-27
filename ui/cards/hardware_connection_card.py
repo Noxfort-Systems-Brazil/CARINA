@@ -20,22 +20,24 @@
 
 """
 Hardware Connection UI Widget.
-Provides a tabular interface for linking CARINA agents directly to their 
+Provides a tabular interface for linking CARINA agents directly to their
 physical controller (NTCIP/UTMC2) using inline IP Address inputs.
 """
 
 import logging
+from typing import Dict, List
+
 import flet as ft
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
+
 
 class HardwareConnectionCard(ft.Card):
     def __init__(self, on_import_click=None, on_export_click=None, on_toggle_connection=None):
         super().__init__()
         self.elevation = 2
-        self.expand = True  
-        
+        self.expand = True
+
         # Callbacks to the backend/controller
         self.on_import_click = on_import_click
         self.on_export_click = on_export_click
@@ -46,15 +48,17 @@ class HardwareConnectionCard(ft.Card):
 
         # Dictionary to keep track of the IP text fields for each intersection row
         self.ip_fields: Dict[str, ft.TextField] = {}
-        
+
         # Translatable explicit widgets
         self.col_id_text = ft.Text("Intersection ID", weight=ft.FontWeight.BOLD)
         self.col_ip_text = ft.Text("IP Address", weight=ft.FontWeight.BOLD)
         self.col_status_text = ft.Text("Status", weight=ft.FontWeight.BOLD)
         self.col_action_text = ft.Text("Action", weight=ft.FontWeight.BOLD)
-        
+
         self.title_text = ft.Text("Hardware Connections", size=20, weight=ft.FontWeight.BOLD)
-        self.btn_export = ft.ElevatedButton(text="Export Template", icon=ft.icons.DOWNLOAD, on_click=self._handle_export)
+        self.btn_export = ft.ElevatedButton(
+            text="Export Template", icon=ft.icons.DOWNLOAD, on_click=self._handle_export
+        )
         self.btn_import = ft.ElevatedButton(text="Import Config", icon=ft.icons.UPLOAD, on_click=self._handle_import)
 
         # UI Components - Enhanced DataTable Styling
@@ -70,14 +74,14 @@ class HardwareConnectionCard(ft.Card):
                 ft.DataColumn(self.col_status_text),
                 ft.DataColumn(self.col_action_text),
             ],
-            rows=[]
+            rows=[],
         )
 
         self._build_layout()
 
     def _build_layout(self):
         """Constructs the internal Flet layout for the card with responsive scrolling."""
-        
+
         header_row = ft.Row(
             controls=[
                 ft.Row(
@@ -93,10 +97,10 @@ class HardwareConnectionCard(ft.Card):
                         self.btn_import,
                     ],
                     alignment=ft.MainAxisAlignment.END,
-                )
+                ),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            wrap=True
+            wrap=True,
         )
 
         self.content = ft.Container(
@@ -110,16 +114,10 @@ class HardwareConnectionCard(ft.Card):
                     ft.Column(
                         expand=True,
                         scroll=ft.ScrollMode.ADAPTIVE,
-                        controls=[
-                            ft.Row(
-                                controls=[self.table],
-                                scroll=ft.ScrollMode.ADAPTIVE,
-                                expand=True
-                            )
-                        ]
-                    )
-                ]
-            )
+                        controls=[ft.Row(controls=[self.table], scroll=ft.ScrollMode.ADAPTIVE, expand=True)],
+                    ),
+                ],
+            ),
         )
 
     def load_agents_data(self, agents_list: List[Dict[str, str]]):
@@ -127,26 +125,35 @@ class HardwareConnectionCard(ft.Card):
         Populates the data table with agent data from the backend.
         Expected format: [{"agent_id": "Intersection_1", "ip_address": "192.168.1.50", "status": "disconnected"}]
         """
+        existing_ips = {aid: field.value for aid, field in self.ip_fields.items() if getattr(field, "value", None)}
         self.last_agents_list = agents_list
         self.table.rows.clear()
         self.ip_fields.clear()
-        
+
         hint_ip = "e.g. 10.0.0.5"
         status_disconnected_str = "disconnected"
         status_connected_str = "connected"
         btn_connect_str = "Connect"
         btn_disconnect_str = "Disconnect"
-        
+
         if self.lm:
             hint_ip = self.lm.get_string("settings_view.hardware_card.hint_ip", default=hint_ip)
-            status_disconnected_str = self.lm.get_string("settings_view.hardware_card.status_disconnected", default=status_disconnected_str)
-            status_connected_str = self.lm.get_string("settings_view.hardware_card.status_connected", default=status_connected_str)
+            status_disconnected_str = self.lm.get_string(
+                "settings_view.hardware_card.status_disconnected", default=status_disconnected_str
+            )
+            status_connected_str = self.lm.get_string(
+                "settings_view.hardware_card.status_connected", default=status_connected_str
+            )
             btn_connect_str = self.lm.get_string("settings_view.hardware_card.btn_connect", default=btn_connect_str)
-            btn_disconnect_str = self.lm.get_string("settings_view.hardware_card.btn_disconnect", default=btn_disconnect_str)
-        
+            btn_disconnect_str = self.lm.get_string(
+                "settings_view.hardware_card.btn_disconnect", default=btn_disconnect_str
+            )
+
         for agent in agents_list:
             agent_id = agent.get("agent_id", "Unknown")
             ip_address = agent.get("ip_address", "")
+            if not ip_address and agent_id in existing_ips:
+                ip_address = existing_ips[agent_id]
             status = agent.get("status", "disconnected")
 
             # Inline IP Input Field
@@ -155,27 +162,28 @@ class HardwareConnectionCard(ft.Card):
                 hint_text=hint_ip,
                 width=160,
                 dense=True,
-                disabled=(status != "disconnected") # Lock field if connected
+                disabled=(status != "disconnected"),  # Lock field if connected
             )
             self.ip_fields[agent_id] = ip_field
 
             # Determine visual status
             status_color = ft.colors.RED_500 if status == "disconnected" else ft.colors.GREEN_500
             status_icon = ft.icons.RADIO_BUTTON_CHECKED if status != "disconnected" else ft.icons.RADIO_BUTTON_UNCHECKED
-            
+
             status_label = status_disconnected_str if status == "disconnected" else status_connected_str
-            
-            status_display = ft.Row([
-                ft.Icon(status_icon, color=status_color, size=16),
-                ft.Text(status_label.upper(), color=status_color, weight=ft.FontWeight.W_500)
-            ])
+
+            status_display = ft.Row(
+                [
+                    ft.Icon(status_icon, color=status_color, size=16),
+                    ft.Text(status_label.upper(), color=status_color, weight=ft.FontWeight.W_500),
+                ]
+            )
 
             # ActionButton
             target_action = "disconnect" if status != "disconnected" else "connect"
             action_text = btn_disconnect_str if status != "disconnected" else btn_connect_str
             action_btn = ft.OutlinedButton(
-                text=action_text,
-                on_click=lambda e, a=agent_id, act=target_action: self._handle_toggle(a, act)
+                text=action_text, on_click=lambda e, a=agent_id, act=target_action: self._handle_toggle(a, act)
             )
 
             # Create the row
@@ -188,7 +196,7 @@ class HardwareConnectionCard(ft.Card):
                 ]
             )
             self.table.rows.append(row)
-            
+
         if self.page:
             self.update()
 
@@ -220,9 +228,9 @@ class HardwareConnectionCard(ft.Card):
         self.col_ip_text.value = self.lm.get_string("settings_view.hardware_card.col_ip", default="IP Address")
         self.col_status_text.value = self.lm.get_string("settings_view.hardware_card.col_status", default="Status")
         self.col_action_text.value = self.lm.get_string("settings_view.hardware_card.col_action", default="Action")
-        
+
         # Reload the rows with the new language
-        if hasattr(self, 'last_agents_list') and self.last_agents_list:
+        if hasattr(self, "last_agents_list") and self.last_agents_list:
             self.load_agents_data(self.last_agents_list)
         elif self.page:
             self.update()

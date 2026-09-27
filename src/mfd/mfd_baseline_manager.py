@@ -18,15 +18,18 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
-import os
 import json
 import logging
+import os
+
 
 class MFDReportBaselineManager:
     """Manages saving and loading of baseline MFD analysis files (raw, unformatted values)."""
 
     @staticmethod
-    def load_baselines(scenario_results_dir: str = None, scenario_name: str = None, db_manager=None) -> tuple[dict, dict]:
+    def load_baselines(
+        scenario_results_dir: str = None, scenario_name: str = None, db_manager=None
+    ) -> tuple[dict, dict]:
         last_data = {}
         first_data = {}
 
@@ -65,7 +68,12 @@ class MFDReportBaselineManager:
         return last_data, first_data
 
     @staticmethod
-    def save_baselines(scenario_results_dir: str = None, current_analysis_snapshot: dict = None, scenario_name: str = None, db_manager=None) -> None:
+    def save_baselines(
+        scenario_results_dir: str = None,
+        current_analysis_snapshot: dict = None,
+        scenario_name: str = None,
+        db_manager=None,
+    ) -> None:
         if not current_analysis_snapshot:
             return
 

@@ -30,10 +30,10 @@ if TYPE_CHECKING:
 class FluidDynamicsMetrics:
     """
     Handles counts, timestamp ranges, and statistical metadata for fluid dynamics tables.
-    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/fluid_dynamics_queries.json.
+    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/database/fluid_dynamics_queries.json.
     """
 
-    def __init__(self, engine: 'DatabaseEngine', query_provider: 'FluidDynamicsQueryProvider'):
+    def __init__(self, engine: "DatabaseEngine", query_provider: "FluidDynamicsQueryProvider"):
         self.engine = engine
         self.query_provider = query_provider
 
@@ -69,7 +69,9 @@ class FluidDynamicsMetrics:
             return (max_dt - min_dt).total_seconds()
         return 0.0
 
-    def get_fluid_dynamics_min_max_timestamps(self, limit_seconds: Optional[int] = None) -> Tuple[Optional[datetime], Optional[datetime]]:
+    def get_fluid_dynamics_min_max_timestamps(
+        self, limit_seconds: Optional[int] = None
+    ) -> Tuple[Optional[datetime], Optional[datetime]]:
         """
         Queries the MIN and MAX timestamps across synapse_fluid_dynamics and synapse_edge_phase_hourly_summary tables.
         """
@@ -90,7 +92,7 @@ class FluidDynamicsMetrics:
             else:
                 sql = self.query_provider.get_query("get_min_max_time", "all")
                 cursor.execute(sql)
-            
+
             row = cursor.fetchone()
             if row and row[0] and row[1]:
                 min_dt = self.query_provider.parse_timestamp(row[0])

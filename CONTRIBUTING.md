@@ -9,7 +9,7 @@ First off, thank you for considering contributing to CARINA! It's people like yo
 3. If you've added code that should be tested, add tests in the `tests/` directory.
 
 ## Testing Guidelines
-Before submitting a Pull Request, ensure that all unit tests pass. 
+Before submitting a Pull Request, ensure that all unit tests pass.
 Please read **[docs/TESTING.md](docs/TESTING.md)** for instructions on how to run the `pytest` suite and generate coverage reports.
 
 ## Pull Request Process

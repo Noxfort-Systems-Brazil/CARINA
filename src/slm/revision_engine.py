@@ -18,13 +18,15 @@
 # Author: Gabriel Moraes
 # Date: July 29, 2026
 
-import os
 import json
 import logging
+import os
 from typing import Any
+
 from slm.output_sanitizer import SLMOutputSanitizer
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [SLM_REVISION] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [SLM_REVISION] - %(levelname)s - %(message)s")
+
 
 class SLMRevisionEngine:
     """
@@ -37,7 +39,7 @@ class SLMRevisionEngine:
         """Loads prompt from src/prompts/slm_revision_prompts.json."""
         prompts_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts", "slm_revision_prompts.json")
         default_inst = "Você é um Revisor Linguístico Técnico. Corrija o texto com máxima elegância e formalidade, preservando integralmente números, datas e recomendações."
-        
+
         lang_key = str(language).lower()
         if lang_key.startswith("pt"):
             lang_key = "pt_br"
@@ -68,7 +70,7 @@ class SLMRevisionEngine:
         instruction = SLMRevisionEngine.load_revision_prompt(language)
         messages = [
             {"role": "system", "content": instruction},
-            {"role": "user", "content": f"TEXTO_PARA_REVISAR:\n{draft_text}"}
+            {"role": "user", "content": f"TEXTO_PARA_REVISAR:\n{draft_text}"},
         ]
 
         draft_len = len(draft_text.strip())
@@ -78,7 +80,7 @@ class SLMRevisionEngine:
             # Estimate prompt tokens and dynamically scale max_tokens
             prompt_str = f"<|im_start|>system\n{instruction}<|im_end|>\n<|im_start|>user\nTEXTO_PARA_REVISAR:\n{draft_text}<|im_end|>\n"
             try:
-                prompt_tokens = len(model.tokenize(prompt_str.encode('utf-8')))
+                prompt_tokens = len(model.tokenize(prompt_str.encode("utf-8")))
             except Exception:
                 prompt_tokens = int(len(prompt_str) / 3.5)
 
@@ -87,27 +89,32 @@ class SLMRevisionEngine:
             max_gen_tokens = n_ctx - prompt_tokens - safety_buffer
             max_tokens = max(512, min(4096, max_gen_tokens))
 
-            logging.info(f"[SLM_REVISION] Proofreading Prompt Tokens: {prompt_tokens}, Dynamic max_tokens: {max_tokens}")
+            logging.info(
+                f"[SLM_REVISION] Proofreading Prompt Tokens: {prompt_tokens}, Dynamic max_tokens: {max_tokens}"
+            )
 
             outputs = model.create_chat_completion(
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.0,
-                repeat_penalty=1.05
+                messages=messages, max_tokens=max_tokens, temperature=0.0, repeat_penalty=1.05
             )
             raw_revised = outputs["choices"][0]["message"]["content"]
             revised_text = SLMOutputSanitizer.sanitize(raw_revised)
-            
+
             # Anti-hallucination check: if revision deleted >60%, expanded >100%, or hallucinated mock Cruzamento A, fallback to draft
             if "Cruzamento A" in revised_text or "Cruzamento B" in revised_text or "| Cruzamento" in revised_text:
-                logging.warning("[SLM_REVISION] Mock table hallucination detected in revision. Falling back to original draft.")
+                logging.warning(
+                    "[SLM_REVISION] Mock table hallucination detected in revision. Falling back to original draft."
+                )
                 return draft_text.strip()
 
             if len(revised_text) < draft_len * 0.4 or len(revised_text) > draft_len * 2.0:
-                logging.warning(f"[SLM_REVISION] Extreme output length change detected ({len(revised_text)} vs {draft_len}). Falling back to original draft.")
+                logging.warning(
+                    f"[SLM_REVISION] Extreme output length change detected ({len(revised_text)} vs {draft_len}). Falling back to original draft."
+                )
                 return draft_text.strip()
 
-            logging.info(f"[SLM_REVISION] Neural proofreading completed successfully ({len(revised_text)} chars generated).")
+            logging.info(
+                f"[SLM_REVISION] Neural proofreading completed successfully ({len(revised_text)} chars generated)."
+            )
             return revised_text
         except Exception as e:
             logging.warning(f"[SLM_REVISION] Neural revision failed: {e}. Returning original draft.")

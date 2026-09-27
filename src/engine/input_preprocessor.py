@@ -18,17 +18,19 @@
 # Author: Gabriel Moraes
 # Date: February 19, 2026
 
-import torch
-import numpy as np
 from collections import deque
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
+
+import numpy as np
+import torch
+
 
 class InputPreprocessor:
     """
     Handles the temporal stacking and tensor conversion of state vectors.
-    
-    This component manages the short-term history (deque) required for 
-    sequence-based models (LSTM/TCN) and prepares the raw data for 
+
+    This component manages the short-term history (deque) required for
+    sequence-based models (LSTM/TCN) and prepares the raw data for
     PyTorch inference, keeping the main Trainer loop clean.
     """
 
@@ -40,7 +42,7 @@ class InputPreprocessor:
         """
         self.sequence_length = sequence_length
         self.device = device
-        
+
         # Stores the history for each traffic light: {tl_id: deque([state_t-3, ..., state_t])}
         self.state_history: Dict[str, deque] = {}
 
@@ -51,7 +53,7 @@ class InputPreprocessor:
     def prepare_tensor(self, tl_id: str, state_vector: np.ndarray) -> Tuple[torch.Tensor, np.ndarray]:
         """
         Processes a single state vector into a model-ready tensor.
-        
+
         1. Initializes history with zeros if this is the first time seeing tl_id.
         2. Appends the new state to the history deque (auto-removing oldest).
         3. Stacks the sequence into a numpy array.

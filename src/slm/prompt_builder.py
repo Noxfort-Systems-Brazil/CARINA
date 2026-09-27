@@ -18,13 +18,14 @@
 # Author: Gabriel Moraes
 # Date: July 29, 2026
 
-import os
 import json
 import logging
+import os
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [SLM_PROMPT] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [SLM_PROMPT] - %(levelname)s - %(message)s")
+
 
 class SLMPromptBuilder:
     """
@@ -66,7 +67,13 @@ class SLMPromptBuilder:
             speed_unit = attributions.get("speed_unit")
 
         mode_prompts = prompts_db.get(mode, {})
-        instruction = mode_prompts.get(lang_key, mode_prompts.get(raw_language, mode_prompts.get("pt_br", mode_prompts.get("en", "You are a Senior Traffic Engineer for CARINA v1.0."))))
+        instruction = mode_prompts.get(
+            lang_key,
+            mode_prompts.get(
+                raw_language,
+                mode_prompts.get("pt_br", mode_prompts.get("en", "You are a Senior Traffic Engineer for CARINA v1.0.")),
+            ),
+        )
 
         sub_mode = input_data.get("sub_mode", "")
         if (mode == "MFD_OPTIMIZATION" and sub_mode) or mode == "SINGLE_INTERSECTION_AUDIT":
@@ -97,9 +104,6 @@ class SLMPromptBuilder:
                 last_report = "... " + last_report[-4000:]
             input_str += f"\nLAST_REPORT_TEXT: {last_report}"
 
-        messages = [
-            {"role": "system", "content": instruction},
-            {"role": "user", "content": input_str}
-        ]
+        messages = [{"role": "system", "content": instruction}, {"role": "user", "content": input_str}]
 
         return messages

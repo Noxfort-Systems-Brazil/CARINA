@@ -21,13 +21,13 @@
 import logging
 from typing import Any, Tuple
 
-from sas.report_transducer_factory import ReportTransducerFactory
-from sas.report_template_provider import ReportTemplateProvider
+from blocks.report_post_processor import ReportPostProcessor
+from sas.report_data_normalizer import ReportDataNormalizer
 from sas.report_prompt_builder import ReportPromptBuilder
 from sas.report_section_builder import ReportSectionBuilder
-from sas.report_data_normalizer import ReportDataNormalizer
 from sas.report_table_builder import ReportTableBuilder
-from blocks.report_post_processor import ReportPostProcessor
+from sas.report_template_provider import ReportTemplateProvider
+from sas.report_transducer_factory import ReportTransducerFactory
 
 
 class ReportGenerator:
@@ -48,7 +48,7 @@ class ReportGenerator:
         has_significant_change: bool = False,
         has_last_report: bool = False,
         ui_language: str = "pt_br",
-        time_window_str: str = ""
+        time_window_str: str = "",
     ) -> Tuple[None, str]:
         """Instance wrapper method for backward compatibility with AnalyzerEngine."""
         junctions_norm = ReportDataNormalizer.normalize_junctions(analysis_results)
@@ -58,7 +58,7 @@ class ReportGenerator:
             has_significant_change=has_significant_change,
             has_last_report=has_last_report,
             ui_language=ui_language,
-            time_window_str=time_window_str
+            time_window_str=time_window_str,
         )
 
     @classmethod
@@ -71,7 +71,7 @@ class ReportGenerator:
         ui_language: str = "pt_br",
         has_significant_change: bool = False,
         has_last_report: bool = False,
-        time_window_str: str = ""
+        time_window_str: str = "",
     ) -> Tuple[None, str]:
         """
         High-Level Orchestrator method for generating a comprehensive ABNT Technical Report.
@@ -103,10 +103,12 @@ class ReportGenerator:
                 keep_count=stats["keep_count"],
                 signalized_count=stats["signalized_count"],
                 unsignalized_count=stats["unsignalized_count"],
-                time_window_str=time_window_str
+                time_window_str=time_window_str,
             )
             raw_exec_summary = transducer.generate_report(exec_summary_input)
-            resumo_executivo = ReportPostProcessor.format_executive_summary(raw_exec_summary, stats["intervention_rate"])
+            resumo_executivo = ReportPostProcessor.format_executive_summary(
+                raw_exec_summary, stats["intervention_rate"]
+            )
             if hasattr(transducer, "review_text"):
                 try:
                     resumo_executivo = transducer.review_text(resumo_executivo, language=ui_language)
@@ -122,10 +124,7 @@ class ReportGenerator:
 
             # 6. Process Section 5 (Audit Table 1) & Annex I (Individual Fichas)
             table_rows, cruzamentos_detalhe = ReportTableBuilder.build_audit_table_and_fichas(
-                analysis_results=analysis_results,
-                stats=stats,
-                transducer=transducer,
-                ui_language=ui_language
+                analysis_results=analysis_results, stats=stats, transducer=transducer, ui_language=ui_language
             )
 
             # 7. Generate Section 6 & 7 (Consolidated Summary and Conclusions)
@@ -136,7 +135,7 @@ class ReportGenerator:
                 add_count=stats["add_count"],
                 no_signal_count=stats["no_signal_count"],
                 optimize_count=stats["optimize_count"],
-                language=ui_language
+                language=ui_language,
             )
 
             include_comparison = has_last_report and has_significant_change
@@ -156,7 +155,7 @@ class ReportGenerator:
                 no_signal_count=stats["no_signal_count"],
                 conclusion_text=conclusion_text,
                 has_last_report=include_comparison,
-                language=ui_language
+                language=ui_language,
             )
 
             # 8. Generate Section 8 (Final Technical Opinion)
@@ -169,7 +168,7 @@ class ReportGenerator:
                 stats["no_signal_count"],
                 signalized_count=stats["signalized_count"],
                 unsignalized_count=stats["unsignalized_count"],
-                stats=stats
+                stats=stats,
             )
             slm_synthesis_raw = transducer.generate_report(final_opinion_input)
             slm_synthesis = ReportPostProcessor.clean_ai_preamble(slm_synthesis_raw)
@@ -220,7 +219,7 @@ class ReportGenerator:
                 department_name=department_name,
                 sec_num=curr_sec,
                 add_junction_ids=add_ids_str,
-                optimize_junction_ids=opt_ids_str
+                optimize_junction_ids=opt_ids_str,
             )
             secao_anexo = ReportSectionBuilder.build_annex_section(cruzamentos_detalhe)
 

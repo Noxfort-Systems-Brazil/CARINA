@@ -18,8 +18,9 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-import os
 import logging
+import os
+
 from rendering.static_map_renderer import StaticMapRenderer
 
 
@@ -47,7 +48,7 @@ class SASPlanningMapGenerator:
 
         icon_requests = {}
         for j_id, r in analysis_results.items():
-            rec_str = r.get('recommendation', '').lower()
+            rec_str = r.get("recommendation", "").lower()
             if "adicionar" in rec_str or "add" in rec_str:
                 icon_requests[j_id] = "add"
             elif "remover" in rec_str or "remove" in rec_str:
@@ -61,5 +62,5 @@ class SASPlanningMapGenerator:
             net_file_path=net_file_path,
             scenario_results_dir=scenario_dir,
             icon_requests=icon_requests,
-            output_filename="map_planning.png"
+            output_filename="map_planning.png",
         )

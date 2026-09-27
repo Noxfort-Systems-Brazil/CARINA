@@ -1,0 +1,191 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-security:
+    name: Code Quality & Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Quality & Security Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort bandit pip-audit
+
+      - name: Check Formatting (Black)
+        run: |
+          black --check --line-length 120 tests/
+
+      - name: Check Import Sorting (isort)
+        run: |
+          isort --check-only --profile black --line-length 120 tests/
+
+      - name: Lint with Flake8
+        run: |
+          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Security Scan (Bandit)
+        run: |
+          bandit -r src/ -lll -iii -q
+
+      - name: Dependency Vulnerability Audit (pip-audit)
+        run: |
+          pip-audit -r requirements.txt --ignore-vuln PYSEC-2026-2447 --desc on
+
+  test-go:
+    name: Go Hardware Gateway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: "src_go/go.sum"
+
+      - name: Go Vet & Test with Race Detector
+        working-directory: src_go
+        run: |
+          go vet ./...
+          go test -v -race -cover ./...
+
+      - name: Compile Gateway Binary
+        working-directory: src_go
+        run: |
+          mkdir -p ../bin
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o ../bin/carina-go ./cmd/gateway
+          test -f ../bin/carina-go
+
+      - name: Upload Gateway Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carina-go-binary
+          path: bin/carina-go
+          retention-days: 1
+
+  test-python:
+    name: Unit & Integration Tests (Python 3.12 + PostgreSQL 16)
+    runs-on: ubuntu-latest
+    needs: [test-go]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: carina_user
+          POSTGRES_PASSWORD: carina_password
+          POSTGRES_DB: carina_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Download Gateway Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: carina-go-binary
+          path: bin/
+
+      - name: Ensure Gateway Binary Executable
+        run: |
+          chmod +x bin/carina-go
+          test -x bin/carina-go
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-glx \
+            libglib2.0-0 \
+            libxkbcommon0 \
+            libcairo2-dev \
+            libgirepository1.0-dev
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Alembic Migrations on SQLite (Upgrade & Downgrade Cycle)
+        run: |
+          CARINA_DB_TYPE=sqlite alembic -c alembic.ini upgrade head
+          CARINA_DB_TYPE=sqlite alembic -c alembic.ini downgrade base
+          CARINA_DB_TYPE=sqlite alembic -c alembic.ini upgrade head
+
+      - name: Run Alembic Migrations on PostgreSQL 16 (Upgrade & Downgrade Cycle)
+        env:
+          CARINA_DB_TYPE: postgres
+          CARINA_DB_HOST: localhost
+          CARINA_DB_PORT: 5432
+          CARINA_DB_USER: carina_user
+          CARINA_DB_PASSWORD: carina_password
+          CARINA_DB_NAME: carina_db
+        run: |
+          alembic -c alembic.ini upgrade head
+          alembic -c alembic.ini downgrade base
+          alembic -c alembic.ini upgrade head
+
+      - name: Run PyTest Test Suite (Unit & Integration)
+        env:
+          CARINA_DB_TYPE: sqlite
+          PYTHONPATH: src
+        run: |
+          pytest --cov=src --cov-report=term --cov-report=xml:coverage.xml --cov-fail-under=60 tests/unit/ tests/integration/
+
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 14
+
+  docker-build:
+    name: Container Build Verification
+    runs-on: ubuntu-latest
+    needs: [test-go, test-python]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+
+      - name: Build Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: carina-core:ci-test

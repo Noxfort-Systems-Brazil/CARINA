@@ -18,10 +18,11 @@
 # Author: Gabriel Moraes
 # Date: August 9, 2026
 
-import os
 import json
 import logging
+import os
 import re
+
 
 class ReportTextSanitizer:
     """
@@ -33,19 +34,29 @@ class ReportTextSanitizer:
 
     @classmethod
     def _load_semantic_rules(cls) -> dict:
-        """Loads semantic consistency rules from config/semantic_rules.json into cache."""
+        """Loads semantic consistency rules from config/rules/semantic_rules.json into cache."""
         if cls._semantic_rules_cache is not None:
             return cls._semantic_rules_cache
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        json_path = os.path.join(base_dir, "config", "semantic_rules.json")
+        candidates = [
+            os.path.join(base_dir, "config", "rules", "semantic_rules.json"),
+            os.path.join(base_dir, "config", "semantic_rules.json"),
+        ]
 
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                cls._semantic_rules_cache = json.load(f)
-                logging.info(f"[REPORT_TEXT_SANITIZER] Loaded semantic rules from: {json_path}")
-        except Exception as e:
-            logging.error(f"[REPORT_TEXT_SANITIZER] Error loading semantic_rules.json from {json_path}: {e}")
+        loaded = False
+        for json_path in candidates:
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        cls._semantic_rules_cache = json.load(f)
+                        logging.info(f"[REPORT_TEXT_SANITIZER] Loaded semantic rules from: {json_path}")
+                        loaded = True
+                        break
+                except Exception as e:
+                    logging.error(f"[REPORT_TEXT_SANITIZER] Error loading semantic_rules.json from {json_path}: {e}")
+
+        if not loaded:
             cls._semantic_rules_cache = {}
 
         return cls._semantic_rules_cache
@@ -57,25 +68,31 @@ class ReportTextSanitizer:
             return ""
         if "Cruzamento A" in text or "Cruzamento B" in text or "| Cruzamento" in text:
             return ""
-        
+
         rules_data = cls._load_semantic_rules()
         ai_rules = rules_data.get("ai_preamble_rules", {})
 
         # Strip literal placeholder artifacts
-        placeholders = ai_rules.get("placeholders", [
-            r"\[VALOR_EXATO_DO_JSON\]\s*",
-            r"\[Valor Exato Fornecido\]\s*",
-            r"\[Inserir[^\n\]]*\]\s*",
-            r"\[N/A - Dados não fornecidos[^\n\]]*\]\s*"
-        ])
+        placeholders = ai_rules.get(
+            "placeholders",
+            [
+                r"\[VALOR_EXATO_DO_JSON\]\s*",
+                r"\[Valor Exato Fornecido\]\s*",
+                r"\[Inserir[^\n\]]*\]\s*",
+                r"\[N/A - Dados não fornecidos[^\n\]]*\]\s*",
+            ],
+        )
         for ph in placeholders:
             text = re.sub(ph, "", text, flags=re.IGNORECASE)
 
-        line_patterns = ai_rules.get("line_match_patterns", [
-            r"^(Com certeza|Certamente|Com base|Aqui está|Segue|Como (um|uma)? (assistente|engenheiro|ia)|Olá|Prezado|Analisando os dados|Em resposta ao)",
-            r"^(Aqui (está|segue) (o|a) (relatório|laudo|parecer|análise)|Segue abaixo)",
-            r"^#*\s*\d*\.?\s*(LAUDO TÉCNICO|INTRODUÇÃO|METODOLOGIA|ANÁLISE|CRITÉRIOS|TABELA|RESUMO|ANEXO)"
-        ])
+        line_patterns = ai_rules.get(
+            "line_match_patterns",
+            [
+                r"^(Com certeza|Certamente|Com base|Aqui está|Segue|Como (um|uma)? (assistente|engenheiro|ia)|Olá|Prezado|Analisando os dados|Em resposta ao)",
+                r"^(Aqui (está|segue) (o|a) (relatório|laudo|parecer|análise)|Segue abaixo)",
+                r"^#*\s*\d*\.?\s*(LAUDO TÉCNICO|INTRODUÇÃO|METODOLOGIA|ANÁLISE|CRITÉRIOS|TABELA|RESUMO|ANEXO)",
+            ],
+        )
 
         compiled_line_res = [re.compile(pat, flags=re.IGNORECASE) for pat in line_patterns]
 
@@ -88,7 +105,10 @@ class ReportTextSanitizer:
             cleaned_lines.append(line)
         result = "\n".join(cleaned_lines).strip()
 
-        header_pattern = ai_rules.get("header_sub_pattern", r"^#*\s*\d*\.?\s*(Introdução|Resumo Executivo|Parecer Técnico|Considerações Finais|Ficha)[^\n]*\n?")
+        header_pattern = ai_rules.get(
+            "header_sub_pattern",
+            r"^#*\s*\d*\.?\s*(Introdução|Resumo Executivo|Parecer Técnico|Considerações Finais|Ficha)[^\n]*\n?",
+        )
         result = re.sub(header_pattern, "", result, flags=re.IGNORECASE).strip()
         return result
 
@@ -102,11 +122,11 @@ class ReportTextSanitizer:
         threshold = summary_cfg.get("high_intervention_threshold", 0.30)
         high_text = summary_cfg.get(
             "high_intervention_text",
-            "A análise identificou que expressiva parcela da malha viária opera acima dos limites normativos de saturação, exigindo plano de intervenção prioritária para a readequação semafórica e mitigação dos gargalos identificados."
+            "A análise identificou que expressiva parcela da malha viária opera acima dos limites normativos de saturação, exigindo plano de intervenção prioritária para a readequação semafórica e mitigação dos gargalos identificados.",
         )
         stable_text = summary_cfg.get(
             "stable_intervention_text",
-            "A malha viária apresenta comportamento predominantemente estável, com intervenções pontuais de ajuste mantendo a fluidez operacional e a segurança nas interseções auditadas."
+            "A malha viária apresenta comportamento predominantemente estável, com intervenções pontuais de ajuste mantendo a fluidez operacional e a segurança nas interseções auditadas.",
         )
 
         if intervention_rate > threshold:
@@ -150,10 +170,10 @@ class ReportTextSanitizer:
         if not text:
             return text
         text = text.strip()
-        if not text.endswith(('.', '!', '?', ':', '```', '---')):
-            last_punct = max(text.rfind('.'), text.rfind('!'), text.rfind('?'))
+        if not text.endswith((".", "!", "?", ":", "```", "---")):
+            last_punct = max(text.rfind("."), text.rfind("!"), text.rfind("?"))
             if last_punct > len(text) * 0.7:
-                text = text[:last_punct + 1]
+                text = text[: last_punct + 1]
             else:
                 text += "."
         return text

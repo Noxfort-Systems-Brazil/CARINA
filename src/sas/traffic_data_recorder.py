@@ -31,6 +31,7 @@ occupancy). The recorder enriches each sample with topology metadata
 """
 
 import logging
+import queue
 import threading
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -46,7 +47,14 @@ class TrafficDataRecorder:
     database I/O overhead during high-frequency frame processing.
     """
 
-    def __init__(self, db_manager, topology_edges: Optional[Dict[str, dict]] = None, batch_size: int = 10, locale_manager: Any = None, topology_manager: Any = None):
+    def __init__(
+        self,
+        db_manager,
+        topology_edges: Optional[Dict[str, dict]] = None,
+        batch_size: int = 10,
+        locale_manager: Any = None,
+        topology_manager: Any = None,
+    ):
         """
         Initializes the TrafficDataRecorder.
 
@@ -66,13 +74,14 @@ class TrafficDataRecorder:
         self.locale_manager = locale_manager
         self.topology_manager = topology_manager
         self.scenario_name = "default"
-        
+
         # 60-second in-memory aggregation buffer to reduce DB inserts by 98.3%
         self._ram_60s_buffer = {}
         self._last_ram_flush = datetime.now()
-        
+
         # Dedicated worker thread for DB inserts to prevent thread explosion
         import queue
+
         self._flush_queue = queue.Queue(maxsize=1000)
         self._worker_thread = threading.Thread(target=self._db_worker_loop, daemon=True)
         self._worker_thread.start()
@@ -90,7 +99,13 @@ class TrafficDataRecorder:
             topology_edges: {edge_id: {'length': float, 'lanes': int, 'max_speed': float}}
         """
         self.topology = topology_edges
-        logger.info(self._get_string("sas_recorder.topology_updated", default="[TrafficDataRecorder] Topology updated with {count} edges.", count=len(topology_edges)))
+        logger.info(
+            self._get_string(
+                "sas_recorder.topology_updated",
+                default="[TrafficDataRecorder] Topology updated with {count} edges.",
+                count=len(topology_edges),
+            )
+        )
 
     def record_frame(self, frame: Any):
         """
@@ -101,12 +116,12 @@ class TrafficDataRecorder:
             frame: A gRPC TrafficFrame message with .edges (map<string, EdgeState>).
         """
         now = datetime.now()
-        cache = getattr(self.topology_manager, 'agent_maturity_cache', {}) if self.topology_manager else {}
+        cache = getattr(self.topology_manager, "agent_maturity_cache", {}) if self.topology_manager else {}
 
         for edge_id, state in frame.edges.items():
             topo = self.topology.get(edge_id, {})
-            to_junction = topo.get('to') or topo.get('to_junction') or 'unassigned'
-            maturity_stage = 'CHILD'
+            to_junction = topo.get("to") or topo.get("to_junction") or "unassigned"
+            maturity_stage = "CHILD"
             if cache:
                 if to_junction and to_junction in cache:
                     maturity_stage = cache[to_junction]
@@ -115,20 +130,20 @@ class TrafficDataRecorder:
 
             if edge_id not in self._ram_60s_buffer:
                 self._ram_60s_buffer[edge_id] = {
-                    'speeds': [],
-                    'densities': [],
-                    'queues': [],
-                    'occupancies': [],
-                    'topo': topo,
-                    'to_junction': to_junction,
-                    'maturity_stage': maturity_stage
+                    "speeds": [],
+                    "densities": [],
+                    "queues": [],
+                    "occupancies": [],
+                    "topo": topo,
+                    "to_junction": to_junction,
+                    "maturity_stage": maturity_stage,
                 }
 
             buf = self._ram_60s_buffer[edge_id]
-            buf['speeds'].append(state.mean_speed)
-            buf['densities'].append(state.density)
-            buf['queues'].append(state.queue_length)
-            buf['occupancies'].append(state.occupancy)
+            buf["speeds"].append(state.mean_speed)
+            buf["densities"].append(state.density)
+            buf["queues"].append(state.queue_length)
+            buf["occupancies"].append(state.occupancy)
 
         # Check if 60-second RAM window has elapsed or buffer needs flushing
         if (now - self._last_ram_flush).total_seconds() >= 60.0 or len(self._ram_60s_buffer) > 5000:
@@ -140,10 +155,10 @@ class TrafficDataRecorder:
             return
 
         for edge_id, data in list(self._ram_60s_buffer.items()):
-            speeds = data['speeds']
-            densities = data['densities']
-            queues = data['queues']
-            occupancies = data['occupancies']
+            speeds = data["speeds"]
+            densities = data["densities"]
+            queues = data["queues"]
+            occupancies = data["occupancies"]
 
             if not speeds:
                 continue
@@ -155,23 +170,25 @@ class TrafficDataRecorder:
             max_queue = max(queues)
             avg_occupancy = sum(occupancies) / len(occupancies)
 
-            topo = data['topo']
-            self._batch_buffer.append({
-                'collected_at': timestamp,
-                'scenario_name': self.scenario_name,
-                'intersection_id': data['to_junction'],
-                'edge_id': edge_id,
-                'density': float(avg_density),
-                'mean_speed': float(avg_speed),
-                'min_speed': float(min_speed),
-                'queue_length': int(round(avg_queue)),
-                'max_queue': int(max_queue),
-                'occupancy': float(avg_occupancy),
-                'edge_length': topo.get('length'),
-                'num_lanes': topo.get('lanes'),
-                'speed_limit': topo.get('max_speed'),
-                'maturity_stage': data['maturity_stage'],
-            })
+            topo = data["topo"]
+            self._batch_buffer.append(
+                {
+                    "collected_at": timestamp,
+                    "scenario_name": self.scenario_name,
+                    "intersection_id": data["to_junction"],
+                    "edge_id": edge_id,
+                    "density": float(avg_density),
+                    "mean_speed": float(avg_speed),
+                    "min_speed": float(min_speed),
+                    "queue_length": int(round(avg_queue)),
+                    "max_queue": int(max_queue),
+                    "occupancy": float(avg_occupancy),
+                    "edge_length": topo.get("length"),
+                    "num_lanes": topo.get("lanes"),
+                    "speed_limit": topo.get("max_speed"),
+                    "maturity_stage": data["maturity_stage"],
+                }
+            )
 
         self._ram_60s_buffer.clear()
         self._last_ram_flush = timestamp
@@ -186,14 +203,18 @@ class TrafficDataRecorder:
         """Flushes the buffered samples to the database asynchronously via queue."""
         if not self._batch_buffer:
             return
-            
+
         samples_to_flush = list(self._batch_buffer)
         self._batch_buffer.clear()
-        
+
         try:
             self._flush_queue.put_nowait(samples_to_flush)
         except queue.Full:
-            logger.error(self._get_string("sas_recorder.queue_full", default="[TrafficDataRecorder] DB flush queue is FULL! Dropping samples."))
+            logger.error(
+                self._get_string(
+                    "sas_recorder.queue_full", default="[TrafficDataRecorder] DB flush queue is FULL! Dropping samples."
+                )
+            )
 
     @property
     def total_recorded(self) -> int:

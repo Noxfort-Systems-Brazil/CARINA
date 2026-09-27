@@ -18,15 +18,16 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-import os
 import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any, Dict, List
+
 
 class MFDPromptBuilder:
     """
     Responsibility (SRP & OCP): Build compact, lightweight prompt payloads (< 350 tokens) for SLM Transducer inference.
-    All attribute schemas, stage descriptions, and numeric fallbacks are loaded dynamically from config/mfd_prompts.json.
+    All attribute schemas, stage descriptions, and numeric fallbacks are loaded dynamically from config/templates/mfd/mfd_prompts.json.
     Follows SOLID Open/Closed Principle (OCP).
     """
 
@@ -34,21 +35,25 @@ class MFDPromptBuilder:
 
     @classmethod
     def _load_prompts_config(cls) -> Dict[str, Any]:
-        """Loads prompt configurations, verdict texts, and attribute schemas from config/mfd_prompts.json with caching."""
+        """Loads prompt configurations, verdict texts, and attribute schemas from config/templates/mfd/mfd_prompts.json with caching."""
         if cls._prompts_cache is not None:
             return cls._prompts_cache
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        json_path = os.path.join(base_dir, "config", "mfd_prompts.json")
+        candidates = [
+            os.path.join(base_dir, "config", "templates", "mfd", "mfd_prompts.json"),
+            os.path.join(base_dir, "config", "mfd_prompts.json"),
+        ]
 
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    cls._prompts_cache = json.load(f)
-                    logging.info(f"[MFDPromptBuilder] Loaded prompt configs from {json_path}")
-                    return cls._prompts_cache
-            except Exception as e:
-                logging.warning(f"[MFDPromptBuilder] Failed to load JSON '{json_path}': {e}. Using fallback.")
+        for json_path in candidates:
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        cls._prompts_cache = json.load(f)
+                        logging.info(f"[MFDPromptBuilder] Loaded prompt configs from {json_path}")
+                        return cls._prompts_cache
+                except Exception as e:
+                    logging.warning(f"[MFDPromptBuilder] Failed to load JSON '{json_path}': {e}. Using fallback.")
 
         cls._prompts_cache = {}
         return cls._prompts_cache
@@ -78,7 +83,7 @@ class MFDPromptBuilder:
         if not isinstance(path, str):
             return default
 
-        parts = path.split('.')
+        parts = path.split(".")
         curr = source
         for part in parts:
             if isinstance(curr, dict):
@@ -89,11 +94,7 @@ class MFDPromptBuilder:
 
     @classmethod
     def _build_attributes_from_schema(
-        cls,
-        schema_key: str,
-        source_data: Dict[str, Any],
-        custom_values: Dict[str, Any] = None,
-        lang: str = "pt_br"
+        cls, schema_key: str, source_data: Dict[str, Any], custom_values: Dict[str, Any] = None, lang: str = "pt_br"
     ) -> Dict[str, Any]:
         """Dynamically maps source data into attribute dictionary using external JSON schema."""
         cfg = cls._load_prompts_config()
@@ -149,7 +150,9 @@ class MFDPromptBuilder:
             "sub_mode": "EXECUTIVE_SUMMARY",
             "engine_name": engine_name,
             "attributions": summary_data,
-            "first_analysis_timestamp": summary_stats.get("comparison_since_first_analysis", {}).get("first_analysis_timestamp")
+            "first_analysis_timestamp": summary_stats.get("comparison_since_first_analysis", {}).get(
+                "first_analysis_timestamp"
+            ),
         }
 
     @classmethod
@@ -165,12 +168,13 @@ class MFDPromptBuilder:
         gain = inter_row.get("efficiency_gain_pct", 0.0)
 
         verdict_obj = inter_verdicts.get("positive" if gain > 0 else "negative", {})
-        verdict = verdict_obj.get(lang_key, verdict_obj.get("pt_br", verdict_obj.get("en", ""))) if isinstance(verdict_obj, dict) else str(verdict_obj)
+        verdict = (
+            verdict_obj.get(lang_key, verdict_obj.get("pt_br", verdict_obj.get("en", "")))
+            if isinstance(verdict_obj, dict)
+            else str(verdict_obj)
+        )
 
-        custom_vals = {
-            "stage_description": stage_desc,
-            "intersection_verdict": verdict
-        }
+        custom_vals = {"stage_description": stage_desc, "intersection_verdict": verdict}
 
         attr = cls._build_attributes_from_schema("single_intersection", inter_row, custom_values=custom_vals, lang=lang)
 
@@ -179,7 +183,7 @@ class MFDPromptBuilder:
             "language": lang,
             "sub_mode": "SINGLE_INTERSECTION_AUDIT",
             "engine_name": engine_name,
-            "attributions": attr
+            "attributions": attr,
         }
 
     @classmethod
@@ -194,14 +198,17 @@ class MFDPromptBuilder:
         comp = impacts.get("comparative_table", {})
         speed_gain = comp.get("speed_kmh", {}).get("delta_pct", 103.3)
 
-        outcome = opinion_cfg.get("positive_outcome" if speed_gain > 0 else "negative_outcome", "APROVAÇÃO_E_HOMOLOGAÇÃO")
+        outcome = opinion_cfg.get(
+            "positive_outcome" if speed_gain > 0 else "negative_outcome", "APROVAÇÃO_E_HOMOLOGAÇÃO"
+        )
         verdict_obj = opinion_cfg.get("positive_verdict" if speed_gain > 0 else "negative_verdict", {})
-        verdict = verdict_obj.get(lang_key, verdict_obj.get("pt_br", verdict_obj.get("en", ""))) if isinstance(verdict_obj, dict) else str(verdict_obj)
+        verdict = (
+            verdict_obj.get(lang_key, verdict_obj.get("pt_br", verdict_obj.get("en", "")))
+            if isinstance(verdict_obj, dict)
+            else str(verdict_obj)
+        )
 
-        custom_vals = {
-            "final_opinion_outcome": outcome,
-            "final_opinion_verdict": verdict
-        }
+        custom_vals = {"final_opinion_outcome": outcome, "final_opinion_verdict": verdict}
 
         attr = cls._build_attributes_from_schema("final_opinion", normalized_data, custom_values=custom_vals, lang=lang)
 
@@ -210,7 +217,7 @@ class MFDPromptBuilder:
             "language": lang,
             "sub_mode": "FINAL_TECHNICAL_OPINION",
             "engine_name": engine_name,
-            "attributions": attr
+            "attributions": attr,
         }
 
     @classmethod
@@ -226,11 +233,13 @@ class MFDPromptBuilder:
         speed_gain = comp.get("speed_kmh", {}).get("delta_pct", 103.3)
 
         verdict_obj = conc_cfg.get("positive_verdict" if speed_gain > 0 else "negative_verdict", {})
-        verdict = verdict_obj.get(lang_key, verdict_obj.get("pt_br", verdict_obj.get("en", ""))) if isinstance(verdict_obj, dict) else str(verdict_obj)
+        verdict = (
+            verdict_obj.get(lang_key, verdict_obj.get("pt_br", verdict_obj.get("en", "")))
+            if isinstance(verdict_obj, dict)
+            else str(verdict_obj)
+        )
 
-        custom_vals = {
-            "conclusions_verdict": verdict
-        }
+        custom_vals = {"conclusions_verdict": verdict}
 
         attr = cls._build_attributes_from_schema("conclusions", normalized_data, custom_values=custom_vals, lang=lang)
 
@@ -239,5 +248,5 @@ class MFDPromptBuilder:
             "language": lang,
             "sub_mode": "CONCLUSIONS",
             "engine_name": engine_name,
-            "attributions": attr
+            "attributions": attr,
         }

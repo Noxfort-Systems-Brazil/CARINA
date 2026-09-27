@@ -18,21 +18,23 @@
 # Author: Gabriel Moraes
 # Date: December 15, 2025
 
-import logging
-from collections import deque
-import numpy as np
-import sys
-import os
 import json
-from typing import TYPE_CHECKING, Optional, Any
+import logging
+import os
+import sys
+from collections import deque
+from typing import TYPE_CHECKING, Any, Optional
+
+import numpy as np
 
 # Add 'src' directory to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from core.enums import Maturity
+
 # Runtime import required for bootstrapping
 from core.maturity_reporter import MaturityReporter
 
@@ -48,88 +50,89 @@ class MaturityManager:
     O "Diretor" da Escola de Pilotagem. Gerencia o estado e a lógica de
     promoção dos agentes.
     """
-    
-    def __init__(self, settings: Any, 
-                 locale_manager: 'LocaleManagerBackend',
-                 baseline: Optional[dict] = None, 
-                 reporter: Optional['MaturityReporter'] = None,
-                 population_manager: Any = None):
+
+    def __init__(
+        self,
+        settings: Any,
+        locale_manager: "LocaleManagerBackend",
+        baseline: Optional[dict] = None,
+        reporter: Optional["MaturityReporter"] = None,
+        population_manager: Any = None,
+    ):
         """
         Inicializa o MaturityManager com suporte a injeção de dependência opcional.
         """
         self.locale_manager = locale_manager
         lm = self.locale_manager
-        
+
         # 1. Resolves the Reporter (Auto-initializes if not provided)
         if reporter:
             self.reporter = reporter
         else:
             self.reporter = MaturityReporter(locale_manager)
-            
+
         # 2. Resolves the Baseline (Uses default if not provided)
         if baseline:
-            self.baseline_performance = baseline.get('mean_reward', -10000)
+            self.baseline_performance = baseline.get("mean_reward", -10000)
         else:
             # Try getting it from the settings or use safe fallback
             try:
-                self.baseline_performance = settings.getfloat('MATURITY', 'baseline_reward', fallback=-10000.0)
+                self.baseline_performance = settings.getfloat("MATURITY", "baseline_reward", fallback=-10000.0)
             except:
                 self.baseline_performance = -10000.0
 
         # 3. Settings (Supports dict or ConfigParser)
         # Helper to extract values ​​​​regardless of the 'settings' type
         def get_setting(key, fallback):
-            if hasattr(settings, 'getfloat'): # It's ConfigParser
-                try: return settings.getfloat('MATURITY', key, fallback=fallback)
-                except: return fallback
+            if hasattr(settings, "getfloat"):  # It's ConfigParser
+                try:
+                    return settings.getfloat("MATURITY", key, fallback=fallback)
+                except:
+                    return fallback
             elif isinstance(settings, dict):
                 return settings.get(key, fallback)
             return fallback
 
         def get_int_setting(key, fallback):
-            if hasattr(settings, 'getint'):
-                try: return settings.getint('MATURITY', key, fallback=fallback)
-                except: return fallback
+            if hasattr(settings, "getint"):
+                try:
+                    return settings.getint("MATURITY", key, fallback=fallback)
+                except:
+                    return fallback
             elif isinstance(settings, dict):
                 return settings.get(key, fallback)
             return fallback
 
-        performance_margin_percent = get_setting('performance_margin_percent', 5.0)
+        performance_margin_percent = get_setting("performance_margin_percent", 5.0)
         self.performance_margin = 1.0 + (performance_margin_percent / 100.0)
         self.baseline_target = self.baseline_performance * self.performance_margin
-        
-        self.child_phase_duration = get_int_setting('child_phase_episodes', 5)
-        self.teen_phase_min_duration = get_int_setting('teen_phase_min_episodes', 50)
-        
+
+        self.child_phase_duration = get_int_setting("child_phase_episodes", 5)
+        self.teen_phase_min_duration = get_int_setting("teen_phase_min_episodes", 50)
+
         self.entropy_calculator = DynamicEntropyCalculator(e_max=1.8, e_ideal=0.1)
         self.promotion_evaluator = PromotionEvaluator(settings)
-        
+
         # Internal State
-        self.is_calibrated = True # Dynamic calibration is always ready
+        self.is_calibrated = True  # Dynamic calibration is always ready
         self.agent_maturity = {}
         self.agent_episodes_in_phase = {}
-        
-        rewards_window_size = get_int_setting('performance_check_window', 10)
+
+        rewards_window_size = get_int_setting("performance_check_window", 10)
         self.agent_recent_rewards = {}
         self._rewards_window_size = rewards_window_size
-        
+
         logging.info(lm.get_string("maturity_manager.init.manager_created"))
         logging.info(lm.get_string("maturity_manager.init.performance_target", target=f"{self.baseline_target:.2f}"))
 
     def get_state(self) -> dict:
         """Collects the internal state of the manager in a serializable dictionary."""
-        agent_recent_rewards_list = {
-            agent_id: list(rewards)
-            for agent_id, rewards in self.agent_recent_rewards.items()
-        }
-        agent_maturity_names = {
-            agent_id: maturity.name
-            for agent_id, maturity in self.agent_maturity.items()
-        }
+        agent_recent_rewards_list = {agent_id: list(rewards) for agent_id, rewards in self.agent_recent_rewards.items()}
+        agent_maturity_names = {agent_id: maturity.name for agent_id, maturity in self.agent_maturity.items()}
         return {
             "agent_maturity": agent_maturity_names,
             "agent_episodes_in_phase": self.agent_episodes_in_phase,
-            "agent_recent_rewards": agent_recent_rewards_list
+            "agent_recent_rewards": agent_recent_rewards_list,
         }
 
     def save_state(self, filepath: str):
@@ -138,7 +141,7 @@ class MaturityManager:
         state = self.get_state()
         try:
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            with open(filepath, 'w', encoding='utf-8') as f:
+            with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=4)
             logging.info(lm.get_string("maturity_manager.save.success", path=filepath))
         except IOError as e:
@@ -150,23 +153,22 @@ class MaturityManager:
         if not os.path.exists(filepath):
             logging.warning(lm.get_string("maturity_manager.load.not_found", path=filepath))
             return
-        
+
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 state = json.load(f)
-            
+
             self.agent_maturity = {
-                agent_id: Maturity[maturity_name]
-                for agent_id, maturity_name in state.get("agent_maturity", {}).items()
+                agent_id: Maturity[maturity_name] for agent_id, maturity_name in state.get("agent_maturity", {}).items()
             }
             self.agent_episodes_in_phase = state.get("agent_episodes_in_phase", {})
             self.agent_recent_rewards = {
                 agent_id: deque(rewards, maxlen=self._rewards_window_size)
                 for agent_id, rewards in state.get("agent_recent_rewards", {}).items()
             }
-            
+
             logging.info(lm.get_string("maturity_manager.load.success", path=filepath))
-            
+
             self.register_agents(list(self.agent_maturity.keys()))
 
         except (json.JSONDecodeError, KeyError) as e:
@@ -181,15 +183,24 @@ class MaturityManager:
                 self.agent_episodes_in_phase[agent_id] = 0
                 self.agent_recent_rewards[agent_id] = deque(maxlen=self._rewards_window_size)
                 new_agents_registered += 1
-        
+
         if new_agents_registered > 0:
             phase_name = lm.get_string("maturity_manager.phase_child")
-            logging.info(lm.get_string("maturity_manager.register.agents_registered", count=new_agents_registered, phase=phase_name.upper()))
+            logging.info(
+                lm.get_string(
+                    "maturity_manager.register.agents_registered", count=new_agents_registered, phase=phase_name.upper()
+                )
+            )
 
     def update_calibration_thresholds(self, teen_threshold: float, adult_threshold: float):
         # Legacy method kept for compatibility with external calls.
         # Entropy thresholds are now calculated dynamically based on configured time.
-        logging.info(self.locale_manager.get_string("maturity_manager.calibration.thresholds_updated", default="[MATURITY] Note: Static calibration is disabled in favor of dynamic time-based entropy."))
+        logging.info(
+            self.locale_manager.get_string(
+                "maturity_manager.calibration.thresholds_updated",
+                default="[MATURITY] Note: Static calibration is disabled in favor of dynamic time-based entropy.",
+            )
+        )
 
     def check_and_promote_agents(self, agent_metrics: dict, mfd_efficiency: float = 0.0) -> bool:
         """
@@ -199,74 +210,135 @@ class MaturityManager:
         promotion_happened = False
 
         for agent_id, metrics in agent_metrics.items():
-            if agent_id not in self.agent_maturity: continue
-            
+            if agent_id not in self.agent_maturity:
+                continue
+
             self.agent_episodes_in_phase[agent_id] += 1
-            self.agent_recent_rewards[agent_id].append(metrics.get('reward', 0))
-            
+            self.agent_recent_rewards[agent_id].append(metrics.get("reward", 0))
+
             current_phase = self.agent_maturity[agent_id]
             episodes_in_phase = self.agent_episodes_in_phase[agent_id]
-            agent_entropy = metrics.get('entropy', float('inf'))
+            agent_entropy = metrics.get("entropy", float("inf"))
 
             if current_phase == Maturity.CHILD:
                 # 1. Base checks (legacy entropy check for safety)
-                dynamic_child_threshold = self.entropy_calculator.calculate_threshold(self.child_phase_duration, is_adult_transition=False)
+                dynamic_child_threshold = self.entropy_calculator.calculate_threshold(
+                    self.child_phase_duration, is_adult_transition=False
+                )
                 confidence_ok = agent_entropy < dynamic_child_threshold
-                
+
                 # 2. MFD Dynamic Threshold evaluation
                 is_promoted, reason, current_threshold, required_episodes = self.promotion_evaluator.evaluate_agent(
                     agent_id=agent_id,
                     current_phase=current_phase,
                     episodes_in_phase=episodes_in_phase,
-                    recent_mfd_efficiency=mfd_efficiency
+                    recent_mfd_efficiency=mfd_efficiency,
                 )
 
                 if confidence_ok and is_promoted:
-                    details = { 
-                        lm.get_string("maturity_manager.criterion_time"): lm.get_string("maturity_manager.time_details", episodes_in_phase=episodes_in_phase, required_episodes=required_episodes),
-                        lm.get_string("maturity_manager.criterion_confidence"): lm.get_string("maturity_manager.confidence_details", agent_entropy=agent_entropy, entropy_threshold=dynamic_child_threshold),
-                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {"ok": True, "msg": reason}
+                    details = {
+                        lm.get_string("maturity_manager.criterion_time"): lm.get_string(
+                            "maturity_manager.time_details",
+                            episodes_in_phase=episodes_in_phase,
+                            required_episodes=required_episodes,
+                        ),
+                        lm.get_string("maturity_manager.criterion_confidence"): lm.get_string(
+                            "maturity_manager.confidence_details",
+                            agent_entropy=agent_entropy,
+                            entropy_threshold=dynamic_child_threshold,
+                        ),
+                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {
+                            "ok": True,
+                            "msg": reason,
+                        },
                     }
                     self._promote_agent(agent_id, Maturity.TEEN)
                     self.reporter.report_promotion(agent_id, Maturity.TEEN, details)
                     promotion_happened = True
                 else:
                     rejection_details = {
-                        lm.get_string("maturity_manager.criterion_time"): {"ok": episodes_in_phase >= required_episodes, "msg": lm.get_string("maturity_manager.time_details", episodes_in_phase=episodes_in_phase, required_episodes=required_episodes)},
-                        lm.get_string("maturity_manager.criterion_confidence"): {"ok": confidence_ok, "msg": lm.get_string("maturity_manager.confidence_details", agent_entropy=agent_entropy, entropy_threshold=dynamic_child_threshold)},
-                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {"ok": is_promoted, "msg": reason}
+                        lm.get_string("maturity_manager.criterion_time"): {
+                            "ok": episodes_in_phase >= required_episodes,
+                            "msg": lm.get_string(
+                                "maturity_manager.time_details",
+                                episodes_in_phase=episodes_in_phase,
+                                required_episodes=required_episodes,
+                            ),
+                        },
+                        lm.get_string("maturity_manager.criterion_confidence"): {
+                            "ok": confidence_ok,
+                            "msg": lm.get_string(
+                                "maturity_manager.confidence_details",
+                                agent_entropy=agent_entropy,
+                                entropy_threshold=dynamic_child_threshold,
+                            ),
+                        },
+                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {
+                            "ok": is_promoted,
+                            "msg": reason,
+                        },
                     }
                     self.reporter.report_rejection(agent_id, current_phase, Maturity.TEEN, rejection_details)
 
             elif current_phase == Maturity.TEEN:
-                dynamic_adult_threshold = self.entropy_calculator.calculate_threshold(self.teen_phase_min_duration, is_adult_transition=True)
+                dynamic_adult_threshold = self.entropy_calculator.calculate_threshold(
+                    self.teen_phase_min_duration, is_adult_transition=True
+                )
                 confidence_ok = agent_entropy < dynamic_adult_threshold
-                
+
                 # MFD Dynamic Threshold evaluation
                 is_promoted, reason, current_threshold, required_episodes = self.promotion_evaluator.evaluate_agent(
                     agent_id=agent_id,
                     current_phase=current_phase,
                     episodes_in_phase=episodes_in_phase,
-                    recent_mfd_efficiency=mfd_efficiency
+                    recent_mfd_efficiency=mfd_efficiency,
                 )
 
                 if confidence_ok and is_promoted:
                     details = {
-                        lm.get_string("maturity_manager.criterion_time"): lm.get_string("maturity_manager.time_details", episodes_in_phase=episodes_in_phase, required_episodes=required_episodes),
-                        lm.get_string("maturity_manager.criterion_confidence"): lm.get_string("maturity_manager.confidence_details", agent_entropy=agent_entropy, entropy_threshold=dynamic_adult_threshold),
-                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {"ok": True, "msg": reason}
+                        lm.get_string("maturity_manager.criterion_time"): lm.get_string(
+                            "maturity_manager.time_details",
+                            episodes_in_phase=episodes_in_phase,
+                            required_episodes=required_episodes,
+                        ),
+                        lm.get_string("maturity_manager.criterion_confidence"): lm.get_string(
+                            "maturity_manager.confidence_details",
+                            agent_entropy=agent_entropy,
+                            entropy_threshold=dynamic_adult_threshold,
+                        ),
+                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {
+                            "ok": True,
+                            "msg": reason,
+                        },
                     }
                     self._promote_agent(agent_id, Maturity.ADULT)
                     self.reporter.report_promotion(agent_id, Maturity.ADULT, details)
                     promotion_happened = True
                 else:
                     rejection_details = {
-                        lm.get_string("maturity_manager.criterion_time"): {"ok": episodes_in_phase >= required_episodes, "msg": lm.get_string("maturity_manager.time_details", episodes_in_phase=episodes_in_phase, required_episodes=required_episodes)},
-                        lm.get_string("maturity_manager.criterion_confidence"): {"ok": confidence_ok, "msg": lm.get_string("maturity_manager.confidence_details", agent_entropy=agent_entropy, entropy_threshold=dynamic_adult_threshold)},
-                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {"ok": is_promoted, "msg": reason}
+                        lm.get_string("maturity_manager.criterion_time"): {
+                            "ok": episodes_in_phase >= required_episodes,
+                            "msg": lm.get_string(
+                                "maturity_manager.time_details",
+                                episodes_in_phase=episodes_in_phase,
+                                required_episodes=required_episodes,
+                            ),
+                        },
+                        lm.get_string("maturity_manager.criterion_confidence"): {
+                            "ok": confidence_ok,
+                            "msg": lm.get_string(
+                                "maturity_manager.confidence_details",
+                                agent_entropy=agent_entropy,
+                                entropy_threshold=dynamic_adult_threshold,
+                            ),
+                        },
+                        lm.get_string("maturity_manager.criterion_mfd", default="MFD Efficiency"): {
+                            "ok": is_promoted,
+                            "msg": reason,
+                        },
                     }
                     self.reporter.report_rejection(agent_id, current_phase, Maturity.ADULT, rejection_details)
-        
+
         return promotion_happened
 
     def _promote_agent(self, agent_id: str, new_phase: Maturity):

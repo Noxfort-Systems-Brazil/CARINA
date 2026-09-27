@@ -26,6 +26,7 @@ of the map, including selection and highlighting of streets and traffic lights.
 It directly manipulates canvas and stack objects to reflect the current state.
 """
 
+import math
 from typing import Dict, Tuple
 
 import flet as ft
@@ -79,6 +80,22 @@ class MapStateManager:
                 return widget_id
         return None
 
+    def get_closest_widget_distance(self, x: float, y: float) -> Tuple[str | None, float]:
+        """
+        Calculates the distance from a given map coordinate to the center of each
+        interactive widget, returning (closest_widget_id, min_distance).
+        """
+        min_dist = float("inf")
+        closest_id = None
+        for widget_id, widget in self.interactive_widgets.items():
+            cx = (widget.left or 0.0) + (widget.width or 0.0) / 2.0
+            cy = (widget.top or 0.0) + (widget.height or 0.0) / 2.0
+            dist = math.hypot(x - cx, y - cy)
+            if dist < min_dist:
+                min_dist = dist
+                closest_id = widget_id
+        return closest_id, min_dist
+
     def set_selection(self, item_type: str | None, item_id: str | None):
         """
         Main method to set the selected item on the map.
@@ -88,9 +105,14 @@ class MapStateManager:
         if item_type == "street" and item_id:
             self._highlight_street(item_id)
             self.selected_edge_id = item_id
+            self.selected_interactive_id = None
         elif item_type == "interactive" and item_id:
             self._highlight_interactive(item_id)
             self.selected_interactive_id = item_id
+            self.selected_edge_id = None
+        else:
+            self.selected_edge_id = None
+            self.selected_interactive_id = None
 
     def get_selected_type_and_id(self) -> Tuple[str | None, str | None]:
         """Returns the current selection type ('street' or 'interactive') and the item id."""
@@ -119,10 +141,16 @@ class MapStateManager:
         if not path_object:
             return
 
+        base_stroke = (
+            path_object.paint.stroke_width
+            if (path_object.paint and hasattr(path_object.paint, "stroke_width") and path_object.paint.stroke_width)
+            else 5.0
+        )
+
         self.highlight_casing = cv.Path(
             elements=path_object.elements,
             paint=ft.Paint(
-                stroke_width=path_object.paint.stroke_width + 5,
+                stroke_width=base_stroke + 5,
                 color=ft.Colors.BLACK,
                 style=ft.PaintingStyle.STROKE,
                 stroke_cap=ft.StrokeCap.ROUND,
@@ -131,7 +159,7 @@ class MapStateManager:
         self.highlight_foreground = cv.Path(
             elements=path_object.elements,
             paint=ft.Paint(
-                stroke_width=path_object.paint.stroke_width + 1,
+                stroke_width=base_stroke + 1,
                 color=ft.Colors.YELLOW_ACCENT_400,
                 style=ft.PaintingStyle.STROKE,
                 stroke_cap=ft.StrokeCap.ROUND,

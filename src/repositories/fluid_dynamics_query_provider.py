@@ -18,9 +18,9 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-import os
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 
@@ -33,9 +33,10 @@ class FluidDynamicsQueryProvider:
     Manages loading and resolving SQL query templates for fluid dynamics operations.
     Handles DB engine dialect resolution (SQLite / PostgreSQL) and timestamp helpers.
     """
+
     _queries_cache = None
 
-    def __init__(self, engine: 'DatabaseEngine'):
+    def __init__(self, engine: "DatabaseEngine"):
         self.engine = engine
         self._load_queries()
 
@@ -45,12 +46,19 @@ class FluidDynamicsQueryProvider:
             return
         try:
             base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            json_path = os.path.join(base_dir, "config", "fluid_dynamics_queries.json")
-            if os.path.exists(json_path):
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    cls._queries_cache = json.load(f)
-            else:
-                logging.warning(f"[FluidDynamicsQueryProvider] Query config file not found at: {json_path}")
+            candidates = [
+                os.path.join(base_dir, "config", "database", "fluid_dynamics_queries.json"),
+                os.path.join(base_dir, "config", "fluid_dynamics_queries.json"),
+            ]
+            loaded = False
+            for json_path in candidates:
+                if os.path.exists(json_path):
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        cls._queries_cache = json.load(f)
+                    loaded = True
+                    break
+            if not loaded:
+                logging.warning(f"[FluidDynamicsQueryProvider] Query config file not found in candidates: {candidates}")
                 cls._queries_cache = {}
         except Exception as e:
             logging.error(f"[FluidDynamicsQueryProvider] Failed to load fluid_dynamics_queries.json: {e}")

@@ -20,7 +20,9 @@
 
 import logging
 from typing import Any
+
 from blocks.report_post_processor import ReportPostProcessor
+
 
 class MFDNeuralProofreader:
     """
@@ -29,7 +31,9 @@ class MFDNeuralProofreader:
     """
 
     @staticmethod
-    def proofread_narrative(narrative_text: str, raw_exec_summary: str = "", transducer: Any = None, lang: str = "pt_br") -> str:
+    def proofread_narrative(
+        narrative_text: str, raw_exec_summary: str = "", transducer: Any = None, lang: str = "pt_br"
+    ) -> str:
         """
         Executes a single global proofreading pass over narrative sections 1 through 5.
 
@@ -47,13 +51,17 @@ class MFDNeuralProofreader:
             return narrative_text
 
         try:
-            logging.info("[MFD_NEURAL_PROOFREADER] Executing single global proofreading pass on narrative sections 1-5...")
+            logging.info(
+                "[MFD_NEURAL_PROOFREADER] Executing single global proofreading pass on narrative sections 1-5..."
+            )
             revised_text = transducer.review_text(narrative_text, language=lang)
             if revised_text and len(revised_text.strip()) > len(narrative_text) * 0.4:
                 logging.info("[MFD_NEURAL_PROOFREADER] Global proofreading pass completed successfully.")
                 narrative_text = revised_text
             else:
-                logging.warning("[MFD_NEURAL_PROOFREADER] Proofreading returned truncated output; retaining original draft.")
+                logging.warning(
+                    "[MFD_NEURAL_PROOFREADER] Proofreading returned truncated output; retaining original draft."
+                )
         except Exception as rev_err:
             logging.warning(f"[MFD_NEURAL_PROOFREADER] Single global proofreading pass failed: {rev_err}")
 

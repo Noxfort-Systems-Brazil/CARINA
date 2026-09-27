@@ -18,17 +18,22 @@
 # Author: Gabriel Moraes
 # Date: April 15, 2026
 
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
-from typing import Callable, Dict, Any, Tuple, Optional, List
+
 
 class PPOOptimizer:
     """
-    Executes the Reinforcement Learning PPO (Proximal Policy Optimization) 
+    Executes the Reinforcement Learning PPO (Proximal Policy Optimization)
     mathematical logic for continuous and discrete temporal agents.
     Abstracted strictly to adhere to the Single Responsibility Principle (SOLID).
     """
-    def __init__(self, hyperparams: Dict[str, Any], device: torch.device, scaler: Optional[torch.amp.GradScaler] = None) -> None:
+
+    def __init__(
+        self, hyperparams: Dict[str, Any], device: torch.device, scaler: Optional[torch.amp.GradScaler] = None
+    ) -> None:
         """
         Initializes the PPO Strategy instance.
         """
@@ -38,29 +43,35 @@ class PPOOptimizer:
 
     def load_hyperparameters(self, hyperparams: Dict[str, Any]) -> None:
         """Updates internal RL hyperparameters without destroying the object."""
-        self.gamma = float(hyperparams.get('gamma', 0.99))
-        self.gae_lambda = float(hyperparams.get('gae_lambda', 0.95))
-        self.eps_clip = float(hyperparams.get('eps_clip', 0.2))
-        self.k_epochs = int(hyperparams.get('k_epochs', 4))
-        self.target_kl = float(hyperparams.get('target_kl', 0.02))
-        self.grad_clip_norm = float(hyperparams.get('grad_clip_norm', 0.5))
+        self.gamma = float(hyperparams.get("gamma", 0.99))
+        self.gae_lambda = float(hyperparams.get("gae_lambda", 0.95))
+        self.eps_clip = float(hyperparams.get("eps_clip", 0.2))
+        self.k_epochs = int(hyperparams.get("k_epochs", 4))
+        self.target_kl = float(hyperparams.get("target_kl", 0.02))
+        self.grad_clip_norm = float(hyperparams.get("grad_clip_norm", 0.5))
         self.critic_loss_coef = 0.5
 
-    def step(self, policy_net: nn.Module, optimizer: torch.optim.Optimizer, memory_batch: Tuple[Any, torch.Tensor, torch.Tensor, List[float], List[bool], torch.Tensor], evaluate_fn: Callable) -> float:
+    def step(
+        self,
+        policy_net: nn.Module,
+        optimizer: torch.optim.Optimizer,
+        memory_batch: Tuple[Any, torch.Tensor, torch.Tensor, List[float], List[bool], torch.Tensor],
+        evaluate_fn: Callable,
+    ) -> float:
         """
         Executes a single PPO backpropagation step using Generalized Advantage Estimation.
-        
+
         Args:
             policy_net: The agent's neural network to be optimized.
             optimizer: The optimizer (e.g., AdamW) tied to the policy network parameters.
             memory_batch: A tuple containing (old_states, old_actions, old_log_probs, rewards, dones, old_state_values).
             evaluate_fn: A delegate callback `fn(states, actions)` that triggers a forward pass on the agent's network, returning (log_probs, state_values, entropy).
-            
+
         Returns:
             float: The total loss calculated for this batch update.
         """
         old_states, old_actions, old_log_probs, rewards, dones, old_state_values = memory_batch
-        
+
         # Moves variables to proper tensor device computation
         old_actions = old_actions.to(self.device)
         old_log_probs = old_log_probs.to(self.device)
@@ -73,11 +84,11 @@ class PPOOptimizer:
             gae = 0
             for t in reversed(range(len(rewards))):
                 is_done = 1.0 - float(dones[t])
-                next_value = old_state_values[t+1] if t < len(rewards) - 1 else last_state_value
+                next_value = old_state_values[t + 1] if t < len(rewards) - 1 else last_state_value
                 delta = rewards[t] + self.gamma * next_value * is_done - old_state_values[t]
                 gae = delta + self.gamma * self.gae_lambda * is_done * gae
                 advantages[t] = gae
-            
+
             rewards_to_go = advantages + old_state_values
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -86,35 +97,35 @@ class PPOOptimizer:
         # 2. PPO Clipping iterations (k_epochs)
         for _ in range(self.k_epochs):
             optimizer.zero_grad()
-            
+
             # Using Mixed Precision (AMP) logic
             with torch.amp.autocast(device_type=self.device.type, enabled=self.scaler.is_enabled()):
                 new_log_probs, state_values, dist_entropy = evaluate_fn(old_states, old_actions)
-                
+
                 # Importance sampling
                 ratios = torch.exp(new_log_probs - old_log_probs.detach())
-                
+
                 surr1 = ratios * advantages
                 surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-                
+
                 actor_loss = -torch.min(surr1, surr2).mean()
                 critic_loss = nn.MSELoss()(state_values, rewards_to_go.detach())
                 entropy_bonus = -0.01 * dist_entropy.mean()
-                
+
                 total_loss = actor_loss + (self.critic_loss_coef * critic_loss) + entropy_bonus
-            
+
             # Gradient application
             self.scaler.scale(total_loss).backward()
             torch.nn.utils.clip_grad_norm_(policy_net.parameters(), self.grad_clip_norm)
             self.scaler.step(optimizer)
             self.scaler.update()
-            
+
             total_loss_val = total_loss.item()
-            
+
             # Early stopping divergence checking via Kullback-Leibler
-            with torch.no_grad(): 
+            with torch.no_grad():
                 kl_div = torch.mean(old_log_probs.detach() - new_log_probs).item()
             if abs(kl_div) > self.target_kl:
                 break
-                
+
         return total_loss_val

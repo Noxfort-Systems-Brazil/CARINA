@@ -18,10 +18,12 @@
 # Author: Gabriel Moraes
 # Date: August 2026
 
+from typing import Any, Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Dict, Any, Optional
+
 
 class CrossAttentionFusion(nn.Module):
     """
@@ -35,8 +37,16 @@ class CrossAttentionFusion(nn.Module):
     - is_fixed=False (LocalAgent): Adaptive trainable weights with PBT evolution.
     - is_fixed=True (GuardianAgent): Deterministic frozen weights for safety veto auditing.
     """
-    def __init__(self, local_dim: int = 17, stgat_dim: int = 16, pae_dim: int = 16, 
-                 embed_dim: int = 32, num_heads: int = 4, is_fixed: bool = False):
+
+    def __init__(
+        self,
+        local_dim: int = 17,
+        stgat_dim: int = 16,
+        pae_dim: int = 16,
+        embed_dim: int = 32,
+        num_heads: int = 4,
+        is_fixed: bool = False,
+    ):
         super(CrossAttentionFusion, self).__init__()
         self.local_dim = local_dim
         self.stgat_dim = stgat_dim
@@ -65,7 +75,9 @@ class CrossAttentionFusion(nn.Module):
         if not self.is_fixed:
             self.temperature = max(0.1, min(temperature, 5.0))
 
-    def forward(self, t_local: torch.Tensor, t_stgat: torch.Tensor, t_pae: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, t_local: torch.Tensor, t_stgat: torch.Tensor, t_pae: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Fuses inputs dynamically.
 
@@ -94,9 +106,9 @@ class CrossAttentionFusion(nn.Module):
         else:
             t_pae_flat = t_pae
 
-        e_local = self.proj_local(t_local_flat)   # [B, E]
-        e_stgat = self.proj_stgat(t_stgat_flat)   # [B, E]
-        e_pae = self.proj_pae(t_pae_flat)         # [B, E]
+        e_local = self.proj_local(t_local_flat)  # [B, E]
+        e_stgat = self.proj_stgat(t_stgat_flat)  # [B, E]
+        e_pae = self.proj_pae(t_pae_flat)  # [B, E]
 
         # Stack as sequence of 3 modality tokens: [B, 3, E]
         tokens = torch.stack([e_local, e_stgat, e_pae], dim=1)

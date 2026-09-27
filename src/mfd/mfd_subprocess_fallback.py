@@ -18,11 +18,12 @@
 # Author: Gabriel Moraes
 # Date: August 9, 2026
 
-import sys
 import json
 import logging
 import subprocess
-from typing import Dict, Any
+import sys
+from typing import Any, Dict
+
 
 class MFDSubprocessFallback:
     """
@@ -41,12 +42,7 @@ class MFDSubprocessFallback:
         :return: Generated report text string
         """
         try:
-            cmd = [
-                sys.executable,
-                "-m", "slm.semantic_transducer",
-                "--device", device,
-                "--gpu_layers", str(gpu_layers)
-            ]
+            cmd = [sys.executable, "-m", "slm.semantic_transducer", "--device", device, "--gpu_layers", str(gpu_layers)]
             result = subprocess.run(cmd, input=json.dumps(payload), capture_output=True, text=True, timeout=120)
             if result.returncode == 0:
                 stdout_text = (result.stdout or "").strip()

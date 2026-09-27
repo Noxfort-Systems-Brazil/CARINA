@@ -19,9 +19,11 @@
 # Date: August 9, 2026
 
 from typing import Any
+
 from blocks.report_number_formatter import ReportNumberFormatter
-from blocks.report_text_sanitizer import ReportTextSanitizer
 from blocks.report_semantic_cleaner import ReportSemanticCleaner
+from blocks.report_text_sanitizer import ReportTextSanitizer
+
 
 class ReportPostProcessor:
     """

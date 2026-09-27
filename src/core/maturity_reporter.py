@@ -19,17 +19,18 @@
 # Date: October 3, 2025
 
 import logging
-import sys
 import os
+import sys
 from typing import TYPE_CHECKING
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from core.enums import Maturity
+
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
@@ -37,29 +38,33 @@ if TYPE_CHECKING:
 class MaturityReporter:
     """The "Spokesperson" of the Flight School, specialist in generating log reports."""
 
-    def __init__(self, locale_manager: 'LocaleManagerBackend'):
+    def __init__(self, locale_manager: "LocaleManagerBackend"):
         self.locale_manager = locale_manager
 
     def report_promotion(self, agent_id: str, new_phase: Maturity, details: dict):
         """Formats and logs a successful promotion message."""
         lm = self.locale_manager
-        
+
         is_graduation = new_phase == Maturity.ADULT
         icon = "🎓" if is_graduation else "✅"
-        
-        title_key = "maturity_reporter.promotion.title_graduated" if is_graduation else "maturity_reporter.promotion.title_promoted"
+
+        title_key = (
+            "maturity_reporter.promotion.title_graduated"
+            if is_graduation
+            else "maturity_reporter.promotion.title_promoted"
+        )
         title = lm.get_string(title_key)
-        
+
         # --- CHANGE 1: Use a key that contains the entire header structure ---
         header = lm.get_string("maturity_reporter.promotion.header", icon=icon, title=title, agent_id=agent_id)
-        
-        phase_map = { Maturity.TEEN: "teen", Maturity.ADULT: "adult" }
+
+        phase_map = {Maturity.TEEN: "teen", Maturity.ADULT: "adult"}
         phase_name = lm.get_string(f"maturity_manager.phase_{phase_map.get(new_phase, 'child')}")
-        
+
         log_message = f"\n{header}\n"
         log_message += f"   L- {lm.get_string('maturity_manager.new_phase_message', phase_name=phase_name)}.\n"
         log_message += f"   L- {lm.get_string('maturity_manager.criteria_met_header')}"
-        
+
         for criterion, value in details.items():
             # Criteria formatting can be maintained in the code for its simplicity
             log_message += f"\n      - ✅ {criterion}: {value}"
@@ -68,25 +73,22 @@ class MaturityReporter:
     def report_rejection(self, agent_id: str, current_phase: Maturity, target_phase: Maturity, details: dict):
         """Formats and logs a detailed "report card" for a failed promotion attempt."""
         lm = self.locale_manager
-        
-        title = lm.get_string('maturity_reporter.rejection.title')
-        
-        phase_map = { Maturity.CHILD: "child", Maturity.TEEN: "teen", Maturity.ADULT: "adult" }
+
+        title = lm.get_string("maturity_reporter.rejection.title")
+
+        phase_map = {Maturity.CHILD: "child", Maturity.TEEN: "teen", Maturity.ADULT: "adult"}
         current_phase_name = lm.get_string(f"maturity_manager.phase_{phase_map.get(current_phase, 'child')}")
         target_phase_name = lm.get_string(f"maturity_manager.phase_{phase_map.get(target_phase, 'teen')}")
 
         # --- CHANGE 2: Use a key that contains the entire header structure ---
         header = lm.get_string(
-            "maturity_reporter.rejection.header", 
-            title=title, 
-            agent_id=agent_id, 
-            current_phase_name=current_phase_name
+            "maturity_reporter.rejection.header", title=title, agent_id=agent_id, current_phase_name=current_phase_name
         )
 
         log_message = f"\n{header} "
-        log_message += lm.get_string('maturity_manager.promotion_not_met_message', target_phase_name=target_phase_name)
+        log_message += lm.get_string("maturity_manager.promotion_not_met_message", target_phase_name=target_phase_name)
         log_message += f"\n   L- {lm.get_string('maturity_manager.criteria_status_header')}"
-        
+
         for criterion, data in details.items():
             icon = "✅" if data["ok"] else "❌"
             # Criteria formatting can be maintained in the code

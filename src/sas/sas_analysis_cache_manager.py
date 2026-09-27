@@ -18,10 +18,10 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-import os
 import json
 import logging
-from typing import Tuple, Optional
+import os
+from typing import Optional, Tuple
 
 
 class SASAnalysisCacheManager:

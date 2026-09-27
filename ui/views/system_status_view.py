@@ -25,25 +25,28 @@ Nesta versão, a lógica de carregamento de dados foi movida para um cliente
 assíncrono (SystemStatusClient) para evitar o bloqueio da UI.
 """
 
-import flet as ft
-from typing import Dict, Any
+from typing import Any, Dict
 
-from ui.handlers.locale_manager import LocaleManager
+import flet as ft
+
 from ui.clients.system_status_client import SystemStatusClient
+from ui.handlers.locale_manager import LocaleManager
+
 
 class SystemStatusView(ft.Container):
     """
     Um widget que carrega e exibe o sumário do sistema de forma assíncrona.
     """
+
     def __init__(self, locale_manager: LocaleManager):
         super().__init__(expand=True, padding=10)
-        
+
         self.locale_manager = locale_manager
         # --- CHANGE 1: Instantiate the client with a callback method ---
         self.client = SystemStatusClient(on_complete_callback=self._on_status_loaded)
 
         self.title_text = ft.Text(size=20, weight=ft.FontWeight.BOLD)
-        
+
         self.hardware_card_title = ft.Text(size=16, weight=ft.FontWeight.BOLD)
         self.gpu_label = ft.Text()
         self.gpu_text = ft.Text("---", weight=ft.FontWeight.BOLD)
@@ -59,9 +62,11 @@ class SystemStatusView(ft.Container):
         self.local_agents_text = ft.Text("---", weight=ft.FontWeight.BOLD)
         self.guardian_agents_label = ft.Text()
         self.guardian_agents_text = ft.Text("---", weight=ft.FontWeight.BOLD)
-        
+
         self.last_updated_label = ft.Text()
-        self.last_updated_text = ft.Text(self.locale_manager.get_string("system_status_view.loading", default="A carregar..."), italic=True)
+        self.last_updated_text = ft.Text(
+            self.locale_manager.get_string("system_status_view.loading", default="A carregar..."), italic=True
+        )
 
         # --- CHANGE 2: The view now starts with a progress ring ---
         self.progress_ring = ft.ProgressRing()
@@ -69,47 +74,67 @@ class SystemStatusView(ft.Container):
             controls=[
                 ft.Card(
                     elevation=4,
-                    content=ft.Container(padding=15, content=ft.Column([
-                        self.hardware_card_title, ft.Divider(height=5),
-                        ft.Row([self.gpu_label, self.gpu_text]),
-                    ]))
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Column(
+                            [
+                                self.hardware_card_title,
+                                ft.Divider(height=5),
+                                ft.Row([self.gpu_label, self.gpu_text]),
+                            ]
+                        ),
+                    ),
                 ),
                 ft.Card(
                     elevation=4,
-                    content=ft.Container(padding=15, content=ft.Column([
-                        self.topology_card_title, ft.Divider(height=5),
-                        ft.Row([self.nodes_label, self.nodes_text]),
-                        ft.Row([self.edges_label, self.edges_text]),
-                    ]))
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Column(
+                            [
+                                self.topology_card_title,
+                                ft.Divider(height=5),
+                                ft.Row([self.nodes_label, self.nodes_text]),
+                                ft.Row([self.edges_label, self.edges_text]),
+                            ]
+                        ),
+                    ),
                 ),
                 ft.Card(
                     elevation=4,
-                    content=ft.Container(padding=15, content=ft.Column([
-                        self.ai_card_title, ft.Divider(height=5),
-                        ft.Row([self.local_agents_label, self.local_agents_text]),
-                        ft.Row([self.guardian_agents_label, self.guardian_agents_text]),
-                    ]))
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Column(
+                            [
+                                self.ai_card_title,
+                                ft.Divider(height=5),
+                                ft.Row([self.local_agents_label, self.local_agents_text]),
+                                ft.Row([self.guardian_agents_label, self.guardian_agents_text]),
+                            ]
+                        ),
+                    ),
                 ),
-                ft.Row([self.last_updated_label, self.last_updated_text], alignment=ft.MainAxisAlignment.END)
+                ft.Row([self.last_updated_label, self.last_updated_text], alignment=ft.MainAxisAlignment.END),
             ],
             spacing=10,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-            visible=False # Starts invisible
+            visible=False,  # Starts invisible
         )
 
         self.content = ft.Column(
             controls=[
-                ft.Row([ft.Icon(ft.Icons.INFO_OUTLINE_ROUNDED), self.title_text], alignment=ft.MainAxisAlignment.CENTER),
+                ft.Row(
+                    [ft.Icon(ft.Icons.INFO_OUTLINE_ROUNDED), self.title_text], alignment=ft.MainAxisAlignment.CENTER
+                ),
                 ft.Container(
-                    content=ft.Stack([
-                        ft.Container(self.progress_ring, alignment=ft.alignment.center),
-                        self.cards_column
-                    ]),
-                    expand=True
-                )
+                    content=ft.Stack(
+                        [ft.Container(self.progress_ring, alignment=ft.alignment.center), self.cards_column]
+                    ),
+                    expand=True,
+                ),
             ],
-            expand=True, spacing=15,
-            horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+            expand=True,
+            spacing=15,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         # --- END OF CHANGE 2 ---
 
@@ -126,13 +151,17 @@ class SystemStatusView(ft.Container):
 
     def _update_ui_with_data(self, response: Dict[str, Any]):
         """Atualiza a UI na thread principal com os dados recebidos."""
-        if not self.page: return
+        if not self.page:
+            return
 
         self.progress_ring.visible = False
-        
+
         if response.get("status") == "complete":
             data = response.get("data", {})
-            self.gpu_text.value = data.get("gpu_info", self.locale_manager.get_string("system_status_view.gpu_not_detected", default="Não detectada"))
+            self.gpu_text.value = data.get(
+                "gpu_info",
+                self.locale_manager.get_string("system_status_view.gpu_not_detected", default="Não detectada"),
+            )
             self.nodes_text.value = str(data.get("network_topology", {}).get("nodes", "N/A"))
             self.edges_text.value = str(data.get("network_topology", {}).get("edges", "N/A"))
             self.local_agents_text.value = str(data.get("agent_count", {}).get("local_agents", "N/A"))
@@ -147,9 +176,10 @@ class SystemStatusView(ft.Container):
             self.last_updated_text.value = template.format(error=error_details)
             self.last_updated_text.color = ft.Colors.ORANGE
             self.last_updated_text.italic = False
-        
+
         self.cards_column.visible = True
         self.update()
+
     # --- END OF CHANGE 4 ---
 
     def update_translations(self, lm: LocaleManager):
@@ -164,4 +194,5 @@ class SystemStatusView(ft.Container):
         self.local_agents_label.value = lm.get_string("system_status_view.local_agents_label")
         self.guardian_agents_label.value = lm.get_string("system_status_view.guardian_agents_label")
         self.last_updated_label.value = lm.get_string("system_status_view.last_updated_label")
-        if self.page: self.update()
+        if self.page:
+            self.update()

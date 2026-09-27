@@ -23,7 +23,7 @@ import json
 import logging
 import os
 import sqlite3
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from src.utils.locale_manager_backend import LocaleManagerBackend
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 class DatabaseEngine:
     """
     Central engine for managing database connections (SQLite or PostgreSQL).
-    Responsible for connecting, initializing the schema dynamically from config/schema_queries.json,
+    Responsible for connecting, initializing the schema dynamically from config/database/schema_queries.json,
     and providing active database connections.
     """
 
@@ -129,17 +129,49 @@ class DatabaseEngine:
     def _load_schema_config(self) -> dict:
         try:
             base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            json_path = os.path.join(base_dir, "config", "schema_queries.json")
-            if os.path.exists(json_path):
-                with open(json_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+            candidates = [
+                os.path.join(base_dir, "config", "database", "schema_queries.json"),
+                os.path.join(base_dir, "config", "schema_queries.json"),
+            ]
+            for json_path in candidates:
+                if os.path.exists(json_path):
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        return json.load(f)
         except Exception as e:
             logging.error(f"[DB_ENGINE] Failed to load schema_queries.json: {e}")
         return {}
 
+    def apply_migrations(self, db_url: Optional[str] = None) -> bool:
+        """Applies pending Alembic database migrations up to 'head'."""
+        try:
+            from alembic import command
+            from alembic.config import Config
+
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            alembic_ini_path = os.path.join(project_root, "alembic.ini")
+            if not os.path.exists(alembic_ini_path):
+                return False
+            alembic_cfg = Config(alembic_ini_path)
+            if not db_url:
+                if self.db_type == "sqlite" and self.db_path:
+                    db_url = f"sqlite:///{os.path.abspath(self.db_path)}"
+                elif self.db_type == "postgres" and hasattr(self, "db_host") and self.db_host:
+                    db_url = (
+                        f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+                    )
+            if db_url:
+                alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+            command.upgrade(alembic_cfg, "head")
+            logging.info("[DB_ENGINE] Alembic migrations successfully applied to 'head'.")
+            return True
+        except Exception as e:
+            logging.warning(f"[DB_ENGINE] Alembic migration skipped or failed: {e}")
+            return False
+
     def _initialize_db(self):
         """
-        Creates the necessary tables, migrations, and indexes in the database dynamically from JSON.
+        Creates the necessary tables, migrations, and indexes in the database dynamically.
+        Uses Alembic migrations as primary mechanism, with schema_queries.json as fallback.
         """
         conn = self.get_connection()
         if not conn:
@@ -154,13 +186,22 @@ class DatabaseEngine:
                 cursor.execute(f'SET search_path TO "{safe_schema}", public;')
                 conn.commit()
 
+            # Try Alembic migration first if sqlite or postgres URL is available
+            migration_applied = False
+            try:
+                migration_applied = self.apply_migrations()
+            except Exception:
+                migration_applied = False
+
             schema_config = self._load_schema_config()
             dialect_config = schema_config.get(self.db_type, schema_config.get("sqlite", {}))
 
-            # 1. Create Tables
             for table_sql in dialect_config.get("tables", []):
-                cursor.execute(table_sql)
-                conn.commit()
+                try:
+                    cursor.execute(table_sql)
+                    conn.commit()
+                except Exception:
+                    pass
 
             # 2. Migrations
             migrations = dialect_config.get("migrations", [])

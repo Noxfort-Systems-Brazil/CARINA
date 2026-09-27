@@ -33,11 +33,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ui.providers.live_data_provider import LiveDataProvider
 
+
 class ControlClient:
     """
     Traduz ações da UI em comandos e os envia para o backend.
     """
-    def __init__(self, live_data_provider: 'LiveDataProvider' = None):
+
+    def __init__(self, live_data_provider: "LiveDataProvider" = None):
         """
         Inicializa o cliente de controle.
 
@@ -61,15 +63,11 @@ class ControlClient:
         Envia um comando para aplicar um override em um semáforo específico.
         """
         print(f">>> [COMANDO UI]: Override no semáforo '{semaphore_id}' para o estado '{state.upper()}'")
-        logging.info(f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Aplicar override no semáforo '{semaphore_id}' para o estado '{state.upper()}'")
+        logging.info(
+            f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Aplicar override no semáforo '{semaphore_id}' para o estado '{state.upper()}'"
+        )
         if self.live_data_provider:
-            command = {
-                "type": "set_semaphore_override",
-                "payload": {
-                    "semaphore_id": semaphore_id,
-                    "state": state
-                }
-            }
+            command = {"type": "set_semaphore_override", "payload": {"semaphore_id": semaphore_id, "state": state}}
             self.live_data_provider.send_command_to_backend(command)
 
     def set_street_override(self, street_id: str, state: str):
@@ -77,15 +75,11 @@ class ControlClient:
         Envia um comando para bloquear ou desbloquear uma rua.
         """
         print(f">>> [COMANDO UI]: Override na rua '{street_id}' para o estado '{state.upper()}'")
-        logging.info(f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Aplicar override na rua '{street_id}' para o estado '{state.upper()}'")
+        logging.info(
+            f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Aplicar override na rua '{street_id}' para o estado '{state.upper()}'"
+        )
         if self.live_data_provider:
-            command = {
-                "type": "set_street_override",
-                "payload": {
-                    "street_id": street_id,
-                    "state": state
-                }
-            }
+            command = {"type": "set_street_override", "payload": {"street_id": street_id, "state": state}}
             self.live_data_provider.send_command_to_backend(command)
 
     def trigger_analysis(self):
@@ -94,10 +88,7 @@ class ControlClient:
         """
         logging.info("--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Disparar análise de planejamento")
         if self.live_data_provider:
-            command = {
-                "type": "trigger_analysis",
-                "payload": {}
-            }
+            command = {"type": "trigger_analysis", "payload": {}}
             self.live_data_provider.send_command_to_backend(command)
 
     def trigger_mfd_analysis(self):
@@ -106,9 +97,5 @@ class ControlClient:
         """
         logging.info("--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Disparar análise MFD")
         if self.live_data_provider:
-            command = {
-                "type": "trigger_mfd_analysis",
-                "payload": {}
-            }
+            command = {"type": "trigger_mfd_analysis", "payload": {}}
             self.live_data_provider.send_command_to_backend(command)
-        

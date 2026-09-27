@@ -18,57 +18,50 @@
 # Author: Gabriel Moraes
 # Date: December 17, 2025
 
-import flet as ft
 import os
+
+import flet as ft
+
 from ui.handlers.locale_manager import LocaleManager
+
 
 class PlotViewerWidget(ft.Container):
     """
     Widget dedicated to displaying the XAI chart (image).
     Handles hiding/showing the image and refreshing the source properly.
     """
+
     def __init__(self, locale_manager: LocaleManager):
         super().__init__()
         self.locale_manager = locale_manager
-        
+
         # --- FIX: Renamed from self.image to self.plot_image to avoid collision ---
         # ft.Container already has a property named 'image' for background images.
         # Overwriting it with a Control causes a Circular Reference error during serialization.
         self.plot_image = ft.Image(
-            src="",
-            fit=ft.ImageFit.CONTAIN,
-            visible=False,  # Starts invisible
-            gapless_playback=True,
-            expand=True
+            src="", fit=ft.ImageFit.CONTAIN, visible=False, gapless_playback=True, expand=True  # Starts invisible
         )
-        
+
         # Placeholder (Text/Icon showed when no image is loaded)
         self.placeholder_icon = ft.Icon(ft.Icons.INSERT_CHART_OUTLINED, size=64, color=ft.Colors.GREY_700)
         self.placeholder_text = ft.Text(
             value=self.locale_manager.get_string("plot_viewer.no_data", default="No analysis generated yet."),
             color=ft.Colors.GREY_500,
-            text_align=ft.TextAlign.CENTER
+            text_align=ft.TextAlign.CENTER,
         )
-        
+
         self.placeholder_col = ft.Column(
-            controls=[
-                self.placeholder_icon,
-                self.placeholder_text
-            ],
+            controls=[self.placeholder_icon, self.placeholder_text],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            visible=True
+            visible=True,
         )
 
         # Layout
         self.content = ft.Stack(
-            controls=[
-                self.placeholder_col,
-                self.plot_image  # Updated reference
-            ],
-            alignment=ft.alignment.center
+            controls=[self.placeholder_col, self.plot_image], alignment=ft.alignment.center  # Updated reference
         )
-        
+
         # styles
         self.expand = True
         self.bgcolor = ft.Colors.BLACK12
@@ -86,17 +79,17 @@ class PlotViewerWidget(ft.Container):
             # Update image source
             self.plot_image.src = os.path.abspath(image_path)
             self.plot_image.visible = True
-            
+
             # Hide placeholder
             self.placeholder_col.visible = False
         else:
             # clear image
             self.plot_image.src = ""
             self.plot_image.visible = False
-            
+
             # Show placeholder
             self.placeholder_col.visible = True
-        
+
         # Force UI update for this specific widget
         self.update()
 
@@ -117,5 +110,7 @@ class PlotViewerWidget(ft.Container):
     def update_translations(self, locale_manager: LocaleManager):
         """Refreshes text translations."""
         self.locale_manager = locale_manager
-        self.placeholder_text.value = locale_manager.get_string("plot_viewer.no_data", default="No analysis generated yet.")
+        self.placeholder_text.value = locale_manager.get_string(
+            "plot_viewer.no_data", default="No analysis generated yet."
+        )
         self.update()

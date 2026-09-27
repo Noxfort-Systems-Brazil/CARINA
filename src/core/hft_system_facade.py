@@ -20,12 +20,23 @@
 
 import logging
 
+
 class HftSystemFacade:
     """
     SRP/OCP: Facade to expose only the strictly necessary system functions to the external HFT Server.
     Prevents the gRPC server from being tightly coupled to the CentralController god-class.
     """
-    def __init__(self, topology_manager, topology_recorder_bridge, telemetry_aggregator, watchdog_queue, ui_command_queue, traffic_frame_processor, failsafe_manager=None):
+
+    def __init__(
+        self,
+        topology_manager,
+        topology_recorder_bridge,
+        telemetry_aggregator,
+        watchdog_queue,
+        ui_command_queue,
+        traffic_frame_processor,
+        failsafe_manager=None,
+    ):
         self.topology_manager = topology_manager
         self.topology_recorder_bridge = topology_recorder_bridge
         self.telemetry_aggregator = telemetry_aggregator

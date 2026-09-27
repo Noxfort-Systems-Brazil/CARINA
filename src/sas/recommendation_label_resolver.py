@@ -20,22 +20,17 @@
 
 from sas.template_repository import TemplateRepository
 
+
 class RecommendationLabelResolver:
     """
-    Responsibility (SRP & OCP): Resolves localized display labels for intersection recommendations 
+    Responsibility (SRP & OCP): Resolves localized display labels for intersection recommendations
     (OPTIMIZE, ADD, REMOVE, MAINTAIN, UNSIGNALIZED) and signalized status flags.
     Follows SOLID principles.
     """
 
     @classmethod
     def get_recommendation_labels(
-        cls,
-        is_add: bool,
-        is_remove: bool,
-        is_keep: bool,
-        is_no_signal: bool,
-        language: str,
-        is_optimize: bool = False
+        cls, is_add: bool, is_remove: bool, is_keep: bool, is_no_signal: bool, language: str, is_optimize: bool = False
     ) -> str:
         """
         Resolves the localized string label for a traffic engineering recommendation.
@@ -50,7 +45,9 @@ class RecommendationLabelResolver:
         """
         templates = TemplateRepository.load_templates()
         lang_key = (language or "pt_br").lower()
-        rec_dict = templates.get("recommendations", {}).get(lang_key, templates.get("recommendations", {}).get("pt_br", {}))
+        rec_dict = templates.get("recommendations", {}).get(
+            lang_key, templates.get("recommendations", {}).get("pt_br", {})
+        )
 
         if is_optimize:
             return rec_dict.get("optimize", "OTIMIZAR SEMÁFORO")
@@ -76,9 +73,8 @@ class RecommendationLabelResolver:
         status_dict = templates.get("status", {}).get(lang_key, templates.get("status", {}).get("pt_br", {}))
 
         status_str_lower = str(status_raw or "").lower()
-        is_active = (
-            any(x in status_str_lower for x in ["sinalizado", "active", "yes", "true", "1"])
-            and not any(x in status_str_lower for x in ["não", "nao", "un", "no_signal"])
+        is_active = any(x in status_str_lower for x in ["sinalizado", "active", "yes", "true", "1"]) and not any(
+            x in status_str_lower for x in ["não", "nao", "un", "no_signal"]
         )
 
         if is_active:

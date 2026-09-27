@@ -5,7 +5,7 @@ aliases: [Small Language Models, Local LLM, Semantic Transducer, Offline AI]
 
 # 🤖 Small Language Models (SLM) & Local LLM Integration
 
-This document specifies CARINA's Small Language Model (SLM) subsystem located in [`src/slm/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/slm). It details how CARINA generates forensic, publication-ready textual justifications from raw neural attribution tensors using localized, offline Large Language Models (e.g., **Qwen3 1.7B**, **Qwen2.5 1.5B/3B**, or **Llama-3.2 3B**) without external API calls or cloud dependencies.
+This document specifies CARINA's Small Language Model (SLM) subsystem located in [`src/slm/`](../src/slm). It details how CARINA generates forensic, publication-ready textual justifications from raw neural attribution tensors using localized, offline Large Language Models (e.g., **Qwen3 1.7B**, **Qwen2.5 1.5B/3B**, or **Llama-3.2 3B**) without external API calls or cloud dependencies.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🔍 See [Explainable AI & SAS](XAI_AND_SAS.md) | 📄 See [Report Blocks & Word](REPORT_BLOCKS_AND_TEMPLATES.md)
 
@@ -53,24 +53,24 @@ CARINA executes all natural language report synthesis **100% locally on-premise*
 ## 2. Core Modules in `src/slm/`
 
 ### 2.1 Semantic Transducer (`semantic_transducer.py`)
-Located in [`src/slm/semantic_transducer.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/slm/semantic_transducer.py):
+Located in [`src/slm/semantic_transducer.py`](../src/slm/semantic_transducer.py):
 - Serves as the primary public interface for textual explanation generation.
 - Transforms numerical tuples `(queue_length=18, speed=12.4 km/h, veto=True)` into domain-specific traffic engineering prompts.
 - Employs a fallback heuristic engine: if hardware lacks GPU/RAM or LLM weights are missing, generates deterministic rule-based engineering text without crashing.
 
 ### 2.2 Local Llama Transducer (`local_llama_transducer.py`)
-Located in [`src/slm/local_llama_transducer.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/slm/local_llama_transducer.py):
+Located in [`src/slm/local_llama_transducer.py`](../src/slm/local_llama_transducer.py):
 - Wraps `llama_cpp.Llama` with thread-safe execution locks.
 - Manages GPU layer offloading (`n_gpu_layers = -1` for full CUDA offload).
 - Restricts generation length and temperature to prevent hallucinations.
 
 ### 2.3 Device & Resource Management (`device_manager.py` & `resource_manager.py`)
-- [`src/slm/device_manager.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/slm/device_manager.py): Profiles available hardware (NVIDIA CUDA, ROCm, Apple Metal, or CPU threads).
-- [`src/slm/resource_manager.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/slm/resource_manager.py): Automatically manages context windows ($2048$ to $4096$ tokens) and purges KV cache between report generation episodes.
+- [`src/slm/device_manager.py`](../src/slm/device_manager.py): Profiles available hardware (NVIDIA CUDA, ROCm, Apple Metal, or CPU threads).
+- [`src/slm/resource_manager.py`](../src/slm/resource_manager.py): Automatically manages context windows ($2048$ to $4096$ tokens) and purges KV cache between report generation episodes.
 
 ### 2.4 Factual Revision Engine (`revision_engine.py` & `output_sanitizer.py`)
-- [`src/slm/revision_engine.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/slm/revision_engine.py): Extracts numerical entities from generated prose and verifies that they strictly match the underlying SQL database values.
-- [`src/slm/output_sanitizer.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/slm/output_sanitizer.py): Strips markdown tokens, extra whitespace, and repetitive loop artifacts.
+- [`src/slm/revision_engine.py`](../src/slm/revision_engine.py): Extracts numerical entities from generated prose and verifies that they strictly match the underlying SQL database values.
+- [`src/slm/output_sanitizer.py`](../src/slm/output_sanitizer.py): Strips markdown tokens, extra whitespace, and repetitive loop artifacts.
 
 ---
 

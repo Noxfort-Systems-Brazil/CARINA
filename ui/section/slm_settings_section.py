@@ -18,23 +18,27 @@
 # Author: Gabriel Moraes
 # Date: 2026-07-01
 
+from typing import Any, Dict
+
 import flet as ft
-from typing import Dict, Any
+
 from ui.handlers.locale_manager import LocaleManager
+
 
 class SlmSettingsSection(ft.Column):
     """
     Sub-widget of ReportFormattingCard managing SLM execution hardware and GPU offload options.
     """
+
     def __init__(self, initial_values: Dict[str, Any]):
         super().__init__()
         self.spacing = 15
         self.lm = None
-        
+
         self.lbl_slm_title = ft.Text(weight=ft.FontWeight.BOLD)
         self.lbl_slm_device = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_slm_gpu_layers = ft.Text(size=11, weight=ft.FontWeight.W_500)
-        
+
         self.dd_slm_device = ft.Dropdown(
             options=[
                 ft.dropdown.Option("cpu", "CPU Apenas (CPU Only)"),
@@ -43,18 +47,18 @@ class SlmSettingsSection(ft.Column):
             ],
             value=initial_values.get("xai_slm_device", "cpu"),
             width=220,
-            on_change=self._on_slm_device_change
+            on_change=self._on_slm_device_change,
         )
-        
+
         self.tf_slm_gpu_layers = ft.TextField(
             value=str(initial_values.get("xai_slm_gpu_layers", "16")),
             width=120,
             text_align=ft.TextAlign.RIGHT,
             keyboard_type=ft.KeyboardType.NUMBER,
             disabled=(initial_values.get("xai_slm_device", "cpu") != "mixed"),
-            on_change=self._on_gpu_layers_change
+            on_change=self._on_gpu_layers_change,
         )
-        
+
         self.controls = [
             self.lbl_slm_title,
             ft.Row(
@@ -62,12 +66,12 @@ class SlmSettingsSection(ft.Column):
                     ft.Column([self.lbl_slm_device, self.dd_slm_device]),
                     ft.Column([self.lbl_slm_gpu_layers, self.tf_slm_gpu_layers]),
                 ],
-                spacing=20
-            )
+                spacing=20,
+            ),
         ]
 
     def _on_slm_device_change(self, e):
-        self.tf_slm_gpu_layers.disabled = (self.dd_slm_device.value != "mixed")
+        self.tf_slm_gpu_layers.disabled = self.dd_slm_device.value != "mixed"
         self.validate_slm_gpu_layers(self.tf_slm_gpu_layers.value)
         self.tf_slm_gpu_layers.update()
 
@@ -104,16 +108,22 @@ class SlmSettingsSection(ft.Column):
     def get_values(self) -> Dict[str, Any]:
         return {
             "xai_slm_device": self.dd_slm_device.value,
-            "xai_slm_gpu_layers": int(self.tf_slm_gpu_layers.value) if self.tf_slm_gpu_layers.value else 16
+            "xai_slm_gpu_layers": int(self.tf_slm_gpu_layers.value) if self.tf_slm_gpu_layers.value else 16,
         }
 
     def set_values(self, values: Dict[str, Any]):
         self.dd_slm_device.value = values.get("xai_slm_device", "cpu")
         self.tf_slm_gpu_layers.value = str(values.get("xai_slm_gpu_layers", "16"))
-        self.tf_slm_gpu_layers.disabled = (self.dd_slm_device.value != "mixed")
+        self.tf_slm_gpu_layers.disabled = self.dd_slm_device.value != "mixed"
 
     def update_translations(self, lm: LocaleManager):
         self.lm = lm
-        self.lbl_slm_title.value = lm.get_string("settings_view.formatting_card.slm_title", default="Hardware e Processamento do Modelo (SLM)")
-        self.lbl_slm_device.value = lm.get_string("settings_view.formatting_card.slm_device", default="Dispositivo de Execução (Device)")
-        self.lbl_slm_gpu_layers.value = lm.get_string("settings_view.formatting_card.slm_gpu_layers", default="Camadas offload para GPU")
+        self.lbl_slm_title.value = lm.get_string(
+            "settings_view.formatting_card.slm_title", default="Hardware e Processamento do Modelo (SLM)"
+        )
+        self.lbl_slm_device.value = lm.get_string(
+            "settings_view.formatting_card.slm_device", default="Dispositivo de Execução (Device)"
+        )
+        self.lbl_slm_gpu_layers.value = lm.get_string(
+            "settings_view.formatting_card.slm_gpu_layers", default="Camadas offload para GPU"
+        )

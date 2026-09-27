@@ -35,6 +35,7 @@ from src.utils.paths import get_base_output_dir
 
 logger = logging.getLogger(__name__)
 
+
 class MapTopologyDiscoverer:
     """
     Helper class responsible for parsing network map files and extracting topology information.
@@ -63,16 +64,16 @@ class MapTopologyDiscoverer:
 
         tl_ids = set()
         try:
-            opener = gzip.open if target_file.endswith('.gz') else open
-            with opener(target_file, 'rt', encoding='utf-8') as f:
+            opener = gzip.open if target_file.endswith(".gz") else open
+            with opener(target_file, "rt", encoding="utf-8") as f:
                 tree = ET.parse(f)
-                
+
             root = tree.getroot()
-            for tl in root.findall('tlLogic'):
-                tl_id = tl.get('id')
+            for tl in root.findall("tlLogic"):
+                tl_id = tl.get("id")
                 if tl_id:
                     tl_ids.add(tl_id)
-                    
+
             logger.info(f"Discovered {len(tl_ids)} intersections from {os.path.basename(target_file)}.")
             return sorted(list(tl_ids))
         except Exception as e:
@@ -89,14 +90,14 @@ class MapTopologyDiscoverer:
             return []
 
         try:
-            opener = gzip.open if target_file.endswith('.gz') else open
-            with opener(target_file, 'rt', encoding='utf-8') as f:
+            opener = gzip.open if target_file.endswith(".gz") else open
+            with opener(target_file, "rt", encoding="utf-8") as f:
                 tree = ET.parse(f)
-                
+
             root = tree.getroot()
-            for tl_logic in root.findall('tlLogic'):
-                if tl_logic.get('id') == intersection_id:
-                    return list(range(len(tl_logic.findall('phase'))))
+            for tl_logic in root.findall("tlLogic"):
+                if tl_logic.get("id") == intersection_id:
+                    return list(range(len(tl_logic.findall("phase"))))
         except Exception as e:
             logger.error(f"Failed to parse stages for intersection {intersection_id}: {e}")
         return []

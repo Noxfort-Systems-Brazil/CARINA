@@ -18,25 +18,28 @@
 # Author: Gabriel Moraes
 # Date: 2026-04-16
 
-import pytest
 import configparser
-from unittest.mock import MagicMock, patch
 from importlib import import_module
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 try:
     from src.central_controller import CentralController
 except ImportError:
     pass
 
+
 @pytest.fixture
 def mock_settings():
     config = configparser.ConfigParser()
-    config.add_section('WATCHDOG')
-    config.set('WATCHDOG', 'heartbeat_timeout_seconds', '5.0')
-    config.add_section('SYNAPSE')
-    config.set('SYNAPSE', 'port', '50051')
-    config.set('SYNAPSE', 'max_workers', '10')
+    config.add_section("WATCHDOG")
+    config.set("WATCHDOG", "heartbeat_timeout_seconds", "5.0")
+    config.add_section("SYNAPSE")
+    config.set("SYNAPSE", "port", "50051")
+    config.set("SYNAPSE", "max_workers", "10")
     return config
+
 
 @pytest.fixture
 def mock_queues():
@@ -46,11 +49,13 @@ def mock_queues():
     q_ui = MagicMock()
     return q_watchdog, q_sds, q_sas, q_ui
 
+
 @pytest.fixture
 def mock_pipe_conn():
     conn = MagicMock()
     conn.poll.return_value = False
     return conn
+
 
 @pytest.fixture
 def mock_locale():
@@ -58,17 +63,20 @@ def mock_locale():
     locale.get_string.return_value = "Locale String"
     return locale
 
+
 @pytest.fixture
 def central_controller(mock_settings, mock_pipe_conn, mock_queues, mock_locale):
     q_watchdog, q_sds, q_sas, q_ui = mock_queues
-    
-    with patch('src.central_controller.MonitorClient'), \
-         patch('src.central_controller.FailsafeManager'), \
-         patch('src.central_controller.TopologyManager'), \
-         patch('src.central_controller.RequestProcessor'), \
-         patch('src.central_controller.TrafficFrameProcessor'), \
-         patch('src.central_controller.TelemetryAggregator'):
-        
+
+    with (
+        patch("src.central_controller.MonitorClient"),
+        patch("src.central_controller.FailsafeManager"),
+        patch("src.central_controller.TopologyManager"),
+        patch("src.central_controller.RequestProcessor"),
+        patch("src.central_controller.TrafficFrameProcessor"),
+        patch("src.central_controller.TelemetryAggregator"),
+    ):
+
         cc = CentralController(
             settings=mock_settings,
             ai_pipe_conn=mock_pipe_conn,
@@ -76,9 +84,10 @@ def central_controller(mock_settings, mock_pipe_conn, mock_queues, mock_locale):
             sds_data_queue=q_sds,
             sas_data_queue=q_sas,
             ui_command_queue=q_ui,
-            locale_manager=mock_locale
+            locale_manager=mock_locale,
         )
         return cc
+
 
 def test_central_controller_initialization(central_controller):
     """Ensures that the Manager mesh was instantiated."""
@@ -88,34 +97,36 @@ def test_central_controller_initialization(central_controller):
     assert central_controller.traffic_frame_processor is not None
     assert central_controller.health_monitor is not None
 
+
 def test_readiness_latch(central_controller):
     """Tests the Two-Stage Latch (Frontend + Backend) unlocking the AI."""
     # Unlocked on initialization so AI decision engine does not block
     assert central_controller.readiness_latch.is_ui_ready is True
     assert central_controller.readiness_latch.is_backend_ready is True
     central_controller.traffic_frame_processor.set_system_ready.assert_called_with(True)
-    
+
     # UI goes ready
     central_controller.readiness_latch.set_ui_ready()
     assert central_controller.readiness_latch.is_ui_ready is True
-    
+
     # Backend goes ready
     central_controller.readiness_latch.set_backend_ready()
     assert central_controller.readiness_latch.is_backend_ready is True
 
-@patch('src.central_controller.time.sleep', return_value=None)
-@patch('src.central_controller.grpc')
+
+@patch("src.central_controller.time.sleep", return_value=None)
+@patch("src.central_controller.grpc")
 def test_controller_shutdown_signal(mock_grpc, mock_sleep, central_controller, mock_pipe_conn):
     """Tests if the main loop catches the shutdown signal sent by the OS PIPE and stops running."""
-    
+
     # Simulates the pipe receiving a shutdown signal on the first iteration
     mock_pipe_conn.poll.return_value = True
     mock_pipe_conn.recv.return_value = ("system", "shutdown", (), {})
-    
+
     # Executes. run() is an infinite loop that runs while is_running=True
     # The mock will force a break logic on the first check
     central_controller.run()
-    
+
     # Since break was triggered, it turns off flag
     assert central_controller.is_running is False
     # Ensures cleanup routines ran

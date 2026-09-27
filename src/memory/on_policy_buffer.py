@@ -25,12 +25,13 @@ This class, extracted from 'local_agent.py', implements a simple memory buffer,
 designed for "on-policy" reinforcement learning algorithms like PPO. It collects
 a batch of transitions and converts them into PyTorch tensors for the learning cycle.
 """
-import torch
 import numpy as np
+import torch
+
 
 class OnPolicyBuffer:
     """A buffer that stores transitions (state, action, etc.) for a single data collection cycle."""
-    
+
     def __init__(self):
         """Initializes the lists that will store the trajectory data."""
         self.actions = []
@@ -73,13 +74,13 @@ class OnPolicyBuffer:
         actions_np = np.array(self.actions, dtype=np.float32)
         log_probs_np = np.array(self.log_probs, dtype=np.float32)
         state_values_np = np.array(self.state_values, dtype=np.float32)
-        
+
         # Converts to PyTorch tensors
         states_t = torch.from_numpy(states_np)
         actions_t = torch.from_numpy(actions_np)
         log_probs_t = torch.from_numpy(log_probs_np)
         state_values_t = torch.from_numpy(state_values_np)
-        
+
         # The squeeze() method removes dimensions of size 1, if any
         return states_t, actions_t.squeeze(), log_probs_t.squeeze(), self.rewards, self.dones, state_values_t.squeeze()
 

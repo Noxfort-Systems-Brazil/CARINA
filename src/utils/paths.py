@@ -23,9 +23,10 @@ Defines utility functions to handle file paths,
 ensuring compatibility with PyInstaller (--onefile).
 """
 
-import sys
 import os
 import subprocess
+import sys
+
 
 def resource_path(relative_path: str) -> str:
     """
@@ -51,6 +52,7 @@ def resource_path(relative_path: str) -> str:
 
     return os.path.join(base_path, relative_path)
 
+
 def get_base_output_dir() -> str:
     """
     Returns the base directory (OS Documents/Carina) where output files (logs, results) should be written.
@@ -62,11 +64,11 @@ def get_base_output_dir() -> str:
     documents_dir = None
     try:
         # Try to get the official XDG Documents folder on Linux
-        output = subprocess.check_output(['xdg-user-dir', 'DOCUMENTS'], stderr=subprocess.DEVNULL)
-        documents_dir = output.decode('utf-8').strip()
+        output = subprocess.check_output(["xdg-user-dir", "DOCUMENTS"], stderr=subprocess.DEVNULL)
+        documents_dir = output.decode("utf-8").strip()
     except Exception:
         pass
-    
+
     if not documents_dir or not os.path.isdir(documents_dir):
         # Fallback 1: ~/Documents
         fallback_en = os.path.expanduser("~/Documents")
@@ -86,20 +88,22 @@ def get_base_output_dir() -> str:
     os.makedirs(carina_dir, exist_ok=True)
     return carina_dir
 
+
 def get_user_config_dir() -> str:
     """
     Returns the standard directory for user configuration and data,
     which is persistent and hidden, following OS standards (e.g. XDG on Linux).
     """
     import sys
-    if sys.platform.startswith('win'):
-        base_dir = os.environ.get('APPDATA') or os.path.expanduser('~/AppData/Roaming')
-    elif sys.platform.startswith('darwin'):
-        base_dir = os.path.expanduser('~/Library/Application Support')
+
+    if sys.platform.startswith("win"):
+        base_dir = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
+    elif sys.platform.startswith("darwin"):
+        base_dir = os.path.expanduser("~/Library/Application Support")
     else:
         # Linux / Unix XDG standard
-        base_dir = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
-    
-    config_dir = os.path.join(base_dir, 'carina')
+        base_dir = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+
+    config_dir = os.path.join(base_dir, "carina")
     os.makedirs(config_dir, exist_ok=True)
     return config_dir

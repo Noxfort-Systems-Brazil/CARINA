@@ -21,11 +21,12 @@
 import logging
 from typing import Tuple
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [SLM_DEVICE] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [SLM_DEVICE] - %(levelname)s - %(message)s")
+
 
 class SLMDeviceManager:
     """
-    Handles hardware capability detection, CUDA availability checks, 
+    Handles hardware capability detection, CUDA availability checks,
     free VRAM evaluation, and offload layer calculations for GGUF model execution.
     """
 
@@ -43,8 +44,11 @@ class SLMDeviceManager:
             if device_setting in ("gpu", "mixed"):
                 try:
                     import torch
+
                     if not torch.cuda.is_available():
-                        logging.warning("[SLMDeviceManager] GPU requested but CUDA is not available. Falling back to CPU.")
+                        logging.warning(
+                            "[SLMDeviceManager] GPU requested but CUDA is not available. Falling back to CPU."
+                        )
                         return "cpu", 0
                 except Exception as e:
                     logging.warning(f"[SLMDeviceManager] Failed CUDA check: {e}. Falling back to CPU.")
@@ -54,11 +58,14 @@ class SLMDeviceManager:
         # Automatic detection based on available VRAM
         try:
             import torch
+
             if torch.cuda.is_available():
                 try:
                     free_vram, total_vram = torch.cuda.mem_get_info()
-                    free_vram_gb = free_vram / (1024 ** 3)
-                    logging.info(f"[SLMDeviceManager] CUDA detected. Free VRAM: {free_vram_gb:.2f} GB / Total: {total_vram / (1024 ** 3):.2f} GB")
+                    free_vram_gb = free_vram / (1024**3)
+                    logging.info(
+                        f"[SLMDeviceManager] CUDA detected. Free VRAM: {free_vram_gb:.2f} GB / Total: {total_vram / (1024 ** 3):.2f} GB"
+                    )
                     if free_vram_gb >= 3.0:
                         logging.info("[SLMDeviceManager] Sufficient VRAM detected (>=3GB). Offloading to GPU.")
                         return "gpu", -1

@@ -26,15 +26,16 @@ if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
 # Import the new specialized classes from the new render folder
-from rendering.static_map_renderer import StaticMapRenderer
 from rendering.heatmap_renderer import HeatmapRenderer
 from rendering.precise_heatmap_renderer import PreciseHeatmapRenderer
+from rendering.static_map_renderer import StaticMapRenderer
+
 
 class AssetManager:
     """The Asset Manager that delegates rendering tasks to specialists."""
 
     # --- CHANGE 2: Modify the constructor ---
-    def __init__(self, locale_manager: 'LocaleManagerBackend'):
+    def __init__(self, locale_manager: "LocaleManagerBackend"):
         """
         Inicializa o AssetManager e seus renderizadores especialistas internos.
         """
@@ -44,29 +45,21 @@ class AssetManager:
         # --- CHANGE 3 ---
         logging.info(self.locale_manager.get_string("asset_manager.init.created"))
 
-    def create_heatmap_image_in_memory(
-        self,
-        map_data: tuple,
-        congestion_data: dict
-    ) -> str | None:
+    def create_heatmap_image_in_memory(self, map_data: tuple, congestion_data: dict) -> str | None:
         """
         Delegates the heat map image generation to the specialist.
         """
-        return self.heatmap_renderer.create_heatmap_image_in_memory(
-            map_data=map_data,
-            congestion_data=congestion_data
-        )
+        return self.heatmap_renderer.create_heatmap_image_in_memory(map_data=map_data, congestion_data=congestion_data)
 
     def clear_heatmap_cache(self):
         """
         Clears the heatmap renderer cache.
         """
-        if hasattr(self.heatmap_renderer, 'clear_cache'):
+        if hasattr(self.heatmap_renderer, "clear_cache"):
             self.heatmap_renderer.clear_cache()
 
     def create_map_with_icons(
-        self, net_file_path: str, scenario_results_dir: str, 
-        icon_requests: dict, output_filename: str
+        self, net_file_path: str, scenario_results_dir: str, icon_requests: dict, output_filename: str
     ) -> tuple[str | None, tuple | None]:
         """
         Delegates the static map with icons generation to the specialist.
@@ -75,12 +68,11 @@ class AssetManager:
             net_file_path=net_file_path,
             scenario_results_dir=scenario_results_dir,
             icon_requests=icon_requests,
-            output_filename=output_filename
+            output_filename=output_filename,
         )
 
     def generate_coordinates_file(
-        self, map_data: tuple, traffic_light_ids: list,
-        scenario_results_dir: str
+        self, map_data: tuple, traffic_light_ids: list, scenario_results_dir: str
     ) -> str | None:
         """
         Delegates the coordinates data file generation to the specialist.
@@ -89,6 +81,6 @@ class AssetManager:
             map_data=map_data,
             traffic_light_ids=traffic_light_ids,
             scenario_results_dir=scenario_results_dir,
-            image_width=3840, 
-            image_height=2160
+            image_width=3840,
+            image_height=2160,
         )

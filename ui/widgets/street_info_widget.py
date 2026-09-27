@@ -22,41 +22,40 @@
 Define o StreetInfoWidget.
 """
 
-import flet as ft
 from typing import Callable, Dict
+
+import flet as ft
 
 # --- CHANGE 1: Import LocaleManager ---
 from ui.handlers.locale_manager import LocaleManager
 from ui.managers.alias_manager import AliasManager
 
+
 class StreetInfoWidget(ft.Card):
     """
     Um Card que exibe os dados de uma rua e pode ser escondido.
     """
+
     def __init__(
         self,
         locale_manager: LocaleManager,
         control_client=None,
         security_ui=None,
         on_close: Callable[[], None] = None,
-        on_street_override: Callable[[str, str], None] = None
+        on_street_override: Callable[[str, str], None] = None,
     ):
-        super().__init__(
-            elevation=4,
-            visible=False,
-            animate_opacity=200
-        )
+        super().__init__(elevation=4, visible=False, animate_opacity=200)
 
         self.locale_manager = locale_manager
         self.control_client = control_client
         self.security_ui = security_ui
         self.on_close = on_close
         self.on_street_override = on_street_override
-        
+
         self.alias_manager = AliasManager()
         self._current_street_id = None
-        self.street_id_text_template = "" # Title template
-        
+        self.street_id_text_template = ""  # Title template
+
         # Override state locally
         self._is_blocked = False
 
@@ -67,13 +66,13 @@ class StreetInfoWidget(ft.Card):
             expand=True,
             on_submit=self._on_submit,
             on_blur=self._on_submit,
-            tooltip="Pressione Enter para salvar"
+            tooltip="Pressione Enter para salvar",
         )
         self.congestion_label = ft.Text()
         self.flow_label = ft.Text()
         self.speed_label = ft.Text()
         self.vehicles_label = ft.Text()
-        
+
         # Text controls for values
         self.congestion_text = ft.Text("--")
         self.flow_text = ft.Text("--")
@@ -84,9 +83,9 @@ class StreetInfoWidget(ft.Card):
             text="Desativar Fluxo",
             icon=ft.Icons.BLOCK_ROUNDED,
             on_click=self._handle_block_request,
-            style=ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor=ft.Colors.RED_700)
+            style=ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor=ft.Colors.RED_700),
         )
-        
+
         self.content = ft.Container(
             padding=10,
             content=ft.Column(
@@ -104,17 +103,18 @@ class StreetInfoWidget(ft.Card):
                     ft.IconButton(
                         icon=ft.Icons.CLOSE_ROUNDED,
                         on_click=self.hide,
-                        tooltip="Fechar painel" # This tooltip will be translated in the parent
-                    )
+                        tooltip="Fechar painel",  # This tooltip will be translated in the parent
+                    ),
                 ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER
-            )
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
         )
 
     def did_mount(self):
         """Chamado quando o widget é montado na página."""
         self.update_translations(self.locale_manager)
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     # --- CHANGE 3: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
@@ -126,7 +126,7 @@ class StreetInfoWidget(ft.Card):
         self.speed_label.value = lm.get_string("dashboard_view.street_speed")
         self.vehicles_label.value = lm.get_string("dashboard_view.street_vehicles")
         # The close button tooltip is translated by its parent widget (SpecificControlsWidget)
-        
+
     def update_and_show(self, street_id: str, street_data: Dict):
         """
         Atualiza os campos de texto com novos dados e torna o widget visível.
@@ -134,17 +134,17 @@ class StreetInfoWidget(ft.Card):
         # --- CHANGE 4: Use the translation template for dynamic text ---
         self._current_street_id = street_id
         self.street_id_text.value = self.alias_manager.get_alias(street_id)
-        
-        congestion = street_data.get('congestion', 0.0)
-        flow = street_data.get('flow', '--')
-        speed = street_data.get('speed', 0.0)
-        vehicles = street_data.get('vehicles', '--')
 
-        self.congestion_text.value = f"{congestion:.1f}" # The unit (%) will come from the label
+        congestion = street_data.get("congestion", 0.0)
+        flow = street_data.get("flow", "--")
+        speed = street_data.get("speed", 0.0)
+        vehicles = street_data.get("vehicles", "--")
+
+        self.congestion_text.value = f"{congestion:.1f}"  # The unit (%) will come from the label
         self.flow_text.value = str(flow)
         self.speed_text.value = f"{speed:.1f} km/h"
         self.vehicles_text.value = str(vehicles)
-        
+
         self.visible = True
 
     def hide(self, e=None):
@@ -173,7 +173,7 @@ class StreetInfoWidget(ft.Card):
     def _toggle_block(self):
         self._is_blocked = not self._is_blocked
         new_state = "BLOCKED" if self._is_blocked else "NORMAL"
-        
+
         if self._is_blocked:
             self.block_button.text = "Reativar Fluxo"
             self.block_button.icon = ft.Icons.CHECK_CIRCLE_ROUNDED
@@ -182,12 +182,12 @@ class StreetInfoWidget(ft.Card):
             self.block_button.text = "Desativar Fluxo"
             self.block_button.icon = ft.Icons.BLOCK_ROUNDED
             self.block_button.style = ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor=ft.Colors.RED_700)
-            
+
         if self.page:
             self.update()
-            
+
         if self.control_client and self._current_street_id:
             self.control_client.set_street_override(self._current_street_id, new_state)
-            
+
         if self.on_street_override and self._current_street_id:
             self.on_street_override(self._current_street_id, new_state)

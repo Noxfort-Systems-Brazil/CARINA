@@ -42,27 +42,29 @@ Flow: sequence -> TCN -> temporal_features --+
                                               +-> Fusion -> Value Stream ------>
 """
 
+from typing import Any, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
-from typing import Tuple, List, Optional, Any
-
 
 # =============================================================================
 # Temporal Convolutional Network (TCN) — Self-contained Implementation
 # =============================================================================
+
 
 class Chomp1d(nn.Module):
     """
     Removes extra right padding to ensure causality.
     This ensures that the output at t depends only on inputs t, t-1, ...
     """
+
     def __init__(self, chomp_size: int) -> None:
         super(Chomp1d, self).__init__()
         self.chomp_size = chomp_size
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x[:, :, :-self.chomp_size].contiguous()
+        return x[:, :, : -self.chomp_size].contiguous()
 
 
 class TemporalBlock(nn.Module):
@@ -70,25 +72,38 @@ class TemporalBlock(nn.Module):
     A standard TCN residual block consisting of two dilated convolutions,
     weight normalization, ReLU, Dropout and Chomp (causal trimming).
     """
-    def __init__(self, n_inputs: int, n_outputs: int, kernel_size: int, stride: int, dilation: int, padding: int, dropout: float = 0.2) -> None:
+
+    def __init__(
+        self,
+        n_inputs: int,
+        n_outputs: int,
+        kernel_size: int,
+        stride: int,
+        dilation: int,
+        padding: int,
+        dropout: float = 0.2,
+    ) -> None:
         super(TemporalBlock, self).__init__()
 
         # First convolutional layer
-        self.conv1 = weight_norm(nn.Conv1d(n_inputs, n_outputs, kernel_size,
-                                           stride=stride, padding=padding, dilation=dilation))
+        self.conv1 = weight_norm(
+            nn.Conv1d(n_inputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
+        )
         self.chomp1 = Chomp1d(padding)
         self.relu1 = nn.ReLU()
         self.dropout1 = nn.Dropout(dropout)
 
         # Second convolutional layer
-        self.conv2 = weight_norm(nn.Conv1d(n_outputs, n_outputs, kernel_size,
-                                           stride=stride, padding=padding, dilation=dilation))
+        self.conv2 = weight_norm(
+            nn.Conv1d(n_outputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
+        )
         self.chomp2 = Chomp1d(padding)
         self.relu2 = nn.ReLU()
         self.dropout2 = nn.Dropout(dropout)
 
-        self.net = nn.Sequential(self.conv1, self.chomp1, self.relu1, self.dropout1,
-                                 self.conv2, self.chomp2, self.relu2, self.dropout2)
+        self.net = nn.Sequential(
+            self.conv1, self.chomp1, self.relu1, self.dropout1, self.conv2, self.chomp2, self.relu2, self.dropout2
+        )
 
         # Residual connection (downsample if dimensions change)
         self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
@@ -111,17 +126,26 @@ class TemporalConvNet(nn.Module):
     """
     The complete TCN network, composed of a stack of TemporalBlocks.
     """
+
     def __init__(self, num_inputs: int, num_channels: List[int], kernel_size: int = 2, dropout: float = 0.2) -> None:
         super(TemporalConvNet, self).__init__()
         layers: List[nn.Module] = []
         num_levels = len(num_channels)
         for i in range(num_levels):
-            dilation_size = 2 ** i
-            in_channels = num_inputs if i == 0 else num_channels[i-1]
+            dilation_size = 2**i
+            in_channels = num_inputs if i == 0 else num_channels[i - 1]
             out_channels = num_channels[i]
-            layers += [TemporalBlock(in_channels, out_channels, kernel_size, stride=1,
-                                     dilation=dilation_size,
-                                     padding=(kernel_size-1) * dilation_size, dropout=dropout)]
+            layers += [
+                TemporalBlock(
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    stride=1,
+                    dilation=dilation_size,
+                    padding=(kernel_size - 1) * dilation_size,
+                    dropout=dropout,
+                )
+            ]
 
         self.network = nn.Sequential(*layers)
 
@@ -133,6 +157,7 @@ class TemporalConvNet(nn.Module):
 # D3QN with TCN Backbone
 # =============================================================================
 
+
 class D3QN_TCN(nn.Module):
     """
     D3QN architecture with TCN temporal backbone and PAE latent space fusion.
@@ -142,10 +167,16 @@ class D3QN_TCN(nn.Module):
     by spillback risk.
     """
 
-    def __init__(self, n_observations: int = 2, n_actions: int = 2,
-                 pae_latent_dim: int = 16, hidden_size: int = 64,
-                 tcn_channels: Optional[List[int]] = None, kernel_size: int = 3,
-                 dropout: float = 0.1) -> None:
+    def __init__(
+        self,
+        n_observations: int = 2,
+        n_actions: int = 2,
+        pae_latent_dim: int = 16,
+        hidden_size: int = 64,
+        tcn_channels: Optional[List[int]] = None,
+        kernel_size: int = 3,
+        dropout: float = 0.1,
+    ) -> None:
         """
         Initializes the D3QN neural network with TCN and PAE fusion.
 
@@ -170,37 +201,24 @@ class D3QN_TCN(nn.Module):
 
         # --- TCN Backbone: Processes the temporal sequence ---
         self.tcn = TemporalConvNet(
-            num_inputs=n_observations,
-            num_channels=tcn_channels,
-            kernel_size=kernel_size,
-            dropout=dropout
+            num_inputs=n_observations, num_channels=tcn_channels, kernel_size=kernel_size, dropout=dropout
         )
 
         # --- Fusion Layer: Combines temporal features + PAE latent space ---
         fusion_input_dim = hidden_size + pae_latent_dim
         self.fusion_layer = nn.Sequential(
-            nn.Linear(fusion_input_dim, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.ReLU(),
-            nn.Dropout(dropout)
+            nn.Linear(fusion_input_dim, hidden_size), nn.LayerNorm(hidden_size), nn.ReLU(), nn.Dropout(dropout)
         )
 
         # --- Advantage Stream: Estimates relative advantage of each action ---
         self.advantage_stream = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, n_actions)
+            nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, n_actions)
         )
 
         # --- Value Stream: Estimates the state value V(s) ---
-        self.value_stream = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, 1)
-        )
+        self.value_stream = nn.Sequential(nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1))
 
-    def forward(self, state_sequence: torch.Tensor,
-                pae_latent: torch.Tensor) -> torch.Tensor:
+    def forward(self, state_sequence: torch.Tensor, pae_latent: torch.Tensor) -> torch.Tensor:
         """
         Forward pass with temporal-predictive fusion.
 

@@ -36,7 +36,7 @@ Where:
     L_i = length of edge i (m)
 """
 
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
 
 
 class MFDCalculator:
@@ -52,9 +52,7 @@ class MFDCalculator:
 
     @staticmethod
     def compute_network_metrics(
-        edges_data: Dict[str, Dict[str, Any]],
-        edge_lengths: Dict[str, float],
-        topology_loaded: bool = False
+        edges_data: Dict[str, Dict[str, Any]], edge_lengths: Dict[str, float], topology_loaded: bool = False
     ) -> Tuple[float, float, float, float, float, int]:
         """
         Computes network-wide MFD metrics from per-edge fluidic data.
@@ -88,9 +86,9 @@ class MFDCalculator:
             length = edge_lengths.get(edge_id, default_length) if topology_loaded else default_length
 
             # Extract fluidic variables
-            density = data.get('density', 0.0)      # veh/m (or normalized)
-            speed = data.get('mean_speed', 0.0)      # m/s
-            occupancy = data.get('occupancy', 0.0)   # 0.0 to 1.0
+            density = data.get("density", 0.0)  # veh/m (or normalized)
+            speed = data.get("mean_speed", 0.0)  # m/s
+            occupancy = data.get("occupancy", 0.0)  # 0.0 to 1.0
 
             # If density is not available, estimate from occupancy
             # Occupancy ≈ density × average_vehicle_length / lane_length
@@ -124,14 +122,7 @@ class MFDCalculator:
             mean_density = 0.0
             mean_flow = 0.0
 
-        return (
-            total_production,
-            total_accumulation,
-            mean_speed,
-            mean_density,
-            mean_flow,
-            active_edges
-        )
+        return (total_production, total_accumulation, mean_speed, mean_density, mean_flow, active_edges)
 
     @staticmethod
     def compute_efficiency(current_production: float, peak_production: float) -> float:

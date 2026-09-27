@@ -18,7 +18,8 @@
 # Author: Gabriel Moraes
 # Date: August 10, 2026
 
-from typing import Tuple, Callable, Any
+from typing import Any, Callable, Tuple
+
 import flet as ft
 
 
@@ -30,11 +31,7 @@ class SettingsDialogBuilder:
 
     @staticmethod
     def build_settings_dialog(
-        page: ft.Page,
-        locale_manager: Any,
-        security_ui: Any,
-        settings_view: Any,
-        settings_client: Any
+        page: ft.Page, locale_manager: Any, security_ui: Any, settings_view: Any, settings_client: Any
     ) -> Tuple[ft.AlertDialog, Callable[[Any], None]]:
         """
         Constructs and mounts the settings modal AlertDialog on page.overlay.
@@ -49,29 +46,36 @@ class SettingsDialogBuilder:
         Returns:
             Tuple[ft.AlertDialog, Callable]: (settings_dialog, open_settings_dialog_callback)
         """
+
         def close_settings_dialog(e=None):
+            if hasattr(settings_view, "discard_changes"):
+                settings_view.discard_changes()
             settings_dialog.open = False
             page.update()
 
         settings_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Row([
-                ft.Icon(ft.Icons.SETTINGS),
-                ft.Text(locale_manager.get_string("settings_view.title", default="Configurações"))
-            ]),
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.SETTINGS),
+                    ft.Text(locale_manager.get_string("settings_view.title", default="Configurações")),
+                ]
+            ),
             content=settings_view,
             actions=[
                 ft.TextButton(
-                    locale_manager.get_string("dialogs.close_button", default="Fechar"),
-                    on_click=close_settings_dialog
+                    locale_manager.get_string("dialogs.close_button", default="Fechar"), on_click=close_settings_dialog
                 )
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            on_dismiss=lambda e: settings_view.discard_changes() if hasattr(settings_view, "discard_changes") else None,
         )
         page.overlay.append(settings_dialog)
 
         def open_settings_dialog(e=None):
             def _open():
+                if hasattr(settings_view, "discard_changes"):
+                    settings_view.discard_changes()
                 settings_dialog.open = True
                 if settings_client and hasattr(settings_client, "live_data_provider"):
                     settings_client.live_data_provider.send_command_to_backend({"type": "list_users"})

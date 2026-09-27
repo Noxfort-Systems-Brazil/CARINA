@@ -20,28 +20,22 @@
 
 """
 Base abstraction for traffic light controllers.
-Delegates SNMP networking, incident reporting, and heartbeat monitoring
-to separate classes to respect SRP and OCP.
+Defines the high-level interface contract for traffic light drivers (SOLID & Clean Architecture).
 """
 
 import ipaddress
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple
-
-from src.drivers.heartbeat_manager import HeartbeatManager
-from src.drivers.incident_reporter import IncidentReporter
-from src.drivers.snmp_client import SnmpClient
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class BaseTrafficDriver(ABC):
     """
-    Abstract base class for all traffic controller drivers (NTCIP, UTMC2, etc.).
-    Delegates SNMP communication, incident reporting, and heartbeat monitoring
-    to dedicated helper classes to satisfy SRP and OCP.
+    Abstract base class for all traffic controller drivers.
+    Defines the contract between the CARINA engine/UI and the underlying hardware proxy.
     """
 
     def __init__(
@@ -52,7 +46,7 @@ class BaseTrafficDriver(ABC):
         community_string: str = "public",
         timeout: int = 2,
         retries: int = 1,
-        green_stages: list = None,
+        green_stages: Optional[List[int]] = None,
     ) -> None:
         self.intersection_id = intersection_id
         self.green_stages = green_stages if green_stages is not None else []
@@ -78,51 +72,8 @@ class BaseTrafficDriver(ABC):
         self.model: str = "Não informado"
         self.sys_descr: str = ""
 
-        # 1. Delegate SNMP communication to SnmpClient
-        self.snmp_client = SnmpClient(ip_address, port, community_string, timeout, retries)
-
-        # 2. Delegate Heartbeat lifecycle to HeartbeatManager
-        self.heartbeat_manager = HeartbeatManager(
-            ip_address=ip_address,
-            port=port,
-            send_pulse_cb=self.send_heartbeat_pulse,
-            on_loss_cb=self._report_connection_loss,
-            on_restore_cb=self._report_connection_restored,
-            interval=2.0,
-        )
-
-    def snmp_get(self, oid: str) -> Tuple[bool, Any]:
-        """Delegates OID reading to SnmpClient."""
-        return self.snmp_client.get(oid)
-
-    def snmp_set(self, oid: str, value: Any, value_type: Any = None) -> Tuple[bool, Any]:
-        """Delegates OID writing to SnmpClient."""
-        return self.snmp_client.set(oid, value, value_type)
-
-    def start_heartbeat(self) -> None:
-        """Delegates heartbeat start to HeartbeatManager."""
-        self.heartbeat_manager.start()
-
-    def stop_heartbeat(self) -> None:
-        """Delegates heartbeat stop to HeartbeatManager."""
-        self.heartbeat_manager.stop()
-
-    def _publish_incident(self, level: str, message: str) -> None:
-        """Delegates incident reporting to IncidentReporter."""
-        IncidentReporter.report(self.intersection_id, level, message)
-
-    def _report_connection_loss(self) -> None:
-        logger.critical(
-            f"[{self.ip_address}:{self.port}] Connection LOST to intersection {self.intersection_id} after 3 failures."
-        )
-        self._publish_incident("CRITICAL", f"CARINA perdeu conexão com o controlador: {self.intersection_id}.")
-
-    def _report_connection_restored(self) -> None:
-        logger.info(f"[{self.ip_address}:{self.port}] Connection RESTORED to intersection {self.intersection_id}.")
-        self._publish_incident("INFO", f"CARINA restabeleceu conexão com o controlador: {self.intersection_id}.")
-
     # =========================================================================
-    # Abstract Methods to be implemented by specific protocols (NTCIP / UTMC2)
+    # Abstract Methods to be implemented by specific drivers / proxies
     # =========================================================================
 
     @abstractmethod
@@ -134,11 +85,8 @@ class BaseTrafficDriver(ABC):
         pass
 
     @abstractmethod
-    def get_telemetry(self) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def send_heartbeat_pulse(self) -> bool:
+    def apply_decision(self, action: str) -> bool:
+        """Applies a pure neural network decision ('HOLD' or 'ADVANCE')."""
         pass
 
     @abstractmethod
@@ -148,9 +96,22 @@ class BaseTrafficDriver(ABC):
         pass
 
     @abstractmethod
-    def release_control(self) -> bool:
-        """
-        Releases remote control holds, overrides, and force-offs on the physical controller,
-        safely returning the intersection to its local autonomous plan.
-        """
+    def get_telemetry(self) -> Dict[str, Any]:
         pass
+
+    @abstractmethod
+    def send_heartbeat_pulse(self) -> bool:
+        pass
+
+    @abstractmethod
+    def release_control(self) -> bool:
+        pass
+
+    def start_heartbeat(self) -> None:
+        pass
+
+    def stop_heartbeat(self) -> None:
+        pass
+
+    def shutdown(self) -> None:
+        self.release_control()

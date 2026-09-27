@@ -19,9 +19,10 @@
 # Date: July 18, 2026
 
 from typing import Tuple
-from utils.network_topology_parser import NetworkTopologyParser
-from sas.sas_historical_data_processor import SASHistoricalDataProcessor
+
 from sas.sas_accumulated_data_processor import SASAccumulatedDataProcessor
+from sas.sas_historical_data_processor import SASHistoricalDataProcessor
+from utils.network_topology_parser import NetworkTopologyParser
 
 
 class AnalyzerDataProcessor:
@@ -43,15 +44,17 @@ class AnalyzerDataProcessor:
     @topology_parser.setter
     def topology_parser(self, value):
         self._topology_parser = value
-        if hasattr(self, 'historical_processor'):
+        if hasattr(self, "historical_processor"):
             self.historical_processor.topology_parser = value
-        if hasattr(self, 'accumulated_processor'):
+        if hasattr(self, "accumulated_processor"):
             self.accumulated_processor.topology_parser = value
 
     def process_historical_data(self, db_manager, net_file_path: str, limit_seconds: int = None) -> Tuple[dict, list]:
         """Processes historical database traffic records."""
         return self.historical_processor.process(db_manager, net_file_path, limit_seconds=limit_seconds)
 
-    def process_accumulated_data(self, accumulated_data: dict, sim_duration: float, net_file_path: str) -> Tuple[dict, list]:
+    def process_accumulated_data(
+        self, accumulated_data: dict, sim_duration: float, net_file_path: str
+    ) -> Tuple[dict, list]:
         """Processes accumulated simulation metrics from SUMO memory."""
         return self.accumulated_processor.process(accumulated_data, sim_duration, net_file_path)

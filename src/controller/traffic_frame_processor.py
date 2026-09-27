@@ -29,36 +29,47 @@ from controller.topology_manager import TopologyManager
 
 logger = logging.getLogger(__name__)
 
+
 class TrafficFrameProcessor:
     """
     Responsible for unpacking hardware/synapse frames and routing them
     correctly to the AI and the UI visual aggregator.
-    
+
     NOTE: Heartbeat is now sent immediately in the gRPC hot-path (hft_server.py),
     NOT here. This processor runs on the cold-path worker thread.
     """
-    def __init__(self, ai_pipe_conn: Connection, watchdog_queue: Queue, sds_data_queue: Queue, 
-                 failsafe_manager: FailsafeManager, topology_manager: TopologyManager, telemetry_aggregator: Any,
-                 override_manager: Any, traffic_data_recorder: Any = None, locale_manager: Any = None):
+
+    def __init__(
+        self,
+        ai_pipe_conn: Connection,
+        watchdog_queue: Queue,
+        sds_data_queue: Queue,
+        failsafe_manager: FailsafeManager,
+        topology_manager: TopologyManager,
+        telemetry_aggregator: Any,
+        override_manager: Any,
+        traffic_data_recorder: Any = None,
+        locale_manager: Any = None,
+    ):
         self.ai_pipe_conn = ai_pipe_conn
         self.watchdog_queue = watchdog_queue
         self.sds_data_queue = sds_data_queue
-        
+
         self.failsafe_manager = failsafe_manager
         self.topology_manager = topology_manager
         self.telemetry_aggregator = telemetry_aggregator
         self.override_manager = override_manager
         self.traffic_data_recorder = traffic_data_recorder
         self.locale_manager = locale_manager
-        
+
         # --- Two-Stage Readiness Latch ---
         self.is_system_ready = False
-        
+
         # --- Processing time tracking ---
         self._proc_warning_threshold_ms = 100.0
-        
+
     def _get_string(self, key: str, default: str = None, **kwargs) -> str:
-        if self.locale_manager and hasattr(self.locale_manager, 'get_string'):
+        if self.locale_manager and hasattr(self.locale_manager, "get_string"):
             return self.locale_manager.get_string(key, default=default, **kwargs)
         return default.format(**kwargs) if default and kwargs else (default or key)
 
@@ -69,19 +80,19 @@ class TrafficFrameProcessor:
         """
         Processes a single Traffic Frame received from Synapse.
         This is the TRIGGER for the AI Decision Cycle.
-        
+
         NOTE: Heartbeat is already sent in the gRPC hot-path. This method
         only handles failsafe recovery, AI dispatch, and visualization.
-        
+
         Returns:
             float: Processing time in milliseconds (for diagnostics).
         """
         t_start = time.perf_counter()
-        
+
         # 0. RECORD FRAME ARRIVAL
         # REMOVED: Frame arrival is now recorded in hft_server.py (HOT path)
         # to prevent false timeouts due to processing latency.
-        
+
         # 1. FAILSAFE RECOVERY
         # If we were in failsafe mode and a frame just arrived, Synapse is back.
         # FixedTimeController will deactivate and put all intersections in ALL_RED
@@ -93,41 +104,51 @@ class TrafficFrameProcessor:
             try:
                 self.traffic_data_recorder.record_frame(frame)
             except Exception as rec_err:
-                logger.debug(self._get_string("controller.traffic_frame.recording_error", default="[TrafficFrameProcessor] Data recording error: {error}", error=rec_err))
+                logger.debug(
+                    self._get_string(
+                        "controller.traffic_frame.recording_error",
+                        default="[TrafficFrameProcessor] Data recording error: {error}",
+                        error=rec_err,
+                    )
+                )
 
         # 2. NORMAL PROCESSING (AI Step)
         current_time = frame.timestamp
-        
-        traffic_data = {'timestamp': current_time, 'sequence_id': frame.sequence_id, 'edges': {}}
-        
+
+        traffic_data = {"timestamp": current_time, "sequence_id": frame.sequence_id, "edges": {}}
+
         # Prepare data for AI (still manual as it is control logic, not visualization)
         for edge_id, state in frame.edges.items():
             # Check if this street is manually blocked by the operator
             # Consider potential sibling/reverse mappings or direct ID
             is_blocked = False
             if self.override_manager and self.override_manager.active_street_overrides:
-                if edge_id in self.override_manager.active_street_overrides and self.override_manager.active_street_overrides[edge_id] == "BLOCKED":
+                if (
+                    edge_id in self.override_manager.active_street_overrides
+                    and self.override_manager.active_street_overrides[edge_id] == "BLOCKED"
+                ):
                     is_blocked = True
                 else:
                     # Also check for base or reverse edge IDs to ensure accurate blocking
-                    base_sibling = edge_id[1:] if edge_id.startswith('-') else edge_id
-                    reverse_sibling = '-' + base_sibling if not edge_id.startswith('-') else base_sibling
-                    if (base_sibling in self.override_manager.active_street_overrides and self.override_manager.active_street_overrides[base_sibling] == "BLOCKED") or \
-                       (reverse_sibling in self.override_manager.active_street_overrides and self.override_manager.active_street_overrides[reverse_sibling] == "BLOCKED"):
+                    base_sibling = edge_id[1:] if edge_id.startswith("-") else edge_id
+                    reverse_sibling = "-" + base_sibling if not edge_id.startswith("-") else base_sibling
+                    if (
+                        base_sibling in self.override_manager.active_street_overrides
+                        and self.override_manager.active_street_overrides[base_sibling] == "BLOCKED"
+                    ) or (
+                        reverse_sibling in self.override_manager.active_street_overrides
+                        and self.override_manager.active_street_overrides[reverse_sibling] == "BLOCKED"
+                    ):
                         is_blocked = True
 
             if is_blocked:
                 # If blocked, inform the AI that there is no traffic/flow here
-                traffic_data['edges'][edge_id] = {
-                    'occupancy': 0.0,
-                    'mean_speed': 0.0,
-                    'queue_length': 0.0
-                }
+                traffic_data["edges"][edge_id] = {"occupancy": 0.0, "mean_speed": 0.0, "queue_length": 0.0}
             else:
-                traffic_data['edges'][edge_id] = {
-                    'occupancy': state.occupancy,
-                    'mean_speed': state.mean_speed,
-                    'queue_length': state.queue_length
+                traffic_data["edges"][edge_id] = {
+                    "occupancy": state.occupancy,
+                    "mean_speed": state.mean_speed,
+                    "queue_length": state.queue_length,
                 }
 
         # AGREEMENT: This is the ONLY place triggering the HFT Step.
@@ -137,56 +158,70 @@ class TrafficFrameProcessor:
         # NOTE (Fix): Removed strict 'is_system_ready' drop so headless mock clients
         # can still trigger AI decisions without needing a UI 'carina_ready' connection.
         if not self.failsafe_manager.failsafe_active:
-            try: 
-                self.ai_pipe_conn.send(('custom', 'hft_step', (traffic_data,), {}))
-            except Exception as e: 
-                logger.error(self._get_string("controller.traffic_frame.ai_send_error", default="Error sending frame to AI: {error}", error=e))
+            try:
+                self.ai_pipe_conn.send(("custom", "hft_step", (traffic_data,), {}))
+            except Exception as e:
+                logger.error(
+                    self._get_string(
+                        "controller.traffic_frame.ai_send_error", default="Error sending frame to AI: {error}", error=e
+                    )
+                )
         else:
             if self.failsafe_manager.failsafe_active:
-                logger.debug(self._get_string("controller.traffic_frame.ai_blocked_failsafe", default="[TrafficFrameProcessor] AI dispatch blocked — FixedTimeController is active."))
+                logger.debug(
+                    self._get_string(
+                        "controller.traffic_frame.ai_blocked_failsafe",
+                        default="[TrafficFrameProcessor] AI dispatch blocked — FixedTimeController is active.",
+                    )
+                )
             # Drop AI frame dispatch, but allow visualization to continue.
 
         # 3. VISUALIZATION AGGREGATION & SYNC
         self.telemetry_aggregator.process_frame(frame)
-        
+
         # 3.1 FAST PATH (Lightweight Sync for Semaphores/Maturity) -> 0.5s
-        if getattr(self, '_last_fast_ui_sync', 0.0) == 0.0:
+        if getattr(self, "_last_fast_ui_sync", 0.0) == 0.0:
             self._last_fast_ui_sync = 0.0
-            
+
         if current_time - self._last_fast_ui_sync >= 0.5:
             self._last_fast_ui_sync = current_time
             fast_payload = {
-                'timestamp': current_time,
-                'maturity': getattr(self.topology_manager, 'agent_maturity_cache', {}),
-                'tls_phases': getattr(self.topology_manager, 'tls_phases_cache', {}),
-                'edges': {} # Empty edges skips congestion update, preventing flickering
+                "timestamp": current_time,
+                "maturity": getattr(self.topology_manager, "agent_maturity_cache", {}),
+                "tls_phases": getattr(self.topology_manager, "tls_phases_cache", {}),
+                "edges": {},  # Empty edges skips congestion update, preventing flickering
             }
             try:
-                self.sds_data_queue.put(('hft_rich_update', fast_payload), block=False)
+                self.sds_data_queue.put(("hft_rich_update", fast_payload), block=False)
             except Exception:
                 pass
-        
+
         # 3.2 SLOW PATH (Heavy Heatmap Rendering) -> Controller.interval (e.g. 5.0s)
         if self.telemetry_aggregator.should_update(current_time):
             if not self.topology_manager.agent_maturity_cache:
                 self.topology_manager.try_restore_state()
-            
+
             rich_payload = self.telemetry_aggregator.compute_rich_payload(
-                current_time, 
-                self.topology_manager.agent_maturity_cache
+                current_time, self.topology_manager.agent_maturity_cache
             )
-            
-            rich_payload['tls_phases'] = getattr(self.topology_manager, 'tls_phases_cache', {})
-            
+
+            rich_payload["tls_phases"] = getattr(self.topology_manager, "tls_phases_cache", {})
+
             try:
-                self.sds_data_queue.put(('hft_rich_update', rich_payload), block=False)
+                self.sds_data_queue.put(("hft_rich_update", rich_payload), block=False)
             except Exception as e:
-                logger.error(self._get_string("controller.traffic_frame.rich_update_error", default="Error putting rich update on SDS queue: {error}", error=e))
-        
+                logger.error(
+                    self._get_string(
+                        "controller.traffic_frame.rich_update_error",
+                        default="Error putting rich update on SDS queue: {error}",
+                        error=e,
+                    )
+                )
+
         # 4. MEASURE AND DIAGNOSE PROCESSING TIME
         t_end = time.perf_counter()
         proc_delta_ms = (t_end - t_start) * 1000
-        
+
         if proc_delta_ms > self._proc_warning_threshold_ms:
             logger.warning(
                 self._get_string(
@@ -194,8 +229,8 @@ class TrafficFrameProcessor:
                     default="[TrafficFrameProcessor] ⏱️ Slow processing: {delta:.1f}ms (>{thresh:.0f}ms). Seq: {seq}",
                     delta=proc_delta_ms,
                     thresh=self._proc_warning_threshold_ms,
-                    seq=frame.sequence_id
+                    seq=frame.sequence_id,
                 )
             )
-        
+
         return proc_delta_ms

@@ -23,6 +23,7 @@ from multiprocessing import Queue
 from queue import Empty, Full
 from typing import Union
 
+
 class GuardianCommunicator:
     """
     Abstrai o envio de pacotes de estado e leitura de sinais de veto
@@ -33,7 +34,7 @@ class GuardianCommunicator:
         self.state_queue = guardian_state_queue
         self.signal_queue = guardian_signal_queue
 
-    def send_state(self, current_states_dict: dict, done: bool, mode: str = 'training'):
+    def send_state(self, current_states_dict: dict, done: bool, mode: str = "training"):
         if self.state_queue:
             try:
                 state_package = (current_states_dict, {}, done, mode)
@@ -49,8 +50,8 @@ class GuardianCommunicator:
             try:
                 while True:
                     signal = self.signal_queue.get_nowait()
-                    if 'type' in signal and signal['type'] == 'veto_map':
-                        latest_veto_map = signal['map']
+                    if "type" in signal and signal["type"] == "veto_map":
+                        latest_veto_map = signal["map"]
             except Empty:
                 pass
             except Exception as e:

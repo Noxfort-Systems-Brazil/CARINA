@@ -5,7 +5,7 @@ aliases: [Report Engine, Document Generator, ABNT NBR 14724, OMML Math]
 
 # 📄 Report Blocks Engine & ABNT Word Generator
 
-This document specifies CARINA's automated document generation pipeline located in [`src/blocks/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/blocks) and [`src/xai/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai). It details the transformation of real-time telemetry, Captum attribution tensors, and mathematical formulations into publication-ready **Microsoft Word (`.docx`)** forensic audit reports compliant with the Brazilian standard **ABNT NBR 14724**.
+This document specifies CARINA's automated document generation pipeline located in [`src/blocks/`](../src/blocks) and [`src/xai/`](../src/xai). It details the transformation of real-time telemetry, Captum attribution tensors, and mathematical formulations into publication-ready **Microsoft Word (`.docx`)** forensic audit reports compliant with the Brazilian standard **ABNT NBR 14724**.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🔍 See [Explainable AI & SAS](XAI_AND_SAS.md) | 🤖 See [Small Language Models](SLM_AND_LOCAL_LLM.md)
 
@@ -35,18 +35,18 @@ Traditional reporting tools generate plain text, unformatted HTML, or static PDF
 ## 2. Core Modules in `src/blocks/`
 
 ### 2.1 LaTeX to OMML Converter (`math_cleaner.py`)
-Located in [`src/blocks/math_cleaner.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/blocks/math_cleaner.py):
+Located in [`src/blocks/math_cleaner.py`](../src/blocks/math_cleaner.py):
 - Detects inline (`$...$`) and display (`$$...$$`) LaTeX syntax.
 - Converts raw LaTeX strings into clean XML fragments complying with the **Office Math Markup Language (OMML)** standard.
 - Inserts equations directly into the `.docx` document as editable native Word formulas rather than rasterized images.
 
 ### 2.2 Markdown Document Assembler (`markdown_to_docx.py`)
-Located in [`src/blocks/markdown_to_docx.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/blocks/markdown_to_docx.py):
+Located in [`src/blocks/markdown_to_docx.py`](../src/blocks/markdown_to_docx.py):
 - Parses hierarchical headings (`#`, `##`, `###`), ordered/unordered lists, blockquotes, and callouts.
 - Applies standard typographic styles (font family: *Arial*, font sizes, line spacing: 1.5, paragraph spacing).
 
 ### 2.3 Semantic Cleaners & Sanitizers (`report_semantic_cleaner.py`)
-Located in [`src/blocks/report_semantic_cleaner.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/blocks/report_semantic_cleaner.py):
+Located in [`src/blocks/report_semantic_cleaner.py`](../src/blocks/report_semantic_cleaner.py):
 - Removes LLM artifacts, hallucinated tokens, or raw code tags before document assembly.
 - Ensures numerical consistency and formats localized decimal delimiters (e.g., `,` for `pt_BR`, `.` for `en_US`).
 
@@ -54,7 +54,7 @@ Located in [`src/blocks/report_semantic_cleaner.py`](file:///home/gabriel-moraes
 
 ## 3. Modular Report Blocks Registry (`src/xai/`)
 
-CARINA structures forensic audit reports using the **Registry Pattern** via [`src/xai/report_block_registry.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/report_block_registry.py):
+CARINA structures forensic audit reports using the **Registry Pattern** via [`src/xai/report_block_registry.py`](../src/xai/report_block_registry.py):
 
 | Block Renderer | Class / Module | Purpose |
 | :--- | :--- | :--- |
@@ -68,8 +68,8 @@ CARINA structures forensic audit reports using the **Registry Pattern** via [`sr
 
 ## 4. Multi-Language Report Templates
 
-Report templates and section boilerplates are stored in [`config/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/config):
-- `config/xai_report_sections.json`: Structured section definitions.
-- `config/xai_categories.json`: Localized category tags.
-- `config/omml_equation_templates.json`: Base templates for OMML equations.
-- `config/xai_table_templates.json`: Table headers and formatting definitions.
+Report templates and section boilerplates are stored in [`config/templates/`](../config/templates):
+- `config/templates/xai/xai_report_sections.json`: Structured section definitions.
+- `config/templates/xai/xai_categories.json`: Localized category tags.
+- `config/templates/omml_equation_templates.json`: Base templates for OMML equations.
+- `config/templates/xai/xai_table_templates.json`: Table headers and formatting definitions.

@@ -206,7 +206,7 @@
         "monitor_card": {
             "title": "External Monitor Integration",
             "enable": "Enable Integration",
-            "host": "MQTT Broker Host (IP/Domain)",
+            "host": "Monitor Host/URL (Ngrok, Cloud, IP or Broker)",
             "status_connected": "connected",
             "status_disconnected": "disconnected",
             "btn_connect": "Connect",

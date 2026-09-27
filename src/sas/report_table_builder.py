@@ -18,12 +18,12 @@
 # Author: Gabriel Moraes
 # Date: August 10, 2026
 
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 
+from blocks.report_post_processor import ReportPostProcessor
 from sas.report_intersection_processor import ReportIntersectionProcessor
 from sas.report_prompt_builder import ReportPromptBuilder
 from sas.report_template_provider import ReportTemplateProvider
-from blocks.report_post_processor import ReportPostProcessor
 
 
 class ReportTableBuilder:
@@ -33,10 +33,7 @@ class ReportTableBuilder:
 
     @staticmethod
     def build_audit_table_and_fichas(
-        analysis_results: Dict[str, Any],
-        stats: Dict[str, Any],
-        transducer: Any,
-        ui_language: str = "pt_br"
+        analysis_results: Dict[str, Any], stats: Dict[str, Any], transducer: Any, ui_language: str = "pt_br"
     ) -> Tuple[List[str], List[str]]:
         """
         Iterates over normalized junction analysis data, generates tabular rows for
@@ -57,15 +54,12 @@ class ReportTableBuilder:
         table_rows = [
             "### Tabela 1 – Síntese de Auditoria da Malha Viária\n",
             "| ID | Status Atual | Vol. Principal (vph) | Vol. Secundário (vph) | Atraso Médio (s) | Fila Max (P95) | Saturação (X) | Recomendação |",
-            "|---|---|---|---|---|---|---|---|"
+            "|---|---|---|---|---|---|---|---|",
         ]
 
         for j_id, j_data in analysis_results.items():
             processed = ReportIntersectionProcessor.process_single_intersection(
-                j_id=j_id,
-                j_data=j_data,
-                stats=stats,
-                ui_language=ui_language
+                j_id=j_id, j_data=j_data, stats=stats, ui_language=ui_language
             )
 
             clean_j_id = processed["clean_j_id"]
@@ -90,8 +84,7 @@ class ReportTableBuilder:
             justificativa_raw = transducer.generate_report(single_input)
             justificativa = ReportPostProcessor.clean_ai_preamble(justificativa_raw)
             justificativa = ReportPostProcessor.enforce_semantic_consistency(
-                justificativa,
-                is_signalized=(coherent_status_raw == "Sinalizado")
+                justificativa, is_signalized=(coherent_status_raw == "Sinalizado")
             )
 
             # Render Annex I detailed intersection ficha
@@ -112,7 +105,7 @@ class ReportTableBuilder:
                 speed_p=processed["speed_p"],
                 speed_s=processed["speed_s"],
                 len_p=processed["len_p"],
-                len_s=processed["len_s"]
+                len_s=processed["len_s"],
             )
             cruzamentos_detalhe.append(ficha_str)
 

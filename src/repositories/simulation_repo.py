@@ -26,11 +26,13 @@ if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
     from src.utils.locale_manager_backend import LocaleManagerBackend
 
+
 class SimulationRepository:
     """
     Repository for managing simulation runs, episodes, and analysis reports.
     """
-    def __init__(self, engine: 'DatabaseEngine', locale_manager: 'LocaleManagerBackend'):
+
+    def __init__(self, engine: "DatabaseEngine", locale_manager: "LocaleManagerBackend"):
         self.engine = engine
         self.locale_manager = locale_manager
 
@@ -45,20 +47,20 @@ class SimulationRepository:
         try:
             cursor = conn.cursor()
             start_time = datetime.now()
-            
+
             if self.engine.db_type == "postgres":
                 cursor.execute(
                     "INSERT INTO simulation_runs (start_time, scenario_name) VALUES (%s, %s) RETURNING run_id;",
-                    (start_time, scenario_name)
+                    (start_time, scenario_name),
                 )
                 run_id = cursor.fetchone()[0]
             else:
                 cursor.execute(
                     "INSERT INTO simulation_runs (start_time, scenario_name) VALUES (?, ?);",
-                    (start_time, scenario_name)
+                    (start_time, scenario_name),
                 )
                 run_id = cursor.lastrowid
-                
+
             conn.commit()
             logging.info(lm.get_string("db_manager.create_run.success", scenario=scenario_name))
             return run_id
@@ -77,24 +79,26 @@ class SimulationRepository:
         try:
             cursor = conn.cursor()
             end_time = datetime.now()
-            
+
             if self.engine.db_type == "postgres":
                 cursor.execute(
                     "INSERT INTO episodes (run_id, episode_number, total_reward, end_time) VALUES (%s, %s, %s, %s);",
-                    (run_id, episode_number, total_reward, end_time)
+                    (run_id, episode_number, total_reward, end_time),
                 )
             else:
                 cursor.execute(
                     "INSERT INTO episodes (run_id, episode_number, total_reward, end_time) VALUES (?, ?, ?, ?);",
-                    (run_id, episode_number, total_reward, end_time)
+                    (run_id, episode_number, total_reward, end_time),
                 )
             conn.commit()
         except Exception as e:
-            logging.error(self.locale_manager.get_string("db_manager.log_episode.error", episode=episode_number, error=e))
+            logging.error(
+                self.locale_manager.get_string("db_manager.log_episode.error", episode=episode_number, error=e)
+            )
         finally:
             if conn:
                 conn.close()
-                
+
     def log_analysis_report(self, run_id: int, summary: str, report_content: str):
         """Saves an infrastructure analysis report."""
         conn = self.engine.get_connection()
@@ -103,16 +107,16 @@ class SimulationRepository:
         try:
             cursor = conn.cursor()
             timestamp = datetime.now()
-            
+
             if self.engine.db_type == "postgres":
                 cursor.execute(
                     "INSERT INTO analysis_reports (run_id, timestamp, summary, report_content) VALUES (%s, %s, %s, %s);",
-                    (run_id, timestamp, summary, report_content)
+                    (run_id, timestamp, summary, report_content),
                 )
             else:
                 cursor.execute(
                     "INSERT INTO analysis_reports (run_id, timestamp, summary, report_content) VALUES (?, ?, ?, ?);",
-                    (run_id, timestamp, summary, report_content)
+                    (run_id, timestamp, summary, report_content),
                 )
             conn.commit()
         except Exception as e:
@@ -135,12 +139,15 @@ class SimulationRepository:
         try:
             cursor = conn.cursor()
             ph = "%s" if self.engine.db_type == "postgres" else "?"
-            cursor.execute(f"SELECT metrics_cache FROM sas_analysis_cache WHERE scenario_name = {ph};", (scenario_name,))
+            cursor.execute(
+                f"SELECT metrics_cache FROM sas_analysis_cache WHERE scenario_name = {ph};", (scenario_name,)
+            )
             row = cursor.fetchone()
             if row and row[0]:
                 data = row[0]
                 if isinstance(data, str):
                     import json
+
                     return json.loads(data)
                 elif isinstance(data, dict):
                     return data
@@ -161,6 +168,7 @@ class SimulationRepository:
             return
         try:
             import json
+
             cursor = conn.cursor()
             serialized = json.dumps(cache_data)
             if self.engine.db_type == "postgres":
@@ -196,17 +204,19 @@ class SimulationRepository:
             return last_data, first_data
         try:
             import json
+
             cursor = conn.cursor()
             ph = "%s" if self.engine.db_type == "postgres" else "?"
             cursor.execute(
                 f"SELECT cache_type, metrics_cache FROM mfd_analysis_cache WHERE scenario_name = {ph};",
-                (scenario_name,)
+                (scenario_name,),
             )
             rows = cursor.fetchall()
             for c_type, raw_data in rows:
                 parsed = {}
                 if isinstance(raw_data, str):
                     import json
+
                     parsed = json.loads(raw_data)
                 elif isinstance(raw_data, dict):
                     parsed = raw_data
@@ -231,6 +241,7 @@ class SimulationRepository:
             return
         try:
             import json
+
             cursor = conn.cursor()
             serialized = json.dumps(snapshot)
 
@@ -243,7 +254,9 @@ class SimulationRepository:
                 """
                 cursor.execute(query_last, (scenario_name, serialized))
 
-                query_first_check = "SELECT 1 FROM mfd_analysis_cache WHERE scenario_name = %s AND cache_type = 'first';"
+                query_first_check = (
+                    "SELECT 1 FROM mfd_analysis_cache WHERE scenario_name = %s AND cache_type = 'first';"
+                )
                 cursor.execute(query_first_check, (scenario_name,))
                 if not cursor.fetchone():
                     query_first_ins = """
@@ -275,4 +288,3 @@ class SimulationRepository:
         finally:
             if conn:
                 conn.close()
-

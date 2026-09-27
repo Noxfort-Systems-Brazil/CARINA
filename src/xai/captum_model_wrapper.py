@@ -18,10 +18,13 @@
 # Author: Gabriel Moraes
 # Date: June 19, 2026
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional
+
 from models.pae import PredictiveAutoencoder
+
 
 class CaptumModelWrapper(nn.Module):
     """
@@ -29,6 +32,7 @@ class CaptumModelWrapper(nn.Module):
     If the agent has a PAE, the wrapper applies the PAE augmentation internally
     so that the attribution covers the augmented input space.
     """
+
     def __init__(self, model: nn.Module, shared_pae: Optional[PredictiveAutoencoder] = None) -> None:
         super(CaptumModelWrapper, self).__init__()
         self.model = model
@@ -52,12 +56,12 @@ class CaptumModelWrapper(nn.Module):
                 padding_dim = expected_dim - x.shape[-1]
                 zeros = torch.zeros(*x.shape[:-1], padding_dim, device=x.device, dtype=x.dtype)
                 x = torch.cat([x, zeros], dim=-1)
-                
+
         return self.model(x)[0]
 
     def to(self, *args, **kwargs) -> "CaptumModelWrapper":
         # Call parent's to if it exists (real PyTorch nn.Module)
-        if hasattr(super(CaptumModelWrapper, self), 'to'):
+        if hasattr(super(CaptumModelWrapper, self), "to"):
             super(CaptumModelWrapper, self).to(*args, **kwargs)
         return self
 

@@ -21,21 +21,23 @@
 import logging
 import os
 import sys
-from multiprocessing import Queue
 import threading
 import time
+from multiprocessing import Queue
+
 import psutil
 
 # Adds the 'src' directory to the path to allow imports from other modules
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from utils.logging_setup import setup_logging
 from database.database_manager import DatabaseManager
-from utils.metrics_manager import MetricsManager
 from utils.locale_manager_backend import LocaleManagerBackend
+from utils.logging_setup import setup_logging
+from utils.metrics_manager import MetricsManager
+
 
 def run_database_worker(db_queue: Queue):
     """
@@ -45,6 +47,7 @@ def run_database_worker(db_queue: Queue):
 
     # 1. Configure FIRST logging.
     from src.utils.paths import get_base_output_dir
+
     log_dir = os.path.join(get_base_output_dir(), "logs", "db_worker")
     os.makedirs(log_dir, exist_ok=True)
     setup_logging(log_dir=log_dir)
@@ -55,20 +58,17 @@ def run_database_worker(db_queue: Queue):
     # --- END OF CORRECTION ---
 
     from database.worker_monitor import WorkerMonitor
-    monitor = WorkerMonitor(process_name="DatabaseWorker", port=8005, monitered_queues={'db_data': db_queue})
-    
-    monitor_thread = threading.Thread(
-        target=monitor.start_loop,
-        args=(5,),
-        daemon=True
-    )
+
+    monitor = WorkerMonitor(process_name="DatabaseWorker", port=8005, monitered_queues={"db_data": db_queue})
+
+    monitor_thread = threading.Thread(target=monitor.start_loop, args=(5,), daemon=True)
     monitor_thread.start()
 
     try:
         # setup_logging has already been moved to the top
-        
+
         db_manager = DatabaseManager(locale_manager=lm)
-        
+
         def cloud_sync_loop(db_mgr, base_dir):
             # Give the system some time to boot before first sync
             time.sleep(30)
@@ -79,11 +79,9 @@ def run_database_worker(db_queue: Queue):
                     logging.error(f"[CLOUD_SYNC] Error in sync loop: {e}")
                 # Wait 5 minutes before next sync
                 time.sleep(300)
-                
+
         cloud_sync_thread = threading.Thread(
-            target=cloud_sync_loop,
-            args=(db_manager, get_base_output_dir()),
-            daemon=True
+            target=cloud_sync_loop, args=(db_manager, get_base_output_dir()), daemon=True
         )
         cloud_sync_thread.start()
 
@@ -98,13 +96,9 @@ def run_database_worker(db_queue: Queue):
                 # Run consolidation every 1 hour (3600 seconds)
                 time.sleep(3600)
 
-        consolidation_purge_thread = threading.Thread(
-            target=consolidation_purge_loop,
-            args=(db_manager,),
-            daemon=True
-        )
+        consolidation_purge_thread = threading.Thread(target=consolidation_purge_loop, args=(db_manager,), daemon=True)
         consolidation_purge_thread.start()
-        
+
         logging.info(lm.get_string("db_worker.run.worker_started"))
 
         while True:

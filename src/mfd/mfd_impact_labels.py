@@ -18,10 +18,11 @@
 # Author: Gabriel Moraes
 # Date: August 8, 2026
 
-import os
 import json
 import logging
-from typing import Dict, Any
+import os
+from typing import Any, Dict
+
 
 class MFDImpactLabels:
     """
@@ -38,7 +39,7 @@ class MFDImpactLabels:
             "queue_reduced": "REDUÇÃO DE FILAS",
             "delay_reduced": "REDUÇÃO DE ATRASO",
             "eff_optimized": "OTIMIZAÇÃO PLENA",
-            "stable": "ESTÁVEL"
+            "stable": "ESTÁVEL",
         },
         "en": {
             "speed_improved": "SIGNIFICANT IMPROVEMENT",
@@ -46,8 +47,8 @@ class MFDImpactLabels:
             "queue_reduced": "QUEUE REDUCTION",
             "delay_reduced": "DELAY REDUCTION",
             "eff_optimized": "FULL OPTIMIZATION",
-            "stable": "STABLE"
-        }
+            "stable": "STABLE",
+        },
     }
 
     @classmethod
@@ -62,9 +63,12 @@ class MFDImpactLabels:
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
         candidates = [
+            os.path.join(base_dir, "..", "..", "config", "templates", "mfd", "mfd_impact_labels.json"),
+            os.path.join(base_dir, "..", "config", "templates", "mfd", "mfd_impact_labels.json"),
+            os.path.join(os.getcwd(), "config", "templates", "mfd", "mfd_impact_labels.json"),
             os.path.join(base_dir, "..", "..", "config", "mfd_impact_labels.json"),
             os.path.join(base_dir, "..", "config", "mfd_impact_labels.json"),
-            os.path.join(os.getcwd(), "config", "mfd_impact_labels.json")
+            os.path.join(os.getcwd(), "config", "mfd_impact_labels.json"),
         ]
 
         for json_path in candidates:
@@ -93,7 +97,9 @@ class MFDImpactLabels:
         if lang_key == "pt":
             lang_key = "pt_br"
 
-        return labels_dict.get(lang_key, labels_dict.get("pt_br", labels_dict.get("en", cls.DEFAULT_FALLBACK_LABELS["en"])))
+        return labels_dict.get(
+            lang_key, labels_dict.get("pt_br", labels_dict.get("en", cls.DEFAULT_FALLBACK_LABELS["en"]))
+        )
 
     @classmethod
     def resolve_metric_evaluations(
@@ -103,7 +109,7 @@ class MFDImpactLabels:
         queue_delta_pct: float,
         delay_delta_pct: float,
         eff_delta_pct: float,
-        lang: str = "pt_br"
+        lang: str = "pt_br",
     ) -> Dict[str, str]:
         """
         Evaluate physical metrics delta and return localized evaluation strings.
@@ -124,8 +130,9 @@ class MFDImpactLabels:
             "production": labels.get("prod_expanded", stable) if prod_delta_pct > 0 else stable,
             "queue": labels.get("queue_reduced", stable) if queue_delta_pct < 0 else stable,
             "delay": labels.get("delay_reduced", stable) if delay_delta_pct < 0 else stable,
-            "efficiency": labels.get("eff_optimized", stable) if eff_delta_pct > 0 else stable
+            "efficiency": labels.get("eff_optimized", stable) if eff_delta_pct > 0 else stable,
         }
+
 
 def get_impact_labels(lang: str = "pt_br") -> Dict[str, str]:
     """Module-level helper to retrieve impact labels mapping."""

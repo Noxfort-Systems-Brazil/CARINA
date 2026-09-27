@@ -24,13 +24,14 @@ Common Types
 Shared type definitions for the controller modules to avoid circular imports.
 """
 
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 from typing import List
 
 
 class SignalState(Enum):
     """NEMA-compliant signal states for a phase transition."""
+
     GREEN = "GREEN"
     YELLOW = "YELLOW"
     ALL_RED = "ALL_RED"
@@ -40,13 +41,14 @@ class SignalState(Enum):
 class StageDefinition:
     """
     A single signal phase extracted from the SUMO TLS program.
-    
+
     Attributes:
         state_string: Raw SUMO state (e.g., "GGrrrrGGrrrr") defining which
                       signal links are green/red in this phase.
         yellow_string: Derived state where all G/g are replaced with 'y'.
         all_red_string: All characters set to 'r' for clearance interval.
     """
+
     state_string: str
     yellow_string: str
     all_red_string: str

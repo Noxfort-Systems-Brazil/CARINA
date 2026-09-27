@@ -17,7 +17,10 @@ dependencies = [
     "pysnmp>=7.0.0",
     "sumolib>=1.19.0",
     "flet>=0.20.0",
-    "python-dotenv>=1.0.0"
+    "python-dotenv>=1.0.0",
+    "Pillow>=10.0.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0"
 ]
 
 [project.optional-dependencies]
@@ -54,4 +57,10 @@ pythonpath = ["src"]
 addopts = "--cov=src --cov-report=term-missing --cov-report=html"
 testpaths = [
     "tests",
+]
+markers = [
+    "unit: marks unit tests",
+    "integration: marks integration tests",
+    "benchmark: marks benchmark tests",
+    "slow: marks slow tests",
 ]

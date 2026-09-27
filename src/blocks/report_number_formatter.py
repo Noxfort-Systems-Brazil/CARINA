@@ -20,6 +20,7 @@
 
 from typing import Any
 
+
 class ReportNumberFormatter:
     """
     Responsibility (SRP): Formats numerical values and retrieves distance/time/decimal/thousands
@@ -31,8 +32,9 @@ class ReportNumberFormatter:
         """Retrieves physical distance unit configured in settings.ini / UI."""
         try:
             from utils.settings_manager import SettingsManager
+
             sm = SettingsManager()
-            unit = sm.get_setting('UI', 'distance_unit', None) or sm.get_setting('General', 'distance_unit', 'metros')
+            unit = sm.get_setting("UI", "distance_unit", None) or sm.get_setting("General", "distance_unit", "metros")
             return str(unit).strip().lower()
         except Exception:
             return "metros"
@@ -42,8 +44,9 @@ class ReportNumberFormatter:
         """Retrieves time unit configured in settings.ini / UI."""
         try:
             from utils.settings_manager import SettingsManager
+
             sm = SettingsManager()
-            unit = sm.get_setting('UI', 'time_unit', None) or sm.get_setting('General', 'time_unit', 'segundos')
+            unit = sm.get_setting("UI", "time_unit", None) or sm.get_setting("General", "time_unit", "segundos")
             return str(unit).strip().lower()
         except Exception:
             return "segundos"
@@ -53,28 +56,34 @@ class ReportNumberFormatter:
         """Retrieves decimal separator (',' or '.') configured in settings.ini / UI."""
         try:
             from utils.settings_manager import SettingsManager
+
             sm = SettingsManager()
-            sep = sm.get_setting('REPORT_FORMATTING', 'decimal_separator', None) or sm.get_setting('UI', 'decimal_separator', ',')
+            sep = sm.get_setting("REPORT_FORMATTING", "decimal_separator", None) or sm.get_setting(
+                "UI", "decimal_separator", ","
+            )
             sep = str(sep).strip()
-            if sep in ('.', 'dot', 'ponto', 'usa', 'us'):
-                return '.'
-            return ','
+            if sep in (".", "dot", "ponto", "usa", "us"):
+                return "."
+            return ","
         except Exception:
-            return ','
+            return ","
 
     @staticmethod
     def get_configured_thousands_separator() -> str:
         """Retrieves thousands separator ('.' or ',') configured in settings.ini / UI."""
         try:
             from utils.settings_manager import SettingsManager
+
             sm = SettingsManager()
-            sep = sm.get_setting('REPORT_FORMATTING', 'thousands_separator', None) or sm.get_setting('UI', 'thousands_separator', '.')
+            sep = sm.get_setting("REPORT_FORMATTING", "thousands_separator", None) or sm.get_setting(
+                "UI", "thousands_separator", "."
+            )
             sep = str(sep).strip()
-            if sep in (',', 'comma', 'virgula'):
-                return ','
-            return '.'
+            if sep in (",", "comma", "virgula"):
+                return ","
+            return "."
         except Exception:
-            return '.'
+            return "."
 
     @classmethod
     def format_number(cls, val: Any, decimal_places: int = 1) -> str:
@@ -84,10 +93,10 @@ class ReportNumberFormatter:
         try:
             num = float(val)
             dec_sep = cls.get_configured_decimal_separator()
-            if dec_sep == '.':
+            if dec_sep == ".":
                 return f"{num:,.{decimal_places}f}"
             else:
                 formatted = f"{num:,.{decimal_places}f}"
-                return formatted.replace(',', 'TEMP').replace('.', ',').replace('TEMP', '.')
+                return formatted.replace(",", "TEMP").replace(".", ",").replace("TEMP", ".")
         except Exception:
             return str(val)

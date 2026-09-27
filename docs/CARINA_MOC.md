@@ -23,8 +23,9 @@ CARINA_CORE/
 │
 ├── config/                     # Configuration Systems
 │   ├── settings.ini            # System-wide parameters (AI, PBT, Watchdog, MFD, Logging)
-│   ├── schema_queries.json     # Dynamic SQL table definitions (PostgreSQL / SQLite)
-│   └── xai_report_sections.json# ABNT NBR 14724 report layout templates
+│   ├── database/               # Dynamic SQL queries & schemas (schema_queries.json, fluid_dynamics_queries.json)
+│   ├── rules/                  # Safety and semantic consistency rules (safety_rules.json, semantic_rules.json)
+│   └── templates/              # Multi-language report, MFD, SAS & XAI templates
 │
 ├── proto/                      # gRPC Protocol Specifications
 │   └── synapse_hft.proto       # High-Frequency Telemetry & Actuation Protobuf Definitions
@@ -49,16 +50,24 @@ CARINA_CORE/
 │   ├── TESTING.md              # Pytest Test Suite, Driver Mocks & Coverage Validation
 │   └── DEPLOYMENT_AND_PACKAGING.md # Docker Builds, Systemd Daemons & Debian Packages
 │
+├── bin/                        # Compiled native binaries (carina-go)
+├── src_go/                     # Go Hardware Gateway (NTCIP 1202, UTMC2, UDP 161/162)
+│   ├── cmd/gateway/            # Gateway entrypoint & NDJSON stdin/stdout IPC loop
+│   ├── configs/                # Embedded NTCIP & UTMC OID JSON profiles
+│   └── pkg/                    # snmp, ntcip, utmc, discovery, heartbeat, traplistener, manager
 ├── src/                        # Primary Source Code
 │   ├── agents/                 # PPO LocalAgent, GuardianAgent, ConsultantAgent & StrategistAgent
 │   ├── analysis/               # MUTCD WarrantEvaluator, WarrantMath & Traffic Analysis
 │   ├── blocks/                 # Modular .docx builder, OMML math converters & text cleaners
 │   ├── central_controller.py   # High-Frequency gRPC Telemetry Server
+│   ├── communication/          # MonitorClient, HFT server & external telemetry bridging
 │   ├── controller/             # ConnectionManager, FailSafeManager, StageValidator & Overrides
 │   ├── core/                   # DecisionCoordinator, SafetyAuditor, MaturityManager & ActionAuthorizer
 │   ├── database/               # DatabaseEngine, DatabaseWorker & StepDecisionWorker
-│   ├── drivers/                # NTCIP 1202, UTMC2, SNMP Client & Hardware Event Listeners
+│   ├── drivers/                # Go Gateway Python Proxy, DriverFactory, IncidentReporter & IncidentFilter
 │   ├── engine/                 # EpisodeRunner, StepProcessor, PPO/DQN Optimizers & Trainers
+│   ├── fenix/                  # F.E.N.I.X. Self-Healing & Process Supervisor (Supervisor, Runner, Reconciler)
+│   ├── handlers/               # AI requests, UI commands & watchdog command handlers
 │   ├── launcher/               # ProcessManager, SingleInstanceLock & UITrayManager
 │   ├── mfd/                    # Macroscopic Fundamental Diagram (MFD) Analyzer & Worker
 │   ├── models/                 # Neural Architectures (PAE, TCN, ST-GATv2 Lite, CrossAttention)
@@ -67,12 +76,17 @@ CARINA_CORE/
 │   ├── safety/                 # GuardianWorker process & IPC signal routing
 │   ├── sas/                    # Smart Analysis System (Offline Infrastructure Warrants)
 │   ├── sds/                    # Smart Dashboard Service (Flet UI bridge & WebSockets)
+│   ├── settings/               # Modular Settings (SOLID interfaces, schemas, INI & .env)
 │   ├── slm/                    # Small Language Model (Qwen3 / llama.cpp offline inference)
+│   ├── transports/             # Polymorphic transports (Base, HTTP, MQTT, EndpointResolver)
 │   ├── utils/                  # SettingsManager, MetricsManager, Paths & Security Subsystem
 │   │   └── security/           # AuthService, UserService, Bcrypt Hasher & LockdownManager
-│   └── watchdog/               # Real-time process heartbeat monitor & fail-safe fallback
+│   ├── watchdog/               # Real-time process heartbeat monitor & fail-safe fallback
+│   └── xai/                    # Integrated Gradients attribution, report builder & worker
 │
 ├── ui/                         # Native Flet Desktop Application
+│   ├── cards/                  # Modular settings & telemetry cards (MonitorSettingsCard)
+│   ├── handlers/               # Event handlers, SettingsHandler & native SystemTrayHandler
 │   ├── views/                  # DashboardView, PlanningView, DiagnosticsView, SettingsView
 │   ├── widgets/                # LiveCanvasMapWidget, PlanningControlPanel, MFDViewer, XAIViewer
 │   ├── renderers/              # PlanningMapRenderer, MapVisualSyncer, MapDrawer
@@ -88,14 +102,16 @@ CARINA_CORE/
 
 ### 1. Core Infrastructure & Hardware Drivers
 - **[Architecture Deep-Dive](../ARCHITECTURE.md)**: Exhaustive technical blueprint detailing all 8 concurrent OS microservices, process isolation via `multiprocessing`, IPC Pipe/Queue channels, and the execution loop.
-- **[Hardware Drivers & Physical Controllers](HARDWARE_DRIVERS.md)**: Specifications for NTCIP 1202 (ASC), UTMC / UTMC2 UK standard, SNMP v2c/v3 client, connection pooling, and deterministic hardware fail-safe reversion.
-- **[API Reference & HFT Protocol](API_REFERENCE.md)**: Complete specifications for the `Synapse HFT` gRPC interface, Protobuf message schemas, Prometheus metric endpoints (port 8001), and IPC queue schemas.
+- **[Hardware Drivers & Physical Controllers](HARDWARE_DRIVERS.md)**: Specifications for compiled Go Hardware Gateway (`carina-go`), NDJSON standard pipes IPC, NTCIP 1202 (ASC), UTMC / UTMC2 UK standard, SNMP v2c/v3 client, connection pooling, and deterministic hardware fail-safe reversion.
+- **[API Reference & HFT Protocol](API_REFERENCE.md)**: Complete specifications for the `Synapse HFT` gRPC interface, external Monitor telemetry (MQTT/HTTP), Prometheus metric endpoints (port 8001), and IPC queue schemas.
 - **[Database Architecture & Schemas](DATABASE_AND_SCHEMAS.md)**: Specifications for `DatabaseWorker`, `StepDecisionWorker`, connection pooling, 12-Factor `.env` setup, and PostgreSQL delta storage (97.9% reduction).
 - **[Security & Authentication](SECURITY_AND_AUTH.md)**: User account management, salted `bcrypt` hashing, brute-force lockdown defense, and role-based access control.
+- **[Modular Settings Architecture](../ARCHITECTURE.md#4-modular-settings-architecture-srcsettings)**: SOLID configuration subsystem decoupling schemas, INI persistence, and 12-Factor `.env` secrets.
+- **[Polymorphic Monitoring & Transports](../ARCHITECTURE.md#5-polymorphic-monitoring--transport-architecture-srctransports)**: Telemetry and incident streaming over MQTT brokers and HTTP/HTTPS REST/Ngrok cloud endpoints.
 
 ### 2. Artificial Intelligence & Neuro-Symbolic Safety
 - **[Neural Research & Formulations](RESEARCH_NOTES.md)**: Deep mathematical formulations for PPO-TCN, Predictive Autoencoder (PAE) latent projection $Z$, Dueling DQN-TCN value/advantage streams, ST-GATv2 Lite Graph Attention, and the DA SILVA maturation curriculum.
-- **[Safety Architecture & Watchdog](SAFETY_AND_WATCHDOG.md)**: Inventory of Symbolic Veto rules (SR-01 to SR-05), PAE Neural Veto thresholds, and real-time Watchdog heartbeat monitoring (< 500 ms).
+- **[Safety Architecture, Watchdog & F.E.N.I.X.](SAFETY_AND_WATCHDOG.md)**: Inventory of Symbolic Veto rules (SR-01 to SR-05), PAE Neural Veto thresholds, real-time Watchdog heartbeat monitoring (< 500 ms), and F.E.N.I.X. autonomous process resurrection with clean boundary state reconciliation.
 - **[Explainable AI, SAS & MFD Analytics](XAI_AND_SAS.md)**: Operational details of the modular XAI pipeline, Captum Integrated Gradients attribution, and municipal forensic audits.
 - **[Report Blocks Engine & Word Generator](REPORT_BLOCKS_AND_TEMPLATES.md)**: Automated generation of ABNT NBR 14724 Word (`.docx`) reports with native Office Math Markup Language (OMML) LaTeX formulas.
 - **[Small Language Models (SLM)](SLM_AND_LOCAL_LLM.md)**: Local, 100% offline LLM inference (Qwen3 1.7B / llama.cpp) generating forensic textual explanations without cloud dependencies.
@@ -109,7 +125,7 @@ CARINA_CORE/
 - **[UI & Smart Dashboard Service](UI_AND_DASHBOARD.md)**: Architectural breakdown of the native Flet desktop UI, Planning View, single-instance socket locking (port 42123), and WebSocket telemetry streaming.
 - **[Developer & Integration Guides](DEVELOPER_GUIDES.md)**: Guide for setting up environments, modifying configurations, extending agents, and building packages.
 - **[Testing & Validation](TESTING.md)**: Guidelines for running `pytest`, generating coverage reports (`--cov=src`), mocking controllers, and validating Guardian safety vetoes.
-- **[Deployment, Packaging & Containerization](DEPLOYMENT_AND_PACKAGING.md)**: Guide for Docker containerization (`Dockerfile.build`), Systemd service units, and Debian `.deb` packages.
+- **[Deployment, Packaging & Containerization](DEPLOYMENT_AND_PACKAGING.md)**: Guide for Docker containerization (`Dockerfile`), Systemd service units, and Debian `.deb` packages.
 
 ---
 

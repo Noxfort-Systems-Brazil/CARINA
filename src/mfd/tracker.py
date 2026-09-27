@@ -28,7 +28,7 @@ and warmup period management.
 
 import logging
 from collections import deque
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from mfd.snapshot import MFDSnapshot
 
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 class MFDTracker:
     """
     Manages the temporal state of MFD observations.
-    
+
     Tracks:
         - Historical snapshots (bounded deque)
         - Peak production and critical accumulation
@@ -100,13 +100,9 @@ class MFDTracker:
         self._step_count += 1
 
         # Update EMA
-        self._ema_production = (
-            self._ema_alpha * snapshot.production +
-            (1 - self._ema_alpha) * self._ema_production
-        )
+        self._ema_production = self._ema_alpha * snapshot.production + (1 - self._ema_alpha) * self._ema_production
         self._ema_accumulation = (
-            self._ema_alpha * snapshot.accumulation +
-            (1 - self._ema_alpha) * self._ema_accumulation
+            self._ema_alpha * snapshot.accumulation + (1 - self._ema_alpha) * self._ema_accumulation
         )
 
         # Update peak production (the top of the MFD bell curve)
@@ -129,12 +125,12 @@ class MFDTracker:
     def get_smoothed_metrics(self) -> Dict[str, Any]:
         """Returns the EMA-smoothed production and accumulation for the UI."""
         return {
-            'production_ema': round(self._ema_production, 4),
-            'accumulation_ema': round(self._ema_accumulation, 4),
-            'peak_production': round(self._peak_production, 4),
-            'peak_accumulation': round(self._peak_accumulation, 4),
-            'steps_computed': self._step_count,
-            'is_warmed_up': self.is_warmed_up
+            "production_ema": round(self._ema_production, 4),
+            "accumulation_ema": round(self._ema_accumulation, 4),
+            "peak_production": round(self._peak_production, 4),
+            "peak_accumulation": round(self._peak_accumulation, 4),
+            "steps_computed": self._step_count,
+            "is_warmed_up": self.is_warmed_up,
         }
 
     def get_curve_data(self, last_n: int = 0) -> List[Dict[str, float]]:
@@ -150,9 +146,9 @@ class MFDTracker:
         if self._latest_snapshot:
             return [
                 {
-                    'accumulation': self._latest_snapshot.accumulation,
-                    'production': self._latest_snapshot.production,
-                    'timestamp': self._latest_snapshot.timestamp
+                    "accumulation": self._latest_snapshot.accumulation,
+                    "production": self._latest_snapshot.production,
+                    "timestamp": self._latest_snapshot.timestamp,
                 }
             ]
         return []

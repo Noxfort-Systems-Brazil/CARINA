@@ -68,6 +68,8 @@ class MockDbEngine:
                 num_lanes INTEGER,
                 speed_limit REAL,
                 maturity_stage TEXT NOT NULL DEFAULT 'CHILD',
+                sample_count INTEGER DEFAULT 1,
+                edge_int_id INTEGER,
                 collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """

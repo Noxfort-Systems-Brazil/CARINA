@@ -18,8 +18,8 @@
 # Author: Gabriel Moraes
 # Date: August 10, 2026
 
-import re
 import ipaddress
+import re
 from typing import Tuple
 
 
@@ -48,7 +48,7 @@ class NetworkAddressParser:
         if not target_ip or not isinstance(target_ip, str):
             return False, "", default_port, ""
 
-        ip_port_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d{1,5}))?', target_ip)
+        ip_port_match = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d{1,5}))?", target_ip)
         if not ip_port_match:
             return False, "", default_port, ""
 

@@ -18,17 +18,28 @@
 # Author: Gabriel Moraes
 # Date: 2026-06-10
 
+
 class MonitorSettingsHandler:
     """
     SRP: Manages all business logic related to the connection with the external Monitor system.
     """
+
     def __init__(self, settings_client):
         self.settings_client = settings_client
 
     def on_monitor_toggle(self, enabled: bool, host: str):
+        # Synchronize local UI-process MonitorClient if any was initialized
+        try:
+            from src.communication.monitor_client import MonitorClient
+
+            if MonitorClient._instance:
+                if enabled:
+                    MonitorClient._instance.connect_manual(host)
+                else:
+                    MonitorClient._instance.disconnect_manual()
+        except Exception:
+            pass
+
         if self.settings_client and self.settings_client.live_data_provider:
-            command = {
-                "type": "set_monitor_connection",
-                "payload": {"enabled": enabled, "host": host}
-            }
+            command = {"type": "set_monitor_connection", "payload": {"enabled": enabled, "host": host}}
             self.settings_client.live_data_provider.send_command_to_backend(command)

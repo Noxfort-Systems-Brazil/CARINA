@@ -8,6 +8,7 @@ __pycache__/
 *.so
 *.class
 *.out
+bin/
 
 # Dependencies
 .venv/
@@ -18,6 +19,8 @@ venv/
 
 # Logs and temp files
 *.log
+commands.log
+results/
 *.tmp
 *.swp
 *.swo
@@ -66,6 +69,7 @@ build/
 .pytest_cache/
 target/
 .gradle/
+MagicMock/
 
 # Node.js
 node_modules/

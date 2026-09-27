@@ -19,11 +19,13 @@
 # Date: August 12, 2026
 
 import re
+
 from sas.template_repository import TemplateRepository
+
 
 class IntersectionBlockFormatter:
     """
-    Responsibility (SRP): Formats individual intersection Markdown blocks (Anexo I) 
+    Responsibility (SRP): Formats individual intersection Markdown blocks (Anexo I)
     and handles justification sentence starters variation via Regex.
     Follows SOLID principles.
     """
@@ -46,7 +48,7 @@ class IntersectionBlockFormatter:
         speed_p: float = 50.0,
         speed_s: float = 40.0,
         len_p: float = 100.0,
-        len_s: float = 100.0
+        len_s: float = 100.0,
     ) -> str:
         """
         Formats individual intersection Markdown audit sheet block.
@@ -92,30 +94,26 @@ class IntersectionBlockFormatter:
                 f"A auditoria viária do cruzamento ID {j_id} evidencia que a saturação no cruzamento é crítica, ",
                 f"A avaliação de desempenho no nó viário ID {j_id} demonstra que há saturação crítica no local, ",
                 f"O diagnóstico técnico do cruzamento ID {j_id} indica que a saturação viária atingiu nível crítico, ",
-                f"A análise operacional do entroncamento ID {j_id} atesta a presença de saturação crítica no cruzamento, "
+                f"A análise operacional do entroncamento ID {j_id} atesta a presença de saturação crítica no cruzamento, ",
             ]
 
         # Load justification replacement rules (triggers and regex) from JSON config
         rules_dict = templates.get("justification_replacement_rules", {})
         lang_rules = rules_dict.get(lang_key, rules_dict.get("pt_br", {}))
         trigger_phrases = lang_rules.get(
-            "trigger_phrases",
-            ["A análise de dados revela", "A recomendação de", "A recomendação técnica"]
+            "trigger_phrases", ["A análise de dados revela", "A recomendação de", "A recomendação técnica"]
         )
         regex_pattern = lang_rules.get(
             "regex_pattern",
-            r"^(A\s+análise\s+de\s+dados\s+revela|A\s+recomendação\s+de\s+[^\s]+\s+semáforo\s+é\s+obrigatória|A\s+recomendação\s+técnica\s+é\s+a\s+edição)\s*(que|uma|devido)?\s*([àa]\s+)?(saturação\s+crítica)?\s*(no\s+cruzamento)?\s*(com\s+uma\s+taxa)?\s*"
+            r"^(A\s+análise\s+de\s+dados\s+revela|A\s+recomendação\s+de\s+[^\s]+\s+semáforo\s+é\s+obrigatória|A\s+recomendação\s+técnica\s+é\s+a\s+edição)\s*(que|uma|devido)?\s*([àa]\s+)?(saturação\s+crítica)?\s*(no\s+cruzamento)?\s*(com\s+uma\s+taxa)?\s*",
         )
 
         if justificativa_rica and starters and any(phrase in justificativa_rica for phrase in trigger_phrases):
             chosen_starter_raw = starters[abs(hash(str(j_id))) % len(starters)]
-            chosen_starter = chosen_starter_raw.format(j_id=j_id) if "{j_id}" in chosen_starter_raw else chosen_starter_raw
-            justificativa_rica = re.sub(
-                regex_pattern,
-                chosen_starter,
-                justificativa_rica,
-                flags=re.IGNORECASE
+            chosen_starter = (
+                chosen_starter_raw.format(j_id=j_id) if "{j_id}" in chosen_starter_raw else chosen_starter_raw
             )
+            justificativa_rica = re.sub(regex_pattern, chosen_starter, justificativa_rica, flags=re.IGNORECASE)
 
         template_block_dict = templates.get("intersection_block", {})
         template_str = template_block_dict.get(lang_key, template_block_dict.get("pt_br", ""))
@@ -156,7 +154,7 @@ class IntersectionBlockFormatter:
                 vol_p=vol_p,
                 vol_s=vol_s,
                 delay=delay,
-                sat=sat
+                sat=sat,
             )
         except Exception:
             return template_str

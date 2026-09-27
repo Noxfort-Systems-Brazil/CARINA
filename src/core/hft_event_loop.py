@@ -21,11 +21,13 @@
 import logging
 import time
 
+
 class HftEventLoop:
     """
     SRP: Handles the main background event loop for HFT monitoring, pipe signals,
     and failsafe ticking.
     """
+
     def __init__(self, ai_pipe_conn, failsafe_manager, request_processor, sds_data_queue):
         self.ai_pipe_conn = ai_pipe_conn
         self.failsafe_manager = failsafe_manager
@@ -62,18 +64,22 @@ class HftEventLoop:
                 phase_changes = self.failsafe_manager.tick()
                 if phase_changes:
                     try:
-                        self.sds_data_queue.put(('failsafe_phase_update', {
-                            'changes': phase_changes,
-                            'status': self.failsafe_manager.get_status()
-                        }))
+                        self.sds_data_queue.put(
+                            (
+                                "failsafe_phase_update",
+                                {"changes": phase_changes, "status": self.failsafe_manager.get_status()},
+                            )
+                        )
                     except Exception as e:
                         logging.error(f"[HftEventLoop] Error sending failsafe update: {e}")
 
             try:
-                self.request_processor.process_queues(sumo_conn=None, is_ai_healthy=not self.failsafe_manager.failsafe_active)
+                self.request_processor.process_queues(
+                    sumo_conn=None, is_ai_healthy=not self.failsafe_manager.failsafe_active
+                )
             except Exception as e_proc:
                 logging.error(f"[HftEventLoop] Error in processing loop: {e_proc}")
-            
+
             time.sleep(0.05)
 
     def stop(self):

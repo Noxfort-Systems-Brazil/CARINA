@@ -18,7 +18,8 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
 from mfd.calculator import MFDCalculator
 
 
@@ -32,8 +33,7 @@ class MFDMetricsProcessor:
     def process_mfd_step_data(timestamp: str, edges_data: dict, edge_lengths: dict, edge_to_tl: dict) -> dict:
         """Calculates MFD metrics for a single simulation step."""
         lengths_dict = {
-            edge_id: data.get("edge_length") or edge_lengths.get(edge_id, 100.0)
-            for edge_id, data in edges_data.items()
+            edge_id: data.get("edge_length") or edge_lengths.get(edge_id, 100.0) for edge_id, data in edges_data.items()
         }
 
         production, accumulation, mean_speed, mean_density, mean_flow, active_edges = (
@@ -82,7 +82,7 @@ class MFDMetricsProcessor:
                 "accumulation": round(local_accum, 4),
                 "mean_speed": round(avg_speed, 2),
                 "queue_length": int(local_queue),
-                "maturity_stage": mat_stage
+                "maturity_stage": mat_stage,
             }
 
         try:
@@ -98,7 +98,7 @@ class MFDMetricsProcessor:
             "mean_density": mean_density,
             "mean_flow": mean_flow,
             "active_edges": active_edges,
-            "intersections": intersections
+            "intersections": intersections,
         }
 
     @staticmethod

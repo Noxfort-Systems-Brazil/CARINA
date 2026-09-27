@@ -20,8 +20,9 @@
 
 import logging
 from typing import Tuple
+
+from sas.sas_helpers import EdgeClassifier, SyntheticSampleGenerator, TrafficMetricsCalculator
 from utils.network_topology_parser import NetworkTopologyParser
-from sas.sas_helpers import EdgeClassifier, TrafficMetricsCalculator, SyntheticSampleGenerator
 
 
 class SASAccumulatedDataProcessor:
@@ -44,7 +45,7 @@ class SASAccumulatedDataProcessor:
             logging.error(lm.get_string("sas_engine.topology.cannot_continue_error"))
             return {}, []
 
-        true_traffic_light_ids = [j_id for j_id, j_type in junction_types.items() if j_type == 'traffic_light']
+        true_traffic_light_ids = [j_id for j_id, j_type in junction_types.items() if j_type == "traffic_light"]
 
         processed_data = {}
         sim_duration_hours = sim_duration / 3600.0 if sim_duration > 0 else 1.0
@@ -56,10 +57,15 @@ class SASAccumulatedDataProcessor:
             # Calculate average volume for each incoming edge to use in classification
             edge_volumes = {}
             for edge_id, edge_data in incoming_edges.items():
-                vehicles = sum(accumulated_data.get('total_vehicles_departed_per_lane', {}).get(lane, 0) for lane in edge_data['lanes'])
+                vehicles = sum(
+                    accumulated_data.get("total_vehicles_departed_per_lane", {}).get(lane, 0)
+                    for lane in edge_data["lanes"]
+                )
                 edge_volumes[edge_id] = vehicles / sim_duration_hours
 
-            sorted_edges, has_different_lanes, max_lanes, primary_ids = EdgeClassifier.classify(incoming_edges, edge_volumes)
+            sorted_edges, has_different_lanes, max_lanes, primary_ids = EdgeClassifier.classify(
+                incoming_edges, edge_volumes
+            )
 
             primary_edges = {}
             secondary_edges = {}
@@ -67,20 +73,25 @@ class SASAccumulatedDataProcessor:
             secondary_lanes = []
 
             for edge_id, edge_data in sorted_edges:
-                is_primary = (edge_data['num_lanes'] == max_lanes) if has_different_lanes else (edge_id in primary_ids)
+                is_primary = (edge_data["num_lanes"] == max_lanes) if has_different_lanes else (edge_id in primary_ids)
                 if is_primary:
-                    primary_lanes.extend(edge_data['lanes'])
+                    primary_lanes.extend(edge_data["lanes"])
                 else:
-                    secondary_lanes.extend(edge_data['lanes'])
+                    secondary_lanes.extend(edge_data["lanes"])
 
-                vehicles = sum(accumulated_data.get('total_vehicles_departed_per_lane', {}).get(lane, 0) for lane in edge_data['lanes'])
-                waiting_time = sum(accumulated_data.get('total_waiting_time_per_lane', {}).get(lane, 0) for lane in edge_data['lanes'])
+                vehicles = sum(
+                    accumulated_data.get("total_vehicles_departed_per_lane", {}).get(lane, 0)
+                    for lane in edge_data["lanes"]
+                )
+                waiting_time = sum(
+                    accumulated_data.get("total_waiting_time_per_lane", {}).get(lane, 0) for lane in edge_data["lanes"]
+                )
 
                 avg_volume = vehicles / sim_duration_hours
                 avg_delay = waiting_time / vehicles if vehicles > 0 else 0.0
 
-                edge_len = edge_data.get('length', 0.0)
-                spd_lim = edge_data.get('speed_limit', 13.89)
+                edge_len = edge_data.get("length", 0.0)
+                spd_lim = edge_data.get("speed_limit", 13.89)
                 adjusted_speed_ms = TrafficMetricsCalculator.compute_adjusted_speed(edge_len, avg_delay, spd_lim)
                 density = avg_volume / (adjusted_speed_ms * 3.6) if adjusted_speed_ms > 0.1 else 0.0
 
@@ -89,8 +100,8 @@ class SASAccumulatedDataProcessor:
                     density=density,
                     adjusted_speed_ms=adjusted_speed_ms,
                     edge_len=edge_len,
-                    num_lanes=edge_data.get('num_lanes', 1),
-                    speed_limit=spd_lim
+                    num_lanes=edge_data.get("num_lanes", 1),
+                    speed_limit=spd_lim,
                 )
 
                 if is_primary:
@@ -98,9 +109,15 @@ class SASAccumulatedDataProcessor:
                 else:
                     secondary_edges[edge_id] = rep_samples
 
-            primary_vehicles = sum(accumulated_data.get('total_vehicles_departed_per_lane', {}).get(lane, 0) for lane in primary_lanes)
-            secondary_vehicles = sum(accumulated_data.get('total_vehicles_departed_per_lane', {}).get(lane, 0) for lane in secondary_lanes)
-            secondary_wait_time = sum(accumulated_data.get('total_waiting_time_per_lane', {}).get(lane, 0) for lane in secondary_lanes)
+            primary_vehicles = sum(
+                accumulated_data.get("total_vehicles_departed_per_lane", {}).get(lane, 0) for lane in primary_lanes
+            )
+            secondary_vehicles = sum(
+                accumulated_data.get("total_vehicles_departed_per_lane", {}).get(lane, 0) for lane in secondary_lanes
+            )
+            secondary_wait_time = sum(
+                accumulated_data.get("total_waiting_time_per_lane", {}).get(lane, 0) for lane in secondary_lanes
+            )
 
             vol_primary = int(primary_vehicles / sim_duration_hours)
             vol_secondary = int(secondary_vehicles / sim_duration_hours)
@@ -108,10 +125,10 @@ class SASAccumulatedDataProcessor:
 
             # Wrap legacy data into the V2 format for compatibility
             processed_data[j_id] = {
-                'primary_edges': primary_edges,
-                'secondary_edges': secondary_edges,
-                'conflict_events': accumulated_data.get('conflict_events_per_junction', {}).get(j_id, 0),
-                'type': junction_types.get(j_id, 'unknown'),
+                "primary_edges": primary_edges,
+                "secondary_edges": secondary_edges,
+                "conflict_events": accumulated_data.get("conflict_events_per_junction", {}).get(j_id, 0),
+                "type": junction_types.get(j_id, "unknown"),
                 # Legacy fields (for backward compatibility with reports)
                 "volume": vol_primary,
                 "vol_secondary": vol_secondary,

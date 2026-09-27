@@ -18,14 +18,16 @@
 # Author: Gabriel Moraes
 # Date: August 9, 2026
 
-import os
 import json
 import logging
-from typing import Dict, Any, List, Tuple
-from mfd.mfd_template_provider import MFDTemplateProvider
+import os
+from typing import Any, Dict, List, Tuple
+
+from blocks.report_post_processor import ReportPostProcessor
 from mfd.mfd_prompt_builder import MFDPromptBuilder
 from mfd.mfd_subprocess_fallback import MFDSubprocessFallback
-from blocks.report_post_processor import ReportPostProcessor
+from mfd.mfd_template_provider import MFDTemplateProvider
+
 
 class MFDSectionBuilder:
     """
@@ -37,21 +39,25 @@ class MFDSectionBuilder:
 
     @classmethod
     def _load_fallbacks_config(cls) -> Dict[str, Any]:
-        """Loads narrative fallbacks from config/mfd_section_fallbacks.json with caching and fallback."""
+        """Loads narrative fallbacks from config/templates/mfd/mfd_section_fallbacks.json with caching and fallback."""
         if cls._fallbacks_cache is not None:
             return cls._fallbacks_cache
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        json_path = os.path.join(base_dir, "config", "mfd_section_fallbacks.json")
+        candidates = [
+            os.path.join(base_dir, "config", "templates", "mfd", "mfd_section_fallbacks.json"),
+            os.path.join(base_dir, "config", "mfd_section_fallbacks.json"),
+        ]
 
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    cls._fallbacks_cache = json.load(f)
-                    logging.info(f"[MFDSectionBuilder] Loaded fallbacks from {json_path}")
-                    return cls._fallbacks_cache
-            except Exception as e:
-                logging.warning(f"[MFDSectionBuilder] Failed to load JSON '{json_path}': {e}. Using fallback.")
+        for json_path in candidates:
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        cls._fallbacks_cache = json.load(f)
+                        logging.info(f"[MFDSectionBuilder] Loaded fallbacks from {json_path}")
+                        return cls._fallbacks_cache
+                except Exception as e:
+                    logging.warning(f"[MFDSectionBuilder] Failed to load JSON '{json_path}': {e}. Using fallback.")
 
         cls._fallbacks_cache = {}
         return cls._fallbacks_cache
@@ -81,7 +87,9 @@ class MFDSectionBuilder:
         return str(outcome_obj)
 
     @classmethod
-    def build_executive_intro(cls, normalized_data: Dict[str, Any], transducer: Any = None, lang: str = "pt_br") -> Tuple[str, str]:
+    def build_executive_intro(
+        cls, normalized_data: Dict[str, Any], transducer: Any = None, lang: str = "pt_br"
+    ) -> Tuple[str, str]:
         """
         Build Section 1: Executive Introduction & Context.
 
@@ -114,8 +122,17 @@ class MFDSectionBuilder:
                 logging.debug(f"[MFD_SECTION_BUILDER] Subprocess fallback failed: {sub_err}")
 
         lang_key = (lang or "pt_br").lower()
-        if not raw_exec_summary or len(raw_exec_summary.strip()) < 20 or "Não foi possível" in raw_exec_summary or "DATA_PAYLOAD" in raw_exec_summary:
-            mature_spd = f"{spd.get('mature', 42.5):.1f}" if isinstance(spd.get('mature'), float) else str(spd.get('mature', 42.5))
+        if (
+            not raw_exec_summary
+            or len(raw_exec_summary.strip()) < 20
+            or "Não foi possível" in raw_exec_summary
+            or "DATA_PAYLOAD" in raw_exec_summary
+        ):
+            mature_spd = (
+                f"{spd.get('mature', 42.5):.1f}"
+                if isinstance(spd.get("mature"), float)
+                else str(spd.get("mature", 42.5))
+            )
             spd_gain_str = f"+{speed_gain:.1f}" if speed_gain > 0 else f"{speed_gain:.1f}"
 
             outcome_key = "positive" if speed_gain > 0 else "negative"
@@ -132,7 +149,9 @@ class MFDSectionBuilder:
         return intro_section, raw_exec_summary
 
     @classmethod
-    def build_narrative_sections(cls, normalized_data: Dict[str, Any], transducer: Any = None, lang: str = "pt_br") -> Tuple[str, str]:
+    def build_narrative_sections(
+        cls, normalized_data: Dict[str, Any], transducer: Any = None, lang: str = "pt_br"
+    ) -> Tuple[str, str]:
         """
         Assemble the full narrative text (Sections 1 through 5).
 
@@ -183,7 +202,7 @@ class MFDSectionBuilder:
             synthesis_table_section,
             consolidated_section,
             final_opinion_title,
-            clean_final_opinion
+            clean_final_opinion,
         ]
 
         narrative_text = "\n\n".join(narrative_lines)
@@ -211,7 +230,9 @@ class MFDSectionBuilder:
                 try:
                     justification = transducer.generate_report(single_payload)
                 except Exception as ex_single:
-                    logging.warning(f"[MFD_SECTION_BUILDER] Failed SLM justification for intersection {row.get('id')}: {ex_single}")
+                    logging.warning(
+                        f"[MFD_SECTION_BUILDER] Failed SLM justification for intersection {row.get('id')}: {ex_single}"
+                    )
 
             if not justification or len(justification.strip()) < 20:
                 try:
@@ -219,7 +240,9 @@ class MFDSectionBuilder:
                 except Exception:
                     justification = None
 
-            ficha_md = MFDTemplateProvider.get_intersection_audit_sheet_template(row, justification=justification, lang=lang)
+            ficha_md = MFDTemplateProvider.get_intersection_audit_sheet_template(
+                row, justification=justification, lang=lang
+            )
             fichas_anexo_i.append(ficha_md)
 
         anexo_text = "\n\n".join(fichas_anexo_i)

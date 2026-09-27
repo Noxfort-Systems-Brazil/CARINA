@@ -18,13 +18,15 @@
 # Author: Gabriel Moraes
 # Date: 2026-02-22
 
-import flet as ft
 from typing import Callable, List
 
-from ui.handlers.locale_manager import LocaleManager
-from ui.handlers.settings_handler import SettingsHandler
+import flet as ft
+
 from ui.clients.settings_client import SettingsClient
 from ui.dialogs.confirmation_dialog_manager import ConfirmationDialogManager
+from ui.handlers.locale_manager import LocaleManager
+from ui.handlers.settings_handler import SettingsHandler
+
 
 class SettingsView(ft.Container):
     def __init__(
@@ -32,7 +34,7 @@ class SettingsView(ft.Container):
         locale_manager: LocaleManager,
         settings_client: SettingsClient,
         tab_definitions: list,
-        warning_text_ref: ft.Text
+        warning_text_ref: ft.Text,
     ):
         super().__init__(expand=True, padding=10)
 
@@ -40,10 +42,10 @@ class SettingsView(ft.Container):
         self.settings_client = settings_client
         self.tab_definitions = tab_definitions
         self.warning_text = warning_text_ref
-        
+
         self.handler = SettingsHandler()
         self.dialog_manager: ConfirmationDialogManager | None = None
-        
+
         # Injected properties
         self.hardware_handler = None
         self.hardware_card = None
@@ -58,11 +60,8 @@ class SettingsView(ft.Container):
             for item in tab["cards"]:
                 if isinstance(item, ft.Card):
                     self.all_cards.append(item)
-                    
-        self.tabs = ft.Tabs(
-            selected_index=0, animation_duration=300, expand=True,
-            tabs=tab_controls
-        )
+
+        self.tabs = ft.Tabs(selected_index=0, animation_duration=300, expand=True, tabs=tab_controls)
 
         self.title_text = ft.Text(size=24, weight=ft.FontWeight.BOLD)
         self.save_button = ft.ElevatedButton(icon=ft.Icons.SAVE_ROUNDED, on_click=self._save_click)
@@ -72,9 +71,10 @@ class SettingsView(ft.Container):
             controls=[
                 ft.Row([ft.Icon(ft.Icons.SETTINGS), self.title_text]),
                 self.tabs,
-                ft.Row([self.restore_button, self.save_button], alignment=ft.MainAxisAlignment.END, spacing=20)
+                ft.Row([self.restore_button, self.save_button], alignment=ft.MainAxisAlignment.END, spacing=20),
             ],
-            expand=True, spacing=15
+            expand=True,
+            spacing=15,
         )
 
     def did_mount(self):
@@ -82,14 +82,14 @@ class SettingsView(ft.Container):
             self.dialog_manager = ConfirmationDialogManager(self.page, self.locale_manager)
             if self.hardware_handler and self.hardware_card:
                 self.hardware_handler.mount(self.page, self.hardware_card)
-            
+
             # Ensure any cards with file pickers are registered to the page overlay immediately on view mount
             for card in self.all_cards:
                 if hasattr(card, "logo_file_picker") and card.logo_file_picker not in self.page.overlay:
                     self.page.overlay.append(card.logo_file_picker)
-            
+
         self.update_translations(self.locale_manager)
-        
+
     def update_translations(self, lm: LocaleManager):
         self.title_text.value = lm.get_string("settings_view.title")
         self.save_button.text = lm.get_string("settings_view.save_button")
@@ -106,39 +106,44 @@ class SettingsView(ft.Container):
 
         # Polymorphic update of Cards (OCP)
         for card in self.all_cards:
-            if hasattr(card, 'update_translations'):
+            if hasattr(card, "update_translations"):
                 card.update_translations(lm)
-        
+
         if self.dialog_manager:
             self.dialog_manager.update_translations()
-        
-        if self.page: self.update()
+
+        if self.page:
+            self.update()
 
     def _load_initial_settings(self, settings: dict = None):
         if settings is None:
             settings = self.handler.get_current_settings()
         for card in self.all_cards:
-            if hasattr(card, 'set_values'):
+            if hasattr(card, "set_values"):
                 card.set_values(settings)
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     def _save_click(self, e):
-        if not self.dialog_manager: return
-        
+        if not self.dialog_manager:
+            return
+
         # Validation pass
         validation_failed = False
         for card in self.all_cards:
-            if hasattr(card, 'validate_fields'):
+            if hasattr(card, "validate_fields"):
                 if not card.validate_fields():
                     validation_failed = True
-                    if hasattr(card, 'update') and hasattr(card, 'page') and card.page:
+                    if hasattr(card, "update") and hasattr(card, "page") and card.page:
                         card.update()
-        
+
         if validation_failed:
             info_title = self.locale_manager.get_string("settings_view.title")
             info_content = "Erro de validação: Por favor, corrija os erros nos campos destacados antes de salvar."
             if self.locale_manager:
-                info_content = self.locale_manager.get_string("settings_view.validation_error_message", default=info_content)
+                info_content = self.locale_manager.get_string(
+                    "settings_view.validation_error_message", default=info_content
+                )
             self.dialog_manager.show_info(title=info_title, content=info_content)
             return
 
@@ -146,34 +151,60 @@ class SettingsView(ft.Container):
         content = self.locale_manager.get_string("dialogs.save_settings_content")
         self.dialog_manager.show(title=title, content=content, on_confirm=self._execute_save)
 
+    def discard_changes(self):
+        """
+        Reverts all card values and page theme back to the last saved settings.
+        Called when the settings dialog is closed without saving or when opened.
+        """
+        saved_settings = self.handler.get_current_settings()
+        self._load_initial_settings(saved_settings)
+        if self.page:
+            is_dark = saved_settings.get("theme_dark", True)
+            if isinstance(is_dark, str):
+                is_dark = is_dark.lower() in ("true", "1", "yes")
+            self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
+            self.page.update()
+
     def _execute_save(self):
-        if not self.page or not self.settings_client: return
-        
+        if not self.page or not self.settings_client:
+            return
+
         new_settings_values = {}
         for card in self.all_cards:
-            if hasattr(card, 'get_values'):
+            if hasattr(card, "get_values"):
                 new_settings_values.update(card.get_values())
-        
+
         payload_to_send = self.handler.prepare_settings_for_save(new_settings_values)
         self.settings_client.save_settings(payload_to_send)
-        
-        info_title = self.locale_manager.get_string("settings_view.title") 
-        info_content = "As configurações foram salvas. Por favor, reinicie a aplicação para que todas as alterações tenham efeito."
-        
+
+        # Ensure page theme matches the newly saved setting
+        if self.page and "theme_dark" in new_settings_values:
+            is_dark = new_settings_values.get("theme_dark", True)
+            if isinstance(is_dark, str):
+                is_dark = is_dark.lower() in ("true", "1", "yes")
+            self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
+
+        info_title = self.locale_manager.get_string("settings_view.title")
+        info_content = (
+            "As configurações foram salvas. Por favor, reinicie a aplicação para que todas as alterações tenham efeito."
+        )
+
         self.dialog_manager.show_info(title=info_title, content=info_content)
         self.page.update()
 
     def save_silently(self):
-        if not self.settings_client: return
+        if not self.settings_client:
+            return
         new_settings_values = {}
         for card in self.all_cards:
-            if hasattr(card, 'get_values'):
+            if hasattr(card, "get_values"):
                 new_settings_values.update(card.get_values())
         payload_to_send = self.handler.prepare_settings_for_save(new_settings_values)
         self.settings_client.save_settings(payload_to_send)
 
     def _restore_click(self, e):
-        if not self.page: return
+        if not self.page:
+            return
         default_settings = self.handler.get_default_settings()
         self._load_initial_settings(default_settings)
         self.page.snack_bar = ft.SnackBar(content=ft.Text("Configurações restauradas para os valores padrão!"))

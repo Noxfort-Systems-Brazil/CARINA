@@ -19,13 +19,13 @@
 # Date: May 31, 2026
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from src.repositories.fluid_dynamics_query_provider import FluidDynamicsQueryProvider
-from src.repositories.fluid_dynamics_writer import FluidDynamicsWriter
-from src.repositories.fluid_dynamics_reader import FluidDynamicsReader
 from src.repositories.fluid_dynamics_maintenance import FluidDynamicsMaintenance
 from src.repositories.fluid_dynamics_metrics import FluidDynamicsMetrics
+from src.repositories.fluid_dynamics_query_provider import FluidDynamicsQueryProvider
+from src.repositories.fluid_dynamics_reader import FluidDynamicsReader
+from src.repositories.fluid_dynamics_writer import FluidDynamicsWriter
 
 if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
@@ -37,25 +37,40 @@ class FluidDynamicsRepository:
     Facade and Orchestrator repository for managing synapse fluid dynamics samples.
     Delegates query management, writing, reading, maintenance, and metrics to specialized sub-components.
     """
+
     SAMPLE_COLUMNS = [
-        'edge_id', 'density', 'mean_speed', 'queue_length', 'occupancy',
-        'edge_length', 'num_lanes', 'speed_limit', 'collected_at'
+        "edge_id",
+        "density",
+        "mean_speed",
+        "queue_length",
+        "occupancy",
+        "edge_length",
+        "num_lanes",
+        "speed_limit",
+        "collected_at",
     ]
     AGGREGATED_COLUMNS = [
-        'edge_id', 'volume_sum', 'volume_cnt', 'delay_sum', 'delay_cnt',
-        'avg_queue', 'max_queue', 'edge_length', 'num_lanes', 'speed_limit', 'total_samples'
+        "edge_id",
+        "volume_sum",
+        "volume_cnt",
+        "delay_sum",
+        "delay_cnt",
+        "avg_queue",
+        "max_queue",
+        "edge_length",
+        "num_lanes",
+        "speed_limit",
+        "total_samples",
     ]
 
-    def __init__(self, engine: 'DatabaseEngine', locale_manager: 'LocaleManagerBackend'):
+    def __init__(self, engine: "DatabaseEngine", locale_manager: "LocaleManagerBackend"):
         self.engine = engine
         self.locale_manager = locale_manager
 
         # Initialize modular sub-components
         self.query_provider = FluidDynamicsQueryProvider(engine)
         self.writer = FluidDynamicsWriter(engine, self.query_provider)
-        self.reader = FluidDynamicsReader(
-            engine, self.query_provider, self.SAMPLE_COLUMNS, self.AGGREGATED_COLUMNS
-        )
+        self.reader = FluidDynamicsReader(engine, self.query_provider, self.SAMPLE_COLUMNS, self.AGGREGATED_COLUMNS)
         self.maintenance = FluidDynamicsMaintenance(engine, self.query_provider)
         self.metrics = FluidDynamicsMetrics(engine, self.query_provider)
 
@@ -89,9 +104,7 @@ class FluidDynamicsRepository:
 
     def query_fluid_dynamics_history_batches(self, limit_seconds: int = None, batch_size: int = 50000):
         """Yields batches of fluid dynamics samples from the database."""
-        yield from self.reader.query_fluid_dynamics_history_batches(
-            limit_seconds=limit_seconds, batch_size=batch_size
-        )
+        yield from self.reader.query_fluid_dynamics_history_batches(limit_seconds=limit_seconds, batch_size=batch_size)
 
     def query_aggregated_fluid_dynamics(self, limit_seconds: int = None) -> List[Dict]:
         """Executes a Pushdown Aggregation Query directly on PostgreSQL/SQLite via GROUP BY edge_id."""

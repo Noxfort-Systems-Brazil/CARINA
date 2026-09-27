@@ -18,19 +18,22 @@
 # Author: Gabriel Moraes
 # Date: July 18, 2026
 
-from typing import Optional, Tuple, Dict, List, Set, Any
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 
 class EdgeClassifier:
     """Classifies incoming edges of a junction into primary or secondary lanes based on layout and volumes."""
-    
+
     @staticmethod
-    def classify(incoming_edges: Dict[str, Dict[str, Any]], edge_volumes: Dict[str, float]) -> Tuple[List[Tuple[str, Dict[str, Any]]], bool, int, Set[str]]:
-        lane_counts = [data['num_lanes'] for data in incoming_edges.values()]
+    def classify(
+        incoming_edges: Dict[str, Dict[str, Any]], edge_volumes: Dict[str, float]
+    ) -> Tuple[List[Tuple[str, Dict[str, Any]]], bool, int, Set[str]]:
+        lane_counts = [data["num_lanes"] for data in incoming_edges.values()]
         has_different_lanes = len(set(lane_counts)) > 1
-        
-        sorted_edges = sorted(incoming_edges.items(), key=lambda item: item[1]['num_lanes'], reverse=True)
-        max_lanes = sorted_edges[0][1]['num_lanes'] if sorted_edges else 0
-        
+
+        sorted_edges = sorted(incoming_edges.items(), key=lambda item: item[1]["num_lanes"], reverse=True)
+        max_lanes = sorted_edges[0][1]["num_lanes"] if sorted_edges else 0
+
         primary_ids = set()
         if not has_different_lanes:
             # If all edges have the same number of lanes, classify by average volume
@@ -38,7 +41,7 @@ class EdgeClassifier:
             sorted_by_vol = sorted(incoming_edges.keys(), key=lambda eid: edge_volumes.get(eid, 0.0), reverse=True)
             num_primary = 2 if len(sorted_by_vol) >= 3 else 1
             primary_ids = set(sorted_by_vol[:num_primary])
-            
+
         return sorted_edges, has_different_lanes, max_lanes, primary_ids
 
 
@@ -83,38 +86,52 @@ class SyntheticSampleGenerator:
     """Generates lists of synthetic samples for compatibility downstream."""
 
     @staticmethod
-    def generate_historical(edge_id: str, avg_volume: float, adjusted_speed_ms: float, rep_queues: List[int], edge_len: Optional[float], num_lanes: Optional[int], speed_limit: Optional[float]) -> List[Dict[str, Any]]:
+    def generate_historical(
+        edge_id: str,
+        avg_volume: float,
+        adjusted_speed_ms: float,
+        rep_queues: List[int],
+        edge_len: Optional[float],
+        num_lanes: Optional[int],
+        speed_limit: Optional[float],
+    ) -> List[Dict[str, Any]]:
         rep_samples = []
         density = avg_volume / (adjusted_speed_ms * 3.6) if adjusted_speed_ms > 0.1 else 0.0
         for q_len in rep_queues:
-            rep_samples.append({
-                'edge_id': edge_id,
-                'density': density,
-                'mean_speed': adjusted_speed_ms,
-                'queue_length': q_len,
-                'occupancy': 0.0,
-                'edge_length': edge_len,
-                'num_lanes': num_lanes,
-                'speed_limit': speed_limit,
-                'collected_at': None
-            })
+            rep_samples.append(
+                {
+                    "edge_id": edge_id,
+                    "density": density,
+                    "mean_speed": adjusted_speed_ms,
+                    "queue_length": q_len,
+                    "occupancy": 0.0,
+                    "edge_length": edge_len,
+                    "num_lanes": num_lanes,
+                    "speed_limit": speed_limit,
+                    "collected_at": None,
+                }
+            )
         return rep_samples
 
     @staticmethod
-    def generate_accumulated(edge_id: str, density: float, adjusted_speed_ms: float, edge_len: float, num_lanes: int, speed_limit: float) -> List[Dict[str, Any]]:
+    def generate_accumulated(
+        edge_id: str, density: float, adjusted_speed_ms: float, edge_len: float, num_lanes: int, speed_limit: float
+    ) -> List[Dict[str, Any]]:
         rep_samples = []
         for _ in range(100):
-            rep_samples.append({
-                'edge_id': edge_id,
-                'density': density,
-                'mean_speed': adjusted_speed_ms,
-                'queue_length': 0,
-                'occupancy': 0.0,
-                'edge_length': edge_len,
-                'num_lanes': num_lanes,
-                'speed_limit': speed_limit,
-                'collected_at': None
-            })
+            rep_samples.append(
+                {
+                    "edge_id": edge_id,
+                    "density": density,
+                    "mean_speed": adjusted_speed_ms,
+                    "queue_length": 0,
+                    "occupancy": 0.0,
+                    "edge_length": edge_len,
+                    "num_lanes": num_lanes,
+                    "speed_limit": speed_limit,
+                    "collected_at": None,
+                }
+            )
         return rep_samples
 
 

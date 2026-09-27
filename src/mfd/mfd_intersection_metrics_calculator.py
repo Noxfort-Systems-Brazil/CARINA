@@ -18,7 +18,8 @@
 # Author: Gabriel Moraes
 # Date: August 8, 2026
 
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Tuple
+
 
 class MFDIntersectionMetricsCalculator:
     """
@@ -41,9 +42,7 @@ class MFDIntersectionMetricsCalculator:
 
     @staticmethod
     def process_intersections_table(
-        initial: Dict[str, Any],
-        inter: Dict[str, Any],
-        mature: Dict[str, Any]
+        initial: Dict[str, Any], inter: Dict[str, Any], mature: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
         Build per-intersection metrics table for CHILD, TEEN, and ADULT stages.
@@ -65,9 +64,25 @@ class MFDIntersectionMetricsCalculator:
             m_inter = inter_inters.get(inter_id, {})
             m_mat = mature_inters.get(inter_id, {})
 
-            spd_init_kmh = m_init.get("speed_kmh", round(m_init.get("speed", 5.8) * 3.6 if m_init.get("speed", 5.8) < 35.0 else m_init.get("speed", 20.9), 1))
-            spd_inter_kmh = m_inter.get("speed_kmh", round(m_inter.get("speed", 9.0) * 3.6 if m_inter.get("speed", 9.0) < 35.0 else m_inter.get("speed", 32.4), 1))
-            spd_mat_kmh = m_mat.get("speed_kmh", round(m_mat.get("speed", 11.8) * 3.6 if m_mat.get("speed", 11.8) < 35.0 else m_mat.get("speed", 42.5), 1))
+            spd_init_kmh = m_init.get(
+                "speed_kmh",
+                round(
+                    m_init.get("speed", 5.8) * 3.6 if m_init.get("speed", 5.8) < 35.0 else m_init.get("speed", 20.9), 1
+                ),
+            )
+            spd_inter_kmh = m_inter.get(
+                "speed_kmh",
+                round(
+                    m_inter.get("speed", 9.0) * 3.6 if m_inter.get("speed", 9.0) < 35.0 else m_inter.get("speed", 32.4),
+                    1,
+                ),
+            )
+            spd_mat_kmh = m_mat.get(
+                "speed_kmh",
+                round(
+                    m_mat.get("speed", 11.8) * 3.6 if m_mat.get("speed", 11.8) < 35.0 else m_mat.get("speed", 42.5), 1
+                ),
+            )
 
             if spd_mat_kmh > 48.5:
                 spd_mat_kmh = 42.5
@@ -99,31 +114,33 @@ class MFDIntersectionMetricsCalculator:
             is_signalized = True
             status_label = "Sinalizado (Controle Ativo CARINA)"
 
-            intersections_table.append({
-                "id": inter_id,
-                "maturity": maturity,
-                "is_signalized": is_signalized,
-                "status_label": status_label,
-                "configured_entropy_limit": 0.15,
-                "configured_min_window": "1 episódio (24h)",
-                "configured_performance_margin": "+0.0%",
-                "speed_child_kmh": spd_init_kmh,
-                "speed_teen_kmh": spd_inter_kmh,
-                "speed_adult_kmh": spd_mat_kmh,
-                "delay_child_s": dly_init,
-                "delay_teen_s": dly_inter,
-                "delay_adult_s": dly_mat,
-                "queue_child": que_init,
-                "queue_teen": que_inter,
-                "queue_adult": que_mat,
-                "saturation_child": sat_init,
-                "saturation_teen": sat_inter,
-                "saturation_adult": sat_mat,
-                "entropy_child": entropy_child,
-                "entropy_teen": entropy_teen,
-                "entropy": entropy_adult,
-                "entropy_adult": entropy_adult,
-                "efficiency_gain_pct": round(gain_pct, 1)
-            })
+            intersections_table.append(
+                {
+                    "id": inter_id,
+                    "maturity": maturity,
+                    "is_signalized": is_signalized,
+                    "status_label": status_label,
+                    "configured_entropy_limit": 0.15,
+                    "configured_min_window": "1 episódio (24h)",
+                    "configured_performance_margin": "+0.0%",
+                    "speed_child_kmh": spd_init_kmh,
+                    "speed_teen_kmh": spd_inter_kmh,
+                    "speed_adult_kmh": spd_mat_kmh,
+                    "delay_child_s": dly_init,
+                    "delay_teen_s": dly_inter,
+                    "delay_adult_s": dly_mat,
+                    "queue_child": que_init,
+                    "queue_teen": que_inter,
+                    "queue_adult": que_mat,
+                    "saturation_child": sat_init,
+                    "saturation_teen": sat_inter,
+                    "saturation_adult": sat_mat,
+                    "entropy_child": entropy_child,
+                    "entropy_teen": entropy_teen,
+                    "entropy": entropy_adult,
+                    "entropy_adult": entropy_adult,
+                    "efficiency_gain_pct": round(gain_pct, 1),
+                }
+            )
 
         return intersections_table

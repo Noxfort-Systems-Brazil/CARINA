@@ -48,16 +48,16 @@ message SystemState {
 // -----------------------------------------------------------------------
 message ScenarioDefinition {
   string map_hash = 1;
-  
+
   TopologyGraph graph = 2;
   MapGeometry geometry = 3;
-  
+
   // Binary Content Transfer
   bytes map_file_content = 4;
-  
+
   // Ensures the receiver knows the exact file format and name (e.g., .net.xml.gz)
   string map_file_name = 5;
-  
+
   // Extracted offline schedule by the Peak Classifier ADAGIO agent
   string peak_schedule_json = 6;
 }
@@ -72,7 +72,7 @@ message TopologyNode {
   string type = 2; // e.g. "traffic_light"
   double x = 3;
   double y = 4;
-  
+
   // Traffic Light Logic ID
   // If present, indicates this node is controlled by a TLS.
   // Used by the Receiver (Mock) to draw/identify traffic lights.

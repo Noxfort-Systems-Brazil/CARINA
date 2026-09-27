@@ -29,10 +29,10 @@ if TYPE_CHECKING:
 class FluidDynamicsMaintenance:
     """
     Handles data retention, hourly consolidation, and table purging for fluid dynamics tables.
-    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/fluid_dynamics_queries.json.
+    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/database/fluid_dynamics_queries.json.
     """
 
-    def __init__(self, engine: 'DatabaseEngine', query_provider: 'FluidDynamicsQueryProvider'):
+    def __init__(self, engine: "DatabaseEngine", query_provider: "FluidDynamicsQueryProvider"):
         self.engine = engine
         self.query_provider = query_provider
 
@@ -54,7 +54,7 @@ class FluidDynamicsMaintenance:
                 if not row or not row[0]:
                     return
                 min_ts = row[0]
-                
+
                 sql_cutoff = self.query_provider.get_query("get_cutoff_timestamp_interval")
                 cursor.execute(sql_cutoff, (keep_hours,))
                 cutoff_ts = cursor.fetchone()[0]
@@ -78,8 +78,10 @@ class FluidDynamicsMaintenance:
                     # 3. Purge consolidated raw rows for this window
                     cursor.execute(sql_purge, (current_start, current_end))
                     conn.commit()
-                    logging.info(f"[DB_MANAGER] Consolidated and purged raw fluid dynamics window {current_start} to {current_end}.")
-                    
+                    logging.info(
+                        f"[DB_MANAGER] Consolidated and purged raw fluid dynamics window {current_start} to {current_end}."
+                    )
+
                     if current_end >= cutoff_ts:
                         break
                     current_start = current_end

@@ -19,18 +19,19 @@
 # Date: 12/24/2025
 
 import logging
-import time
 import statistics
-from typing import Dict, Any, Optional
+import time
+from typing import Any, Dict, Optional
 
 # Use relative import to avoid circular dependency
 from .periodic_data_collector import PeriodicDataCollector
+
 
 class TelemetryAggregator:
     """
     Responsible for aggregating high-frequency traffic data into periodic
     updates for the Smart Dashboard Service (SDS).
-    
+
     This class isolates the visualization logic (heatmap weights, normalization)
     from the core control logic.
     """
@@ -43,13 +44,9 @@ class TelemetryAggregator:
         self.periodic_collector = PeriodicDataCollector(update_interval=update_interval)
         self.last_update_time = 0.0
         self.update_interval = update_interval
-        
-        self.heatmap_weights = {
-            'occupancy': 1.0,
-            'queue': 0.8,
-            'speed': -0.5
-        }
-        
+
+        self.heatmap_weights = {"occupancy": 1.0, "queue": 0.8, "speed": -0.5}
+
         logging.info(f"[TelemetryAggregator] Initialized with {update_interval}s update interval")
 
     def process_frame(self, frame: Any) -> None:
@@ -58,12 +55,8 @@ class TelemetryAggregator:
         """
         edge_data = {}
         for edge_id, state in frame.edges.items():
-            edge_data[edge_id] = {
-                'occupancy': state.occupancy,
-                'speed': state.mean_speed,
-                'queue': state.queue_length
-            }
-        
+            edge_data[edge_id] = {"occupancy": state.occupancy, "speed": state.mean_speed, "queue": state.queue_length}
+
         self.periodic_collector.add_sample(frame.timestamp, edge_data)
         if self.last_update_time == 0.0:
             self.last_update_time = frame.timestamp
@@ -90,13 +83,9 @@ class TelemetryAggregator:
         if periodic_payload:
             self.last_update_time = current_time
             return periodic_payload
-            
-        return {
-            'timestamp': current_time,
-            'edges': {},
-            'maturity': maturity_cache
-        }
-    
+
+        return {"timestamp": current_time, "edges": {}, "maturity": maturity_cache}
+
     def reset(self) -> None:
         """Manually clears the buffer."""
         self.last_update_time = 0.0

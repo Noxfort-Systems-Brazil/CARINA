@@ -26,23 +26,25 @@ PlanningMapLoader, e o método de update foi corrigido para refletir a
 ligação direta dos objetos de transformação.
 """
 
-import flet as ft
+import base64
 import logging
 import os
-import base64
 import threading
 import time
 
+import flet as ft
+
 from ui.handlers.locale_manager import LocaleManager
-from ui.widgets.map_legend_widget import MapLegendWidget
 from ui.handlers.map_interaction_handler import MapInteractionHandler
 from ui.loader.planning_map_loader import PlanningMapLoader
+from ui.widgets.map_legend_widget import MapLegendWidget
 
 
 class NativeMapWidget(ft.Container):
     """
     Widget de mapa interativo que exibe a imagem de rede e uma legenda flutuante.
     """
+
     def __init__(self, locale_manager: LocaleManager):
         super().__init__(
             expand=True,
@@ -51,12 +53,10 @@ class NativeMapWidget(ft.Container):
             bgcolor=ft.Colors.BLACK12,
             border_radius=10,
         )
-        
+
         self.locale_manager = locale_manager
         self.interaction_handler = MapInteractionHandler(
-            base_width=1280, 
-            base_height=720, 
-            on_update_callback=self.update
+            base_width=1280, base_height=720, on_update_callback=self.update
         )
         self.loader = PlanningMapLoader(on_complete_callback=self._on_map_path_found)
 
@@ -66,16 +66,13 @@ class NativeMapWidget(ft.Container):
             scale=self.interaction_handler.scale,
             offset=self.interaction_handler.offset,
             animate_scale=50,
-            animate_offset=50
+            animate_offset=50,
         )
 
-        image_container = ft.Container(
-            content=self.image_widget,
-            expand=True,
-            alignment=ft.alignment.center
-        )
-        
+        image_container = ft.Container(content=self.image_widget, expand=True, alignment=ft.alignment.center)
+
         self._last_right_click_time = 0
+
         def _on_secondary_tap_down(e):
             current_time = time.time()
             if current_time - self._last_right_click_time < 0.3:
@@ -90,9 +87,9 @@ class NativeMapWidget(ft.Container):
             on_secondary_tap_down=_on_secondary_tap_down,
             drag_interval=5,
         )
-        
+
         self.legend_widget = MapLegendWidget(locale_manager=self.locale_manager)
-        
+
         self.error_title = ft.Text(size=16)
         self.error_subtitle = ft.Text(italic=True, text_align=ft.TextAlign.CENTER)
         self.error_message_column = ft.Column(
@@ -103,25 +100,21 @@ class NativeMapWidget(ft.Container):
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            expand=True, spacing=10,
+            expand=True,
+            spacing=10,
         )
 
         self.loading_indicator = ft.Column(
-            [
-                ft.ProgressRing(),
-                ft.Text("A carregar mapa de planeamento...")
-            ],
+            [ft.ProgressRing(), ft.Text("A carregar mapa de planeamento...")],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=20
+            spacing=20,
         )
-        
+
         self.content = ft.Stack(
-            controls=[
-                ft.Container(self.loading_indicator, alignment=ft.alignment.center, expand=True)
-            ]
+            controls=[ft.Container(self.loading_indicator, alignment=ft.alignment.center, expand=True)]
         )
-        
+
         self.did_mount = self.on_mount
 
     def on_mount(self):
@@ -148,16 +141,18 @@ class NativeMapWidget(ft.Container):
                 image_loaded = True
             except Exception as e:
                 logging.error(f"[NativeMapWidget] Falhou ao ler/codificar a imagem do mapa: {e}")
-        
+
         if not image_loaded:
             self.content.controls = [self.error_message_column]
-        
-        if self.page: self.update()
+
+        if self.page:
+            self.update()
 
     def refresh_map_image(self):
         """Reinicia o processo de carregamento do mapa."""
         self.content.controls = [ft.Container(self.loading_indicator, alignment=ft.alignment.center, expand=True)]
-        if self.page: self.update()
+        if self.page:
+            self.update()
         self.loader.start_loading()
 
     def update_translations(self, lm: LocaleManager):
@@ -165,7 +160,8 @@ class NativeMapWidget(ft.Container):
         self.error_title.value = lm.get_string("planning_view.map_error_title")
         self.error_subtitle.value = lm.get_string("planning_view.map_error_subtitle")
         self.legend_widget.update_translations(lm)
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     # --- MAIN CHANGE HERE ---
     def update(self):
@@ -176,4 +172,5 @@ class NativeMapWidget(ft.Container):
         só precisamos de chamar o update() da superclasse.
         """
         super().update()
+
     # --- END OF CHANGE ---

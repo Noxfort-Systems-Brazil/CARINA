@@ -18,37 +18,39 @@
 # Author: Gabriel Moraes
 # Date: 2026-07-02
 
-import os
 import logging
-from typing import Dict, Any
+import os
+from typing import Any, Dict
 
 from .base import ReportBlock
 
 try:
-    from docx.shared import Pt, Inches, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Inches, Pt, RGBColor
 except ImportError:
     pass
 
+
 class HeaderBlock(ReportBlock):
     """Generates the organizational header including an optional logo and agency details."""
+
     def build(self, doc: Any, context: Dict[str, Any], config: Dict[str, Any]) -> None:
         logo_path = config.get("logo_path")
         agency_name = str(config.get("agency_name", "Prefeitura Municipal / Secretaria de Trânsito"))
         department_name = str(config.get("department_name", "Departamento de Mobilidade Inteligente"))
-        
+
         clean_agency = agency_name.replace("|", "").strip().upper()
         clean_dept = department_name.replace("|", "").strip()
 
         is_valid_logo = False
         if logo_path and os.path.exists(logo_path):
             ext = os.path.splitext(logo_path.lower())[1]
-            if ext in ['.png', '.jpg', '.jpeg']:
+            if ext in [".png", ".jpg", ".jpeg"]:
                 is_valid_logo = True
             try:
                 table = doc.add_table(rows=1, cols=2)
                 table.autofit = False
-                
+
                 # Apply explicit widths: 3.0 cm for Logo cell (20%), 14.0 cm for Text cell (80%)
                 table.columns[0].width = Cm(3.0)
                 table.columns[1].width = Cm(14.0)
@@ -59,7 +61,7 @@ class HeaderBlock(ReportBlock):
                 p_logo = cell_logo.paragraphs[0]
                 p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p_logo.add_run().add_picture(logo_path, width=Cm(2.5))
-                
+
                 # Right cell: Wide, Centralized Agency & Department Text
                 cell_text = table.cell(0, 1)
                 cell_text.width = Cm(14.0)
@@ -68,21 +70,21 @@ class HeaderBlock(ReportBlock):
                 p_agency.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p_agency.paragraph_format.space_before = Pt(0)
                 p_agency.paragraph_format.space_after = Pt(2)
-                
+
                 run_agency = p_agency.add_run(clean_agency)
                 run_agency.bold = True
                 run_agency.font.size = Pt(11)
                 run_agency.font.color.rgb = RGBColor(0, 0, 0)
-                
+
                 p_dept = cell_text.add_paragraph()
                 p_dept.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p_dept.paragraph_format.space_before = Pt(0)
                 p_dept.paragraph_format.space_after = Pt(2)
-                
+
                 run_dept = p_dept.add_run(clean_dept)
                 run_dept.font.size = Pt(9.5)
                 run_dept.font.color.rgb = RGBColor(0, 0, 0)
-                
+
             except Exception as e:
                 logging.error(f"[STRUCTURED_REPORT_BUILDER] Failed to add header logo table: {e}")
         else:
@@ -90,21 +92,21 @@ class HeaderBlock(ReportBlock):
             p_agency.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p_agency.paragraph_format.space_before = Pt(0)
             p_agency.paragraph_format.space_after = Pt(2)
-            
+
             run_agency = p_agency.add_run(clean_agency)
             run_agency.bold = True
             run_agency.font.size = Pt(11)
             run_agency.font.color.rgb = RGBColor(0, 0, 0)
-            
+
             p_dept = doc.add_paragraph()
             p_dept.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p_dept.paragraph_format.space_before = Pt(0)
             p_dept.paragraph_format.space_after = Pt(2)
-            
+
             run_dept = p_dept.add_run(clean_dept)
             run_dept.font.size = Pt(9.5)
             run_dept.font.color.rgb = RGBColor(0, 0, 0)
-            
+
         p_div = doc.add_paragraph()
         p_div.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_div.paragraph_format.space_before = Pt(4)

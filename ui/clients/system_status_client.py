@@ -26,18 +26,20 @@ busca, garantindo que ele continue a procurar pelo arquivo status.json por
 um período antes de desistir.
 """
 
-import os
 import json
 import logging
+import os
 import threading
 import time
-from typing import Callable, Dict, Any
 from datetime import datetime
+from typing import Any, Callable, Dict
+
 
 class SystemStatusClient:
     """
     Busca o status.json mais recente em uma thread separada.
     """
+
     def __init__(self, on_complete_callback: Callable[[Dict[str, Any]], None]):
         """
         Inicializa o cliente.
@@ -55,13 +57,15 @@ class SystemStatusClient:
         """
         try:
             from src.utils.paths import get_base_output_dir
+
             results_dir = os.path.join(get_base_output_dir(), "results")
             if not os.path.exists(results_dir) or not os.path.isdir(results_dir):
                 return {"status": "error", "message_key": "system_status_view.status_file_not_found"}
 
             ignored_dirs = {"database"}
             all_scenarios = [
-                d for d in os.listdir(results_dir)
+                d
+                for d in os.listdir(results_dir)
                 if os.path.isdir(os.path.join(results_dir, d)) and d not in ignored_dirs
             ]
             if not all_scenarios:
@@ -69,14 +73,14 @@ class SystemStatusClient:
 
             latest_scenario_name = max(all_scenarios, key=lambda d: os.path.getmtime(os.path.join(results_dir, d)))
             status_file_path = os.path.join(results_dir, latest_scenario_name, "status.json")
-            
+
             if not os.path.exists(status_file_path):
                 # This is no longer a final error, just a failed attempt.
                 return {"status": "pending"}
-            
+
             with open(status_file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             timestamp = data.get("last_updated", "N/A")
             if timestamp != "N/A":
                 dt_object = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
@@ -99,22 +103,23 @@ class SystemStatusClient:
         for i in range(20):
             result = self._find_and_read_status_file()
             final_result = result
-            
+
             # If you found the file, stop looking
             if result.get("status") == "complete":
                 logging.info(f"[SystemStatusClient] status.json encontrado na tentativa {i+1}.")
                 break
-            
+
             # If the status is not 'complete', wait and try again
             time.sleep(3)
-        
+
         if final_result.get("status") != "complete":
-             logging.warning("[SystemStatusClient] Tempo de busca esgotado. status.json não foi encontrado.")
-             # Ensures the final result is the correct error
-             final_result = {"status": "error", "message_key": "system_status_view.status_file_not_found"}
+            logging.warning("[SystemStatusClient] Tempo de busca esgotado. status.json não foi encontrado.")
+            # Ensures the final result is the correct error
+            final_result = {"status": "error", "message_key": "system_status_view.status_file_not_found"}
 
         if self.on_complete:
             self.on_complete(final_result)
+
     # --- END OF CHANGE ---
 
     def start_fetching_status(self):

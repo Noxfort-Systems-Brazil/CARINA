@@ -91,7 +91,7 @@ class ConnectionConfigRepository:
                 for key, val in row.items():
                     if not key:
                         continue
-                    clean_k = key.strip().lower()
+                    clean_k = key.strip().lstrip("\ufeff").strip().lower()
                     if clean_k in [
                         "intersection id",
                         "intersection_id",

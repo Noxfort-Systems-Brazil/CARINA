@@ -18,24 +18,27 @@
 # Author: Gabriel Moraes
 # Date: June 19, 2026
 
-import torch
-import numpy as np
 from typing import Optional
+
+import numpy as np
+import torch
 from captum.attr import IntegratedGradients
+
 from agents.local_agent import LocalAgent
 from xai.captum_model_wrapper import CaptumModelWrapper
+
 
 class CaptumAttributionEngine:
     """
     Responsibility: Handle PyTorch and Captum mathematical operations.
     Computes raw feature importances using Integrated Gradients.
     """
+
     def __init__(self, agent: LocalAgent, device: torch.device) -> None:
         self.agent = agent
         self.device = device
         self.wrapped_model = CaptumModelWrapper(
-            self.agent.policy_net, 
-            shared_pae=getattr(self.agent, 'shared_pae', None)
+            self.agent.policy_net, shared_pae=getattr(self.agent, "shared_pae", None)
         ).to(self.device)
         self.ig = IntegratedGradients(self.wrapped_model)
 
@@ -43,13 +46,16 @@ class CaptumAttributionEngine:
         try:
             if self.agent.xai_memory is None or self.agent.xai_memory.size == 0:
                 import logging
-                logging.info(f"[CaptumAttributionEngine] No tensor data in memory for agent {getattr(self.agent, 'id', 'N/A')}.")
+
+                logging.info(
+                    f"[CaptumAttributionEngine] No tensor data in memory for agent {getattr(self.agent, 'id', 'N/A')}."
+                )
                 return None
 
             # Limit the number of samples to avoid excessive CPU compute times (max 100 samples)
             limit = min(self.agent.xai_memory.size, limit)
             if self.agent.xai_memory.size <= limit:
-                input_tensors = self.agent.xai_memory.states[:self.agent.xai_memory.size].to(self.device)
+                input_tensors = self.agent.xai_memory.states[: self.agent.xai_memory.size].to(self.device)
             else:
                 ptr = self.agent.xai_memory.ptr
                 indices = [(ptr - 1 - i) % self.agent.xai_memory.capacity for i in range(limit)]
@@ -57,28 +63,25 @@ class CaptumAttributionEngine:
                 input_tensors = self.agent.xai_memory.states[indices_t].to(self.device)
 
             baselines = torch.zeros_like(input_tensors)
-            
+
             # Run Integrated Gradients (n_steps=25 for TCN efficiency)
             try:
                 attributions, _ = self.ig.attribute(
-                    input_tensors, baselines, target=0, 
-                    return_convergence_delta=True, n_steps=25
+                    input_tensors, baselines, target=0, return_convergence_delta=True, n_steps=25
                 )
             except Exception:
-                attributions, _ = self.ig.attribute(
-                    input_tensors, baselines,
-                    return_convergence_delta=True, n_steps=25
-                )
-            
+                attributions, _ = self.ig.attribute(input_tensors, baselines, return_convergence_delta=True, n_steps=25)
+
             # Aggregation for TCN
             attributions = attributions.abs().sum(dim=0).sum(dim=0)
 
             # Normalization
             if torch.norm(attributions) > 0:
                 attributions = attributions / torch.norm(attributions)
-            
+
             return attributions.cpu().detach().numpy()
         except Exception as e:
             import logging
+
             logging.error(f"[CaptumAttributionEngine] Failed to compute importances: {e}")
             return None

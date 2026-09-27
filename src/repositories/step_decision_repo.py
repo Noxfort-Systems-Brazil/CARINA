@@ -8,14 +8,15 @@
 
 # File: src/repositories/step_decision_repo.py
 # Author: Gabriel Moraes
-# Date: August 2026
+# Date: September 2026
 
-import datetime
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import psycopg2
 from psycopg2.extras import execute_values
+
+from src.repositories.operation_session_repo import OperationSessionRepository
+from src.repositories.topology_dictionary_repo import TopologyDictionaryRepository
 
 if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
@@ -26,6 +27,7 @@ class StepDecisionRepository:
     """
     High-performance repository for real-time step decision counters (codes 0-5),
     operational session lifecycle management, and SUMO topology dictionary storage.
+    Follows Clean Architecture Facade Pattern to ensure 100% backward compatibility.
     """
 
     # Enums for 0-5 Decision / Veto Codes
@@ -52,16 +54,20 @@ class StepDecisionRepository:
     def __init__(self, engine: "DatabaseEngine", locale_manager: "LocaleManagerBackend"):
         self.engine = engine
         self.locale_manager = locale_manager
+
+        # Specialized sub-repositories (Clean Architecture / SRP)
+        self.session_repo = OperationSessionRepository(engine)
+        self.topology_repo = TopologyDictionaryRepository(engine)
+
         self.ensure_tables_exist()
 
     def ensure_tables_exist(self) -> bool:
-        """Ensures that step_decision_counters, operation_sessions, and topology_dictionary tables exist."""
+        """Ensures that step_decision_counters table exists, alongside delegated tables."""
         conn = self.engine.get_connection()
         if not conn:
             return False
         try:
             with conn.cursor() as cursor:
-                # 1. Step Decision Counters table (pure BIGINT numeric agent_id)
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS step_decision_counters (
@@ -70,36 +76,7 @@ class StepDecisionRepository:
                         count BIGINT NOT NULL DEFAULT 0,
                         PRIMARY KEY (agent_id, decision_code)
                     );
-                """
-                )
-
-                # 2. Operational Sessions table
-                cursor.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS operation_sessions (
-                        session_id BIGSERIAL PRIMARY KEY,
-                        start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        end_time TIMESTAMP,
-                        status VARCHAR(50) DEFAULT 'EM_OPERACAO',
-                        error_message TEXT
-                    );
-                """
-                )
-
-                # 3. Topology Dictionary table
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS topology_dictionary (
-                        id BIGSERIAL PRIMARY KEY,
-                        element_type VARCHAR(20) NOT NULL,
-                        raw_net_id VARCHAR(255) UNIQUE NOT NULL,
-                        numeric_id BIGINT NOT NULL,
-                        custom_name VARCHAR(255) NOT NULL,
-                        from_node VARCHAR(100),
-                        to_node VARCHAR(100),
-                        is_bidirectional_pair BOOLEAN DEFAULT FALSE
-                    );
-                """
                 )
             conn.commit()
             return True
@@ -142,144 +119,29 @@ class StepDecisionRepository:
                 pass
             return False
 
+    # --- Delegated Operation Session Methods (SRP) ---
     def start_session(self) -> Optional[int]:
         """Registers a new operational session start_time in PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return None
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO operation_sessions (start_time, status)
-                    VALUES (CURRENT_TIMESTAMP, 'EM_OPERACAO')
-                    RETURNING session_id;
-                """
-                )
-                sid = cursor.fetchone()[0]
-            conn.commit()
-            return sid
-        except Exception as e:
-            logging.error(f"[StepDecisionRepo] Error starting operation session: {e}")
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            return None
+        return self.session_repo.start_session()
 
     def end_session(self, session_id: int, status: str = "FINALIZADO_NORMAL", error_msg: Optional[str] = None) -> bool:
         """Updates operation session end_time and status in PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn or not session_id:
-            return False
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE operation_sessions
-                    SET end_time = CURRENT_TIMESTAMP, status = %s, error_message = %s
-                    WHERE session_id = %s;
-                """,
-                    (status, error_msg, session_id),
-                )
-            conn.commit()
-            return True
-        except Exception as e:
-            logging.error(f"[StepDecisionRepo] Error ending operation session {session_id}: {e}")
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            return False
+        return self.session_repo.end_session(session_id, status, error_msg)
 
+    # --- Delegated Topology Dictionary Methods (SRP) ---
     def bulk_save_topology_elements(self, elements: List[Dict[str, Any]]) -> bool:
         """Saves or updates topology dictionary elements in PostgreSQL."""
-        if not elements:
-            return True
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
-
-        batch = [
-            (
-                el["element_type"],
-                el["raw_net_id"],
-                int(el["numeric_id"]),
-                el["custom_name"],
-                el.get("from_node"),
-                el.get("to_node"),
-                bool(el.get("is_bidirectional_pair", False)),
-            )
-            for el in elements
-        ]
-
-        query = """
-            INSERT INTO topology_dictionary (
-                element_type, raw_net_id, numeric_id, custom_name, from_node, to_node, is_bidirectional_pair
-            ) VALUES %s
-            ON CONFLICT (raw_net_id) DO UPDATE SET
-                numeric_id = EXCLUDED.numeric_id,
-                from_node = EXCLUDED.from_node,
-                to_node = EXCLUDED.to_node,
-                is_bidirectional_pair = EXCLUDED.is_bidirectional_pair;
-        """
-        try:
-            with conn.cursor() as cursor:
-                execute_values(cursor, query, batch, page_size=500)
-            conn.commit()
-            return True
-        except Exception as e:
-            logging.error(f"[StepDecisionRepo] Bulk save topology elements failed: {e}")
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            return False
+        return self.topology_repo.bulk_save_topology_elements(elements)
 
     def update_topology_custom_name(self, element_type: str, raw_net_id: str, new_name: str) -> bool:
         """Updates user configured custom name for a street or intersection in PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE topology_dictionary
-                    SET custom_name = %s
-                    WHERE UPPER(element_type) = UPPER(%s) AND raw_net_id = %s;
-                """,
-                    (new_name, element_type, raw_net_id),
-                )
-            conn.commit()
-            return True
-        except Exception as e:
-            logging.error(f"[StepDecisionRepo] Failed to update custom name for {raw_net_id}: {e}")
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            return False
+        return self.topology_repo.update_topology_custom_name(element_type, raw_net_id, new_name)
 
     def get_topology_custom_name(self, element_type: str, raw_net_id: str) -> Optional[str]:
         """Queries custom user-configured name for a street or intersection from PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return None
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT custom_name FROM topology_dictionary
-                    WHERE UPPER(element_type) = UPPER(%s) AND (raw_net_id = %s OR numeric_id = %s);
-                """,
-                    (element_type, raw_net_id, self._to_int_id(raw_net_id)),
-                )
-                row = cursor.fetchone()
-                return str(row[0]) if row and row[0] else None
-        except Exception:
-            return None
+        return self.topology_repo.get_topology_custom_name(element_type, raw_net_id)
 
+    # --- Decision Veto Statistics & Analytics ---
     def get_all_audited_agent_ids(self) -> List[str]:
         """Queries PostgreSQL to get all unique agent_ids (BIGINT) recorded in step_decision_counters."""
         conn = self.engine.get_connection()
@@ -321,7 +183,7 @@ class StepDecisionRepository:
                             COALESCE(SUM(CASE WHEN decision_code = 5 THEN count ELSE 0 END), 0) AS critical_cnt
                         FROM step_decision_counters
                         WHERE agent_id = %s;
-                    """,
+                        """,
                         (num_agent_id,),
                     )
                 else:
@@ -333,7 +195,7 @@ class StepDecisionRepository:
                             COALESCE(SUM(CASE WHEN decision_code IN (1, 2, 3, 4) THEN count ELSE 0 END), 0) AS temporal_cnt,
                             COALESCE(SUM(CASE WHEN decision_code = 5 THEN count ELSE 0 END), 0) AS critical_cnt
                         FROM step_decision_counters;
-                    """
+                        """
                     )
 
                 row = cursor.fetchone()
@@ -354,7 +216,6 @@ class StepDecisionRepository:
 
                 rate = (approved / total_eval) * 100.0
 
-                # Fetch top veto reason code
                 if temporal_cnt == 0 and critical_cnt == 0:
                     top_reason = self.VETO_REASON_TEXT[0]
                 else:
@@ -366,7 +227,7 @@ class StepDecisionRepository:
                             WHERE decision_code > 0 AND agent_id = %s
                             GROUP BY decision_code
                             ORDER BY cnt DESC LIMIT 1;
-                        """,
+                            """,
                             (num_agent_id,),
                         )
                     else:
@@ -377,7 +238,7 @@ class StepDecisionRepository:
                             WHERE decision_code > 0
                             GROUP BY decision_code
                             ORDER BY cnt DESC LIMIT 1;
-                        """
+                            """
                         )
                     vrow = cursor.fetchone()
                     reason_code = int(vrow[0]) if vrow else 1
@@ -405,10 +266,4 @@ class StepDecisionRepository:
     @staticmethod
     def _to_int_id(val: Any) -> int:
         """Extracts integer numeric digits from agent_id string/int."""
-        if isinstance(val, int):
-            return val
-        s = str(val or "")
-        digits = "".join([c for c in s if c.isdigit()])
-        if digits:
-            return int(digits)
-        return abs(hash(s)) % (10**10)
+        return TopologyDictionaryRepository._to_int_id(val)

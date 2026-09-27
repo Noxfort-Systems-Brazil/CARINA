@@ -20,11 +20,13 @@
 
 from typing import Any, Dict
 
+
 class LocalLlamaTransducer:
     """
     Fallback neural transducer for generating report narrative text
     in light testing environments or when the main GGUF engine is disabled.
     """
+
     def __init__(self, *args, **kwargs):
         pass
 

@@ -27,21 +27,20 @@ por um controlador externo. A lógica de clique foi removida para ser
 centralizada no widget pai.
 """
 
-import flet as ft
 import logging
 from typing import Callable
+
+import flet as ft
+
 
 class TrafficLightWidget(ft.Container):
     """
     Um widget visual que representa um semáforo.
     """
-    def __init__(
-        self,
-        semaphore_id: str,
-        initial_state: str = "RED"
-    ):
+
+    def __init__(self, semaphore_id: str, initial_state: str = "RED"):
         super().__init__()
-        
+
         self.semaphore_id = semaphore_id
         self.current_state = initial_state
 
@@ -61,7 +60,7 @@ class TrafficLightWidget(ft.Container):
             controls=list(self.lights.values()),
             spacing=4,
             alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         )
         self._update_visuals()
 
@@ -72,7 +71,7 @@ class TrafficLightWidget(ft.Container):
             height=12,
             border_radius=6,
             bgcolor=ft.Colors.with_opacity(0.2, cor),
-            animate=ft.Animation(100, "ease")
+            animate=ft.Animation(100, "ease"),
         )
 
     def _update_visuals(self):
@@ -80,16 +79,18 @@ class TrafficLightWidget(ft.Container):
         for state, light_container in self.lights.items():
             base_color = getattr(ft.Colors, state)
             light_container.bgcolor = ft.Colors.with_opacity(0.2, base_color)
-        
+
         # The "OFF" state now simply doesn't turn on any lights
         if self.current_state in self.lights:
             light_to_turn_on = self.lights[self.current_state]
             base_color = getattr(ft.Colors, self.current_state)
             light_to_turn_on.bgcolor = base_color
-        
+
         if self.page:
-            try: self.update()
-            except Exception: pass
+            try:
+                self.update()
+            except Exception:
+                pass
 
     def set_state(self, new_state: str):
         """
@@ -99,7 +100,7 @@ class TrafficLightWidget(ft.Container):
         if new_state not in valid_states:
             logging.warning(f"Tentativa de definir estado inválido '{new_state}' para o semáforo {self.semaphore_id}")
             return
-        
+
         visual_state = "YELLOW" if new_state == "ALERT" else new_state
 
         if self.current_state != visual_state:
@@ -113,10 +114,10 @@ class TrafficLightWidget(ft.Container):
         """
         override_state = overrides.get(self.semaphore_id)
         if override_state:
-            if override_state == 'ALERT':
-                self.set_state('YELLOW' if blink_toggle else 'OFF')
-            elif override_state == 'OFF':
-                self.set_state('OFF')
+            if override_state == "ALERT":
+                self.set_state("YELLOW" if blink_toggle else "OFF")
+            elif override_state == "OFF":
+                self.set_state("OFF")
         else:
             semaforo_data = telemetry_data.get(self.semaphore_id, {})
             new_state = semaforo_data.get("display_state", "RED")

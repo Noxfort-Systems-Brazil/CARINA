@@ -22,16 +22,19 @@
 Define o GeneralSettingsCard, um widget componente para a tela de Configurações.
 """
 
+from typing import Any, Dict
+
 import flet as ft
-from typing import Dict, Any
 
 # --- CHANGE 1: Import LocaleManager for type annotation ---
 from ui.handlers.locale_manager import LocaleManager
+
 
 class GeneralSettingsCard(ft.Card):
     """
     Um Card que encapsula as configurações de aparência e gerais.
     """
+
     def __init__(self, initial_values: Dict[str, Any]):
         """
         Inicializa o Card com os valores fornecidos.
@@ -40,10 +43,7 @@ class GeneralSettingsCard(ft.Card):
 
         # --- Controls ---
         self.title_text = ft.Text(size=18, weight=ft.FontWeight.BOLD)
-        self.check_theme = ft.Checkbox(
-            value=initial_values.get('theme_dark', True),
-            on_change=self._theme_changed
-        )
+        self.check_theme = ft.Checkbox(value=initial_values.get("theme_dark", True), on_change=self._theme_changed)
         self.dd_language = ft.Dropdown(
             options=[
                 ft.dropdown.Option("pt_br", "Português (Brasil)"),
@@ -53,32 +53,35 @@ class GeneralSettingsCard(ft.Card):
                 ft.dropdown.Option("ru_ru", "Русский"),
                 ft.dropdown.Option("zh_cn", "中文"),
             ],
-            value=initial_values.get('language', 'pt_br')
+            value=initial_values.get("language", "pt_br"),
         )
-        
+
         # --- System Info ---
         self.lbl_system_info = ft.Text(weight=ft.FontWeight.BOLD, size=14)
         self.txt_version = ft.Text(size=12)
         self.txt_codename = ft.Text(size=12)
-        
+
         # --- Card Structure ---
         self.content = ft.Container(
             padding=15,
-            content=ft.Column([
-                self.title_text, # The text will be filled in via update_translations
-                ft.Divider(),
-                self.check_theme, # The label will be populated via update_translations
-                self.dd_language,  # The label will be populated via update_translations
-                ft.Divider(),
-                self.lbl_system_info,
-                ft.Row([
-                    ft.Icon(ft.Icons.INFO_ROUNDED, color=ft.Colors.BLUE_400, size=20),
-                    ft.Column([
-                        self.txt_version,
-                        self.txt_codename
-                    ], spacing=2)
-                ], alignment=ft.MainAxisAlignment.START, spacing=10)
-            ])
+            content=ft.Column(
+                [
+                    self.title_text,  # The text will be filled in via update_translations
+                    ft.Divider(),
+                    self.check_theme,  # The label will be populated via update_translations
+                    self.dd_language,  # The label will be populated via update_translations
+                    ft.Divider(),
+                    self.lbl_system_info,
+                    ft.Row(
+                        [
+                            ft.Icon(ft.Icons.INFO_ROUNDED, color=ft.Colors.BLUE_400, size=20),
+                            ft.Column([self.txt_version, self.txt_codename], spacing=2),
+                        ],
+                        alignment=ft.MainAxisAlignment.START,
+                        spacing=10,
+                    ),
+                ]
+            ),
         )
 
     def _theme_changed(self, e: ft.ControlEvent):
@@ -94,30 +97,35 @@ class GeneralSettingsCard(ft.Card):
         Retorna um dicionário com os valores atuais dos controles neste card.
         """
         return {
-            'theme_dark': self.check_theme.value,
-            'language': self.dd_language.value,
+            "theme_dark": self.check_theme.value,
+            "language": self.dd_language.value,
         }
 
     def set_values(self, values: Dict[str, Any]):
         """
         Atualiza os valores dos controles neste card com base no dicionário fornecido.
         """
-        self.check_theme.value = values.get('theme_dark', True)
-        self.dd_language.value = values.get('language', 'pt_br')
-        if self.page: self.update()
-        
+        theme_val = values.get("theme_dark", True)
+        if isinstance(theme_val, str):
+            theme_val = theme_val.lower() in ("true", "1", "yes")
+        self.check_theme.value = bool(theme_val)
+        self.dd_language.value = values.get("language", "pt_br")
+        if self.page:
+            self.update()
+
     # --- CHANGE 2: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
         """Atualiza os textos deste card com base no LocaleManager."""
         self.title_text.value = lm.get_string("settings_view.general_card_title", default="Configurações Gerais")
         self.check_theme.label = lm.get_string("settings_view.dark_mode_label", default="Modo Escuro")
         self.dd_language.label = lm.get_string("settings_view.language_label", default="Idioma")
-        
+
         self.lbl_system_info.value = lm.get_string("settings_view.system_info_title", default="Informações do Sistema")
         version_label = lm.get_string("settings_view.version_label", default="Versão")
         codename_label = lm.get_string("settings_view.codename_label", default="Codinome")
-        
+
         self.txt_version.value = f"{version_label}: 1.0.1"
         self.txt_codename.value = f"{codename_label}: Itaquera"
-        
-        if self.page: self.update()
+
+        if self.page:
+            self.update()

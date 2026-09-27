@@ -27,32 +27,35 @@ Manages the system tray (notification area) icon that allows:
 - Quit the application from the tray context menu
 """
 
+import logging
 import os
 import sys
-import logging
 import threading
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
 try:
-    from PIL import Image
-    
     # Try AppIndicator backend first (supports right-click menus on GNOME/KDE)
     import platform
+
+    from PIL import Image
+
     _appindicator_ok = False
-    if platform.system() == 'Linux':
+    if platform.system() == "Linux":
         try:
             import gi
-            gi.require_version('AyatanaAppIndicator3', '0.1')
-            os.environ['PYSTRAY_BACKEND'] = 'appindicator'
+
+            gi.require_version("AyatanaAppIndicator3", "0.1")
+            os.environ["PYSTRAY_BACKEND"] = "appindicator"
             _appindicator_ok = True
             logger.info("[TrayHandler] AppIndicator backend available. Right-click menu enabled.")
         except (ImportError, ValueError):
             # gi or AyatanaAppIndicator3 not available — fall back to xorg/default
             logger.info("[TrayHandler] AppIndicator not available, using default X11 backend.")
-    
+
     import pystray
+
     TRAY_AVAILABLE = True
 except ImportError:
     TRAY_AVAILABLE = False
@@ -62,7 +65,7 @@ except ImportError:
 class TrayHandler:
     """
     Manages the system tray icon lifecycle.
-    
+
     The tray icon is created on a separate daemon thread so it doesn't block
     the main Flet event loop.
     """
@@ -77,7 +80,7 @@ class TrayHandler:
         self._icon_path = icon_path
         self._on_restore = on_restore
         self._on_quit = on_quit
-        self._tray_icon: Optional['pystray.Icon'] = None
+        self._tray_icon: Optional["pystray.Icon"] = None
         self._thread: Optional[threading.Thread] = None
         self._running = False
 
@@ -103,18 +106,11 @@ class TrayHandler:
             image = Image.open(self._icon_path)
             # Resize is REQUIRED on Linux to prevent AppIndicator GTK deadlock with large 256x256 images
             image = image.resize((64, 64), Image.LANCZOS)
-            
+
             menu = pystray.Menu(
-                pystray.MenuItem(
-                    "Abrir CARINA",
-                    self._handle_restore,
-                    default=True  # Double-click action
-                ),
+                pystray.MenuItem("Abrir CARINA", self._handle_restore, default=True),  # Double-click action
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem(
-                    "Encerrar",
-                    self._handle_quit
-                ),
+                pystray.MenuItem("Encerrar", self._handle_quit),
             )
 
             self._tray_icon = pystray.Icon(

@@ -19,14 +19,13 @@
 # Date: July 03, 2026
 
 import logging
-import time
 from collections import defaultdict
 from typing import Any, Dict, Optional
 
-from core.enums import Maturity
 from core.system_reporter import SystemReporter
 from engine.agent_evaluator import AgentEvaluator
 from engine.episode_reporter import EpisodeReporter
+from engine.hardware_stage_actuator import HardwareStageActuator
 from engine.stage_transition_manager import StageTransitionManager
 from engine.step_timer import StepTimer
 from mfd.mfd_processor import MFDProcessor
@@ -53,6 +52,8 @@ class StepProcessor:
         cycle_manager: Any,
         pipe_conn: Any,
         mfd: Any = None,
+        state_reconciler: Any = None,
+        db_manager: Any = None,
     ) -> None:
         self.settings = settings
         self.lm = locale_manager
@@ -68,18 +69,22 @@ class StepProcessor:
 
         self.pipe_conn = pipe_conn
         self.mfd = mfd
+        self.state_reconciler = state_reconciler
 
-        # Database Manager for Real-Time Telemetry Counters (0-5)
-        try:
-            from database.database_manager import DatabaseManager
+        # Database Manager with Inversion of Control / Dependency Injection
+        if db_manager is not None:
+            self.db_manager = db_manager
+        else:
+            try:
+                from database.database_manager import DatabaseManager
 
-            self.db_manager = DatabaseManager(self.lm)
-            self.db_manager.start_operation_session()
-        except Exception as e_db:
-            self.db_manager = None
-            logging.warning(f"[StepProcessor] Could not initialize DatabaseManager: {e_db}")
+                self.db_manager = DatabaseManager(self.lm)
+                self.db_manager.start_operation_session()
+            except Exception as e_db:
+                self.db_manager = None
+                logging.warning(f"[StepProcessor] Could not initialize DatabaseManager: {e_db}")
 
-        # SRP Instantiations
+        # Specialized SRP Collaborators
         self.step_timer = StepTimer()
         self.agent_evaluator = AgentEvaluator(
             state_extractor=self.state_extractor,
@@ -96,12 +101,12 @@ class StepProcessor:
         )
         self.episode_reporter = EpisodeReporter(locale_manager=self.lm, maturity_manager=self.maturity_manager)
         self.mfd_processor = MFDProcessor(mfd=self.mfd, state_extractor=self.state_extractor)
+        self.hardware_actuator = HardwareStageActuator()
 
         # Session State Variables
         self.step_counter = 0
         self.start_time_offset: Optional[float] = None
         self.current_stages: Dict[str, Any] = {}
-        self.last_commanded_stages: Dict[str, int] = {}
         self.accumulated_metrics = defaultdict(lambda: {"reward_sum": 0.0, "entropy_sum": 0.0, "count": 0})
         self.log_step_progress = True
         self.guardians = {}
@@ -115,6 +120,14 @@ class StepProcessor:
         self._episode_total_reward = 0.0
         self._episode_steps_in_current = 0
 
+    @property
+    def last_commanded_stages(self) -> Dict[str, int]:
+        return self.hardware_actuator.last_commanded_stages
+
+    @last_commanded_stages.setter
+    def last_commanded_stages(self, val: Dict[str, int]) -> None:
+        self.hardware_actuator.last_commanded_stages = val
+
     def reset_state(self) -> None:
         """Resets the counters for a new session (or new map)."""
         if self.mfd:
@@ -123,7 +136,7 @@ class StepProcessor:
         self.step_counter = 0
         self.start_time_offset = None
         self.current_stages.clear()
-        self.last_commanded_stages.clear()
+        self.hardware_actuator.reset()
         self.accumulated_metrics.clear()
         self.action_supervisor.reset()
         self.input_preprocessor.reset()
@@ -138,15 +151,7 @@ class StepProcessor:
         self.guardians = guardians
 
     def process_hft_step(self, traffic_data: Dict[str, Any], agents: Dict[str, Any]) -> None:
-        """
-        Orchestrates a single simulation step based on Real-Time Traffic Data.
-
-        Produces detailed diagnostic logs matching the legacy system:
-        - Step header with number, elapsed time, and operation mode
-        - Per-agent decision log with maturity, action, and authorization
-        - Granular timing breakdown (Extraction, PPO, Reward, Auth, Total)
-        - Episode boundary bulletins with maturity promotions
-        """
+        """Orchestrates a single simulation step based on Real-Time Traffic Data."""
         self.step_timer.start_step()
 
         # Time Management
@@ -157,16 +162,13 @@ class StepProcessor:
         self.step_counter += 1
         self._episode_steps_in_current += 1
 
-        # Log current time settings for debugging
         logging.debug(
             f"[StepProcessor] Current time settings - Yellow: {self.yellow_time}s, All-Red: {self.all_red_time}s"
         )
 
-        # --- Physical Transitions Synchronization ---
-        # Evaluate automatic hardware transitions (Yellow/All-red) based on sim_time
+        # Evaluate automatic physical transitions (Yellow/All-red) based on sim_time
         self.stage_transition_manager.auto_advance_transitions(sim_time, self.current_stages)
 
-        # --- STEP HEADER ---
         if self.log_step_progress:
             SystemReporter.report_step_start(self.lm, self.step_counter, sim_time, "AUTOMATIC")
 
@@ -183,7 +185,6 @@ class StepProcessor:
             current_stage_idx = self.current_stages.get(tl_id, 0)
             guardian = self.guardians.get(tl_id)
 
-            # Execution via isolated evaluator component
             action, maturity_name, vetoed, reward, entropy, lanes_state = self.agent_evaluator.evaluate_agent(
                 tl_id, agent, current_stage_idx, traffic_data, edges_data, sim_time, guardian, self.step_timer
             )
@@ -215,10 +216,10 @@ class StepProcessor:
 
         self._episode_total_reward += step_reward_sum
 
-        # --- STEP TIMER (Finish and Log) ---
+        # Finish and log timing breakdown
         self.step_timer.log_and_finish_step(guardian_vetoed_any, self.log_step_progress)
 
-        # --- Lifecycle Check (Episode Boundary) ---
+        # Lifecycle Check (Episode Boundary)
         episode_steps = self.settings.getint("AI_TRAINING", "episode_max_steps", fallback=100)
         if self.step_counter % episode_steps == 0:
             self._episode_counter += 1
@@ -229,17 +230,13 @@ class StepProcessor:
                 if latest:
                     mfd_efficiency = latest.efficiency
 
-            # Triggers cycle management
             self.cycle_manager.evaluate_cycle(self.step_counter, agents, self.accumulated_metrics, mfd_efficiency)
-
-            # --- SCHOOL BULLETIN (Legacy Format) ---
             self.episode_reporter.report_episode_bulletin(agents, self._episode_counter, self._episode_total_reward)
 
-            # Reset episode-level counters
             self._episode_total_reward = 0.0
             self._episode_steps_in_current = 0
 
-        # --- MFD: Compute Network Performance ---
+        # MFD: Compute Network Performance
         mfd_data = self.mfd_processor.process_step(
             edges_data=edges_data,
             sim_time=sim_time,
@@ -248,40 +245,24 @@ class StepProcessor:
             episode_steps=episode_steps,
         )
 
-        # --- Log commanded stage colors to carina_colors.log and command hardware on stage changes ---
-        active_ids = set(self.action_supervisor.connection_manager.active_connections.keys())
-        for old_id in list(self.last_commanded_stages.keys()):
-            if old_id not in active_ids:
-                self.last_commanded_stages.pop(old_id, None)
+        # Delegate hardware stage commands & logging to dedicated actuator
+        self.hardware_actuator.sync_hardware_stages(
+            action_supervisor=self.action_supervisor,
+            current_stages=self.current_stages,
+            state_extractor=self.state_extractor,
+            state_reconciler=self.state_reconciler,
+        )
 
-        for tl_id, driver in self.action_supervisor.connection_manager.active_connections.items():
-            current_stage_idx = self.current_stages.get(tl_id, 0)
-
-            # If the traffic light has an active manual override, skip automatic stage commands
-            if self.action_supervisor.override_states.get(tl_id) in ("ALERT", "OFF"):
-                self.last_commanded_stages.pop(tl_id, None)
-                continue
-
-            # Send command and log only when the stage changes
-            if tl_id not in self.last_commanded_stages or self.last_commanded_stages[tl_id] != current_stage_idx:
-                self.last_commanded_stages[tl_id] = current_stage_idx
-                self.action_supervisor.send_stage_hold(tl_id, current_stage_idx)
-
-                stage_codes = self.state_extractor.tl_stage_codes.get(tl_id, {})
-                driver.log_carina_colors(current_stage_idx, stage_codes)
-
-        # --- SEND HFT FEEDBACK TO CENTRAL CONTROLLER CACHE ---
-        rich_payload = {
-            "edges": edges_data,
-            "tls_phases": self.current_stages,
-            "tls_lanes_state": tls_lanes_state,
-            "maturity": maturity_info,
-            "mfd": mfd_data,
-            "sim_time": sim_time,
-        }
-
-        # Sends to the Central Controller via Pipe
+        # Send HFT telemetry feedback to Central Controller pipe
         if self.pipe_conn:
+            rich_payload = {
+                "edges": edges_data,
+                "tls_phases": self.current_stages,
+                "tls_lanes_state": tls_lanes_state,
+                "maturity": maturity_info,
+                "mfd": mfd_data,
+                "sim_time": sim_time,
+            }
             try:
                 self.pipe_conn.send(("ai_telemetry_sync", rich_payload))
             except Exception as e:

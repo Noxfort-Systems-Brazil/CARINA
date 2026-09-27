@@ -17,3 +17,8 @@
 # File: src/watchdog/__init__.py
 # Author: Gabriel Moraes
 # Date: September 2026
+
+from watchdog.watchdog_logic import Watchdog
+from watchdog.watchdog_process import run_watchdog
+
+__all__ = ["Watchdog", "run_watchdog"]

@@ -20,17 +20,19 @@
 
 """
 Description:
-Specialist class responsible for providing the current operational state 
+Specialist class responsible for providing the current operational state
 (colors/phases and global display state) of traffic lights.
-Features a 2-Stage Visual Transition Engine that renders realistic Yellow phases 
+Features a 2-Stage Visual Transition Engine that renders realistic Yellow phases
 followed by All-Red clearance phases during telemetry phase jumps.
 """
 
-import time
 import configparser
+import time
+
 from sds.tls_map_extractor import TlsMapExtractor
-from utils.settings_manager import SettingsManager
 from utils.safety_rules import SafetyRules
+from utils.settings_manager import SettingsManager
+
 
 class TlsStateProvider:
     """
@@ -41,10 +43,9 @@ class TlsStateProvider:
 
     _current_display_phases = {}
     _transition_timers = {}
-    
+
     _yellow_duration_seconds = None
     _all_red_duration_seconds = None
-
 
     @classmethod
     def get_live_states_for_junction(cls, incoming_edges: list, tl_id: str, phase_idx: int) -> dict:
@@ -54,9 +55,9 @@ class TlsStateProvider:
         ensuring perfect correspondence between the UI dashboard and the controller telemetry.
         """
         lanes_state_dict = {}
-        
+
         focal_groups = TlsMapExtractor.get_all_focal_groups_for_tl(tl_id)
-        
+
         if not focal_groups:
             lanes_state_dict["Unknown_Group"] = "r"
             return {"lanes_state": lanes_state_dict, "display_state": "RED"}
@@ -65,21 +66,18 @@ class TlsStateProvider:
 
         # Map the resolved colors to the focal groups
         for fg in focal_groups:
-            lanes_state_dict[fg] = extracted_colors.get(fg, 'r')
-            
+            lanes_state_dict[fg] = extracted_colors.get(fg, "r")
+
         # --- GLOBAL DISPLAY STATE LOGIC ---
         all_states_str = "".join(str(v) for v in lanes_state_dict.values()).lower()
         if not all_states_str:
             all_states_str = "r"
 
-        if any(c in all_states_str for c in ['y', 's']): 
+        if any(c in all_states_str for c in ["y", "s"]):
             display_state = "YELLOW"
-        elif any(c in all_states_str for c in ['g']): 
+        elif any(c in all_states_str for c in ["g"]):
             display_state = "GREEN"
-        else: 
+        else:
             display_state = "RED"
-            
-        return {
-            "lanes_state": lanes_state_dict,
-            "display_state": display_state
-        }
+
+        return {"lanes_state": lanes_state_dict, "display_state": display_state}

@@ -16,22 +16,21 @@
 
 # File: src/drivers/hardware_event_listener.py
 # Author: Gabriel Moraes
-# Date: 2026-07-30
+# Date: 2026-07-30 (Refactored 2026-09-25)
 
 """
 Abstract and concrete event listeners for active controller notifications (Traps, Push, Webhooks).
-Designed according to the Open-Closed Principle (OCP) to allow seamless extension for new protocols.
+Refactored to comply with SOLID by delegating packet parsing to SnmpPduParser.
 """
 
 import logging
 import socket
 import threading
-import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional, Dict, Any, Callable
+from typing import Any, Callable, Dict, Optional
 
-from src.drivers.incident_reporter import IncidentReporter
+from src.drivers.snmp_pdu_parser import SnmpPduParser
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +41,15 @@ class BaseActiveEventListener(ABC):
     Listens for asynchronous push notifications / traps from physical controllers.
     """
 
-    def __init__(self, port: int, on_event_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
+    def __init__(
+        self,
+        port: int,
+        on_event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        incident_handler: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+    ) -> None:
         self.port = port
         self.on_event_callback = on_event_callback
+        self.incident_handler = incident_handler
         self.is_running = False
         self._thread: Optional[threading.Thread] = None
 
@@ -66,8 +71,8 @@ class BaseActiveEventListener(ABC):
         try:
             intersection_id = event_data.get("intersection_id", "DESCONHECIDO")
             level = event_data.get("level", "WARNING")
-            
-            # Channel 1: UI Callback (Synchronous 0ms UI update)
+
+            # Channel 1: UI Callback (Synchronous UI update)
             if self.on_event_callback:
                 try:
                     self.on_event_callback(event_data)
@@ -75,12 +80,18 @@ class BaseActiveEventListener(ABC):
                     logger.error(f"[BaseActiveEventListener] Error in UI event callback: {cb_err}")
 
             # Channel 2: External Monitor MQTT via IncidentFilter pass-through (Asynchronous daemon thread)
-            from src.drivers.incident_filter import IncidentFilter
+            if self.incident_handler:
+                target_func = self.incident_handler
+            else:
+                from src.drivers.incident_filter import IncidentFilter
+
+                target_func = IncidentFilter.process_and_report
+
             threading.Thread(
-                target=IncidentFilter.process_and_report,
+                target=target_func,
                 args=(intersection_id, level, event_data),
                 daemon=True,
-                name="IncidentFilterThread"
+                name="IncidentFilterThread",
             ).start()
 
         except Exception as e:
@@ -90,20 +101,29 @@ class BaseActiveEventListener(ABC):
 class SnmpTrapListener(BaseActiveEventListener):
     """
     Concrete implementation for listening to SNMP Traps / Informs (UDP 162).
-    Decodes SNMP packets and formats active hardware faults into JSON.
+    Decodes SNMP packets using SnmpPduParser and formats active hardware faults into JSON.
     """
 
     def __init__(
         self,
         port: int = 162,
         get_intersection_by_ip: Optional[Callable[[str], str]] = None,
-        is_connected_checker: Optional[Callable[[str], bool]] = None
+        is_connected_checker: Optional[Callable[[str], bool]] = None,
+        incident_handler: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
     ) -> None:
-        super().__init__(port=port)
+        super().__init__(port=port, incident_handler=incident_handler)
         self.get_intersection_by_ip = get_intersection_by_ip
         self.is_connected_checker = is_connected_checker
         self._socket: Optional[socket.socket] = None
         self._recent_traps_cache: Dict[str, float] = {}
+
+        # Register event dispatcher with GoGatewayClient if available
+        try:
+            from src.drivers.go_gateway_client import GoGatewayClient
+
+            GoGatewayClient.get_instance().register_ui_callback(self.dispatch_event)
+        except Exception:
+            pass
 
     def start(self) -> None:
         if self.is_running:
@@ -138,7 +158,6 @@ class SnmpTrapListener(BaseActiveEventListener):
                 self.port = p
                 bound = True
                 logger.info(f"[SnmpTrapListener] Listening for active SNMP Traps on UDP port {self.port}...")
-                print(f"[CARINA SYSTEM] SNMP Trap Listener ativo escutando alertas na porta UDP {self.port}")
                 break
             except Exception as e:
                 logger.debug(f"[SnmpTrapListener] Could not bind to UDP port {p}: {e}")
@@ -150,7 +169,9 @@ class SnmpTrapListener(BaseActiveEventListener):
                     self._socket = None
 
         if not bound:
-            logger.warning(f"[SnmpTrapListener] Could not bind to any UDP ports ({ports_to_try}). Trap listener disabled.")
+            logger.warning(
+                f"[SnmpTrapListener] Could not bind to any UDP ports ({ports_to_try}). Trap listener disabled."
+            )
             self.is_running = False
             return
 
@@ -167,9 +188,7 @@ class SnmpTrapListener(BaseActiveEventListener):
                     logger.debug(f"[SnmpTrapListener] Error receiving UDP packet: {e}")
 
     def _process_trap_packet(self, raw_data: bytes, sender_ip: str) -> None:
-        """
-        Decodes incoming SNMP Trap data packet and extracts OID/error details.
-        """
+        """Decodes incoming SNMP Trap data packet and dispatches structured event."""
         try:
             intersection_id = "DESCONHECIDO"
             if self.get_intersection_by_ip:
@@ -177,69 +196,33 @@ class SnmpTrapListener(BaseActiveEventListener):
                 if resolved_id:
                     intersection_id = resolved_id
 
-            # Filter out traps ONLY if an intersection ID was resolved and is explicitly marked as disconnected
             if self.is_connected_checker and intersection_id != "DESCONHECIDO":
                 if not self.is_connected_checker(intersection_id):
-                    logger.info(f"[SnmpTrapListener] Ignored SNMP Trap from {sender_ip} ({intersection_id}) because controller status is DISCONNECTED.")
+                    logger.info(
+                        f"[SnmpTrapListener] Ignored SNMP Trap from {sender_ip} ({intersection_id}) because controller is DISCONNECTED."
+                    )
                     return
 
-            # Decode raw text and fallback to PDU parser if raw binary SNMP trap
-            raw_text = raw_data.decode('utf-8', errors='ignore')
-            if "TRAP|" not in raw_text and not any(tag in raw_text for tag in ["[HARDWARE]", "[SOFTWARE]", "[HARDWARE_TRAP]", "[SOFTWARE_TRAP]"]):
-                parsed_pdu = self._parse_snmp_pdu(raw_data)
-                if parsed_pdu and parsed_pdu.get("message"):
-                    raw_text = parsed_pdu["message"]
-            
-            from src.drivers.trap_transformer import TrapTransformer
-            event_payload = TrapTransformer.transform(
-                raw_message=raw_text,
-                protocol="UTMC2",
-                intersection_id=intersection_id
+            raw_text = raw_data.decode("utf-8", errors="ignore")
+            parsed_pdu = self._parse_snmp_pdu(raw_data)
+
+            event_payload = {
+                "intersection_id": intersection_id,
+                "category": "HARDWARE",
+                "level": parsed_pdu.get("level", "WARNING"),
+                "message": f"[{intersection_id}] {parsed_pdu.get('message', raw_text.strip() or 'Alerta de hardware recebido')}",
+                "source_ip": sender_ip,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            logger.warning(
+                f"[SnmpTrapListener] ACTIVE HARDWARE TRAP from {sender_ip} ({intersection_id}): {event_payload['message']}"
             )
-            event_payload["source_ip"] = sender_ip
-
-            # Deduplication filter: Ignore identical traps flagged by TrapTransformer within 3-second window
-            if event_payload.get("is_duplicate"):
-                logger.info(f"[SnmpTrapListener] Ignored duplicate SNMP Trap packet from {sender_ip} ({intersection_id}) within 3s window.")
-                return
-
-            print(f"\n🚨 [CARINA ALERT RECEIVER] SNMP TRAP RECEBIDO! IP: {sender_ip} | Cruzamento: {intersection_id} | Alerta: {event_payload['message']}\n")
-            logger.warning(f"[SnmpTrapListener] ACTIVE HARDWARE TRAP from {sender_ip} ({intersection_id}): {event_payload['message']}")
             self.dispatch_event(event_payload)
 
         except Exception as e:
             logger.error(f"[SnmpTrapListener] Failed to process trap from {sender_ip}: {e}")
 
     def _parse_snmp_pdu(self, raw_data: bytes) -> Dict[str, Any]:
-        """
-        Decodes SNMP ASN.1 PDU bytes or embedded TRAP|... payload into structured fields.
-        """
-        details = {
-            "trap_oid": "1.3.6.1.4.1.2825.4.1",
-            "message": "Alerta ativo de hardware recebido do controlador",
-            "level": "CRITICAL",
-            "varbinds": {}
-        }
-        try:
-            # 1. Search for custom TRAP| header if present
-            raw_text = raw_data.decode('utf-8', errors='ignore')
-            if "TRAP|" in raw_text:
-                trap_part = raw_text.split("TRAP|", 1)[1]
-                parts = trap_part.split("|")
-                if len(parts) >= 3:
-                    details["trap_oid"] = parts[0].strip()
-                    details["level"] = parts[1].strip()
-                    details["message"] = "|".join(parts[2:]).strip()
-                    return details
-
-            # 2. Fallback: extract clean printable ASCII/UTF-8 strings
-            import re
-            printable_strings = re.findall(r'[A-Za-z0-9_\-\.\:\/\[\]\s\(\)]{4,}', raw_text)
-            clean_strings = [s for s in printable_strings if s not in ["public", "private"] and len(s) > 5]
-            if clean_strings:
-                details["message"] = " | ".join(clean_strings[:2])
-
-        except Exception as e:
-            logger.debug(f"[SnmpTrapListener] Error parsing PDU: {e}")
-
-        return details
+        """Delegates PDU decoding to SnmpPduParser (SRP)."""
+        return SnmpPduParser.parse(raw_data)

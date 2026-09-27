@@ -20,6 +20,7 @@
 
 import math
 
+
 class DynamicEntropyCalculator:
     """
     Calculates dynamic entropy thresholds based on the time configured in the UI.
@@ -29,39 +30,39 @@ class DynamicEntropyCalculator:
     def __init__(self, e_max: float = 1.8, e_ideal: float = 0.1) -> None:
         """
         Initializes the dynamic entropy calculator.
-        
+
         Args:
             e_max: Safety ceiling (maximum chaos allowed for urban traffic safety).
             e_ideal: Absolute certainty limit (perfect convergence).
         """
         self.e_max = e_max
         self.e_ideal = e_ideal
-        
+
     def calculate_threshold(self, configured_episodes: int, is_adult_transition: bool = False) -> float:
         """
         Calculates the maximum allowed entropy threshold for an agent's promotion.
         The more time (episodes) configured, the stricter (closer to e_ideal) the threshold becomes.
-        
+
         Args:
             configured_episodes: The time limit set by the user in the menu.
             is_adult_transition: If True, applies an extremely rigorous decay curve (Teen -> Adult).
-            
+
         Returns:
             The calculated entropy threshold (float).
         """
         if configured_episodes <= 0:
             return self.e_max
-            
+
         # Decay constant k.
         k = 0.05
-        
+
         if is_adult_transition:
-            # Rigorous transition to Adult: we multiply the decay constant 
+            # Rigorous transition to Adult: we multiply the decay constant
             # to force the threshold down aggressively, demanding near-absolute certainty.
-            k = 0.15 
-            
+            k = 0.15
+
         # Exponential decay formula: E(t) = E_ideal + (E_max - E_ideal) * e^(-k * t)
         threshold = self.e_ideal + (self.e_max - self.e_ideal) * math.exp(-k * configured_episodes)
-        
+
         # Clamp between ideal and max for absolute safety
         return max(self.e_ideal, min(self.e_max, threshold))

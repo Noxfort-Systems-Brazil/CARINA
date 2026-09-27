@@ -18,13 +18,14 @@
 # Author: Gabriel Moraes
 # Date: December 17, 2025
 
-import flet as ft
-import os
-import time
-import threading
 import glob
 import logging
+import os
 import sys
+import threading
+import time
+
+import flet as ft
 
 # Ensures that utils.paths can be imported
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -34,46 +35,43 @@ if src_path not in sys.path:
 
 from src.utils.paths import get_base_output_dir
 from ui.handlers.locale_manager import LocaleManager
+from ui.widgets.audit_log_widget import AuditLogWidget
 from ui.widgets.mfd_viewer_widget import MfdViewerWidget
 from ui.widgets.xai_viewer_widget import XaiViewerWidget
-from ui.widgets.audit_log_widget import AuditLogWidget
+
 
 class DiagnosticsView(ft.Column):
     """
     View responsible for system diagnostics.
-    
+
     ATUALIZAÇÃO: Usa get_base_output_dir() para garantir que a UI
     olhe para a mesma pasta 'results' que o Backend.
     """
+
     def __init__(self, locale_manager: LocaleManager, control_client=None):
         super().__init__()
         self.locale_manager = locale_manager
         self.control_client = control_client
-        self.expand = True 
-        
+        self.expand = True
+
         # --- PATH CORRECTION ---
         # The backend uses get_base_output_dir(), so the UI should use it too.
         self.project_root = get_base_output_dir()
-        
+
         self.results_dir = os.path.join(self.project_root, "results", "hft_live_session")
-        
+
         logging.info(f"[UI_DIAG] DiagnosticsView inicializada.")
         logging.info(f"[UI_DIAG] Pasta de Resultados (Backend): {self.results_dir}")
-        
+
         # Widgets
         self.mfd_viewer = MfdViewerWidget(
-            locale_manager,
-            results_dir=self.results_dir,
-            control_client=self.control_client
+            locale_manager, results_dir=self.results_dir, control_client=self.control_client
         )
-        
+
         # XAI Widget now receives the CORRECT directory
-        self.xai_viewer = XaiViewerWidget(
-            locale_manager, 
-            results_dir=self.results_dir
-        )
+        self.xai_viewer = XaiViewerWidget(locale_manager, results_dir=self.results_dir)
         self.audit_viewer = AuditLogWidget(locale_manager)
-        
+
         # Control
         self.watching = False
         self.watch_thread = None
@@ -86,29 +84,20 @@ class DiagnosticsView(ft.Column):
                 ft.Tab(
                     text=locale_manager.get_string("diagnostics_view.nav_mfd", default="MFD Optimization Analysis"),
                     icon=ft.Icons.AUTO_GRAPH_ROUNDED,
-                    content=ft.Container(
-                        content=self.mfd_viewer,
-                        padding=10
-                    )
+                    content=ft.Container(content=self.mfd_viewer, padding=10),
                 ),
                 ft.Tab(
                     text=locale_manager.get_string("diagnostics_view.nav_xai", default="Neural Analysis (XAI)"),
                     icon=ft.Icons.PSYCHOLOGY_ROUNDED,
-                    content=ft.Container(
-                        content=self.xai_viewer,
-                        padding=10
-                    )
+                    content=ft.Container(content=self.xai_viewer, padding=10),
                 ),
                 ft.Tab(
                     text="Auditoria (Audit Logs)",
                     icon=ft.Icons.POLICY_ROUNDED,
-                    content=ft.Container(
-                        content=self.audit_viewer,
-                        padding=10
-                    )
+                    content=ft.Container(content=self.audit_viewer, padding=10),
                 ),
             ],
-            expand=True
+            expand=True,
         )
 
         self.controls = [self.tabs]
@@ -123,11 +112,14 @@ class DiagnosticsView(ft.Column):
 
     def update_translations(self, locale_manager: LocaleManager):
         self.locale_manager = locale_manager
-        self.tabs.tabs[0].text = locale_manager.get_string("diagnostics_view.nav_mfd", default="MFD Optimization Analysis")
+        self.tabs.tabs[0].text = locale_manager.get_string(
+            "diagnostics_view.nav_mfd", default="MFD Optimization Analysis"
+        )
         self.tabs.tabs[1].text = locale_manager.get_string("diagnostics_view.nav_xai", default="Neural Analysis (XAI)")
         self.mfd_viewer.update_translations(locale_manager)
         self.xai_viewer.update_translations(locale_manager)
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     def start_log_watcher(self):
         if not self.watching:
@@ -141,7 +133,7 @@ class DiagnosticsView(ft.Column):
     def _watch_loop(self):
         """Monitora APENAS o arquivo de Log e a lista de Agentes."""
         last_log_size = 0
-        
+
         while self.watching:
             try:
                 if not self.page:
@@ -152,7 +144,9 @@ class DiagnosticsView(ft.Column):
                 checkpoints_dir = os.path.join(self.results_dir, "checkpoints")
                 if os.path.exists(checkpoints_dir):
                     agent_files = glob.glob(os.path.join(checkpoints_dir, "agent_*.pth"))
-                    agent_ids = sorted([os.path.basename(f).replace("agent_", "").replace(".pth", "") for f in agent_files])
+                    agent_ids = sorted(
+                        [os.path.basename(f).replace("agent_", "").replace(".pth", "") for f in agent_files]
+                    )
                     if agent_ids:
                         self.xai_viewer.update_agent_list(agent_ids)
 
@@ -162,5 +156,5 @@ class DiagnosticsView(ft.Column):
                     break
                 logging.error(f"[UI_DIAG] Erro no loop de logs: {e}")
                 time.sleep(2.0)
-            
+
             time.sleep(1.0)

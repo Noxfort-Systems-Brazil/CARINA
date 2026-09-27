@@ -18,19 +18,23 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
+import json
 import logging
 import os
-import json
-from typing import List, Dict
+from typing import Dict, List
 
 SKLEARN_AVAILABLE = False
 try:
     import pandas as pd
     from sklearn.linear_model import LinearRegression
+
     SKLEARN_AVAILABLE = True
     logging.debug("[HEATMAP_CALIBRATOR] Pandas e Scikit-learn detectados para calibração.")
 except Exception as _e:
-    logging.warning(f"[HEATMAP_CALIBRATOR] Bibliotecas 'pandas' ou 'sklearn' não encontradas para calibração. Erro: {_e}")
+    logging.warning(
+        f"[HEATMAP_CALIBRATOR] Bibliotecas 'pandas' ou 'sklearn' não encontradas para calibração. Erro: {_e}"
+    )
+
 
 class HeatmapCalibrator:
     """Manages the calibration of heatmap weights based on operational telemetry samples."""
@@ -46,39 +50,43 @@ class HeatmapCalibrator:
 
         logging.info(f"[HEATMAP_CALIBRATOR] Iniciando calibração com {len(data_points)} pontos de dados.")
         if len(data_points) < 100:
-            logging.warning(f"[HEATMAP_CALIBRATOR] Dados insuficientes para calibração (necessário 100+, temos {len(data_points)}). Abortando.")
+            logging.warning(
+                f"[HEATMAP_CALIBRATOR] Dados insuficientes para calibração (necessário 100+, temos {len(data_points)}). Abortando."
+            )
             return None
 
         try:
             df = pd.DataFrame(data_points)
-            df.replace([float('inf'), -float('inf')], float('nan'), inplace=True)
+            df.replace([float("inf"), -float("inf")], float("nan"), inplace=True)
             df.dropna(inplace=True)
 
             if df.empty or len(df) < 2:
                 logging.warning("[HEATMAP_CALIBRATOR] Nenhum dado válido restante após a limpeza. Abortando.")
                 return None
 
-            features = ['occupancy', 'waiting_time', 'flow']
-            target = 'bad_events'
+            features = ["occupancy", "waiting_time", "flow"]
+            target = "bad_events"
 
             if not all(feat in df.columns for feat in features) or target not in df.columns:
-                 logging.error(f"[HEATMAP_CALIBRATOR] Colunas necessárias ({features + [target]}) não encontradas. Colunas: {df.columns.tolist()}.")
-                 return None
+                logging.error(
+                    f"[HEATMAP_CALIBRATOR] Colunas necessárias ({features + [target]}) não encontradas. Colunas: {df.columns.tolist()}."
+                )
+                return None
 
             X = df[features]
             y = df[target]
 
             if X.isnull().values.any() or y.isnull().values.any():
-                 logging.warning("[HEATMAP_CALIBRATOR] Dados nulos (NaN) ainda presentes. Abortando.")
-                 return None
+                logging.warning("[HEATMAP_CALIBRATOR] Dados nulos (NaN) ainda presentes. Abortando.")
+                return None
 
             if not pd.api.types.is_numeric_dtype(y):
-                 logging.warning(f"[HEATMAP_CALIBRATOR] Coluna target '{target}' não é numérica. Abortando.")
-                 return None
+                logging.warning(f"[HEATMAP_CALIBRATOR] Coluna target '{target}' não é numérica. Abortando.")
+                return None
 
             if not all(pd.api.types.is_numeric_dtype(X[col]) for col in X.columns):
-                 logging.warning("[HEATMAP_CALIBRATOR] Uma ou mais colunas de features não são numéricas. Abortando.")
-                 return None
+                logging.warning("[HEATMAP_CALIBRATOR] Uma ou mais colunas de features não são numéricas. Abortando.")
+                return None
 
             model = LinearRegression(positive=False)
             model.fit(X, y)
@@ -89,15 +97,15 @@ class HeatmapCalibrator:
 
             total_abs_weight = abs(coef_occupancy) + abs(coef_waiting) + abs(coef_flow)
             if total_abs_weight > 1e-6:
-                 norm_factor = 3.0 / total_abs_weight
-                 coef_occupancy *= norm_factor
-                 coef_waiting *= norm_factor
-                 coef_flow *= norm_factor
+                norm_factor = 3.0 / total_abs_weight
+                coef_occupancy *= norm_factor
+                coef_waiting *= norm_factor
+                coef_flow *= norm_factor
 
             new_weights = {
-                'weight_occupancy': round(coef_occupancy, 4),
-                'weight_waiting_time': round(coef_waiting, 4),
-                'weight_flow': round(-abs(coef_flow), 4)
+                "weight_occupancy": round(coef_occupancy, 4),
+                "weight_waiting_time": round(coef_waiting, 4),
+                "weight_flow": round(-abs(coef_flow), 4),
             }
 
             logging.info(f"[HEATMAP_CALIBRATOR] Calibração concluída. Novos pesos: {new_weights}")

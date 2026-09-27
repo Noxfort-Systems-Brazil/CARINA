@@ -48,8 +48,13 @@ class StreetInteractionHandlerProtocol(Protocol):
 
     edge_paths: Dict[str, cv.Path]
     selected_edge_id: str | None
+    base_hit_threshold: float
 
     def load_paths(self, edge_paths: Dict[str, cv.Path]) -> None: ...
+
+    def find_closest_edge(self, click_x: float, click_y: float) -> Tuple[str | None, float]: ...
+
+    def select_edge(self, edge_id: str | None) -> None: ...
 
     def handle_click(self, click_x: float, click_y: float, current_scale: float) -> None: ...
 
@@ -91,6 +96,11 @@ class MapStateManagerProtocol(Protocol):
 
     selected_edge_id: str | None
     selected_interactive_id: str | None
+    interactive_widgets: Dict[str, Any]
+
+    def check_widget_hit(self, x: float, y: float) -> str | None: ...
+
+    def get_closest_widget_distance(self, x: float, y: float) -> Tuple[str | None, float]: ...
 
     def set_selection(self, item_type: str | None, item_id: str | None) -> None: ...
 

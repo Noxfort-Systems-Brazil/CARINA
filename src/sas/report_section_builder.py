@@ -18,10 +18,12 @@
 # Author: Gabriel Moraes
 # Date: July 25, 2026
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from sas.report_template_provider import ReportTemplateProvider
 
 ENGINE_NAME = "CARINA v1.0 (SAS Engine)"
+
 
 class ReportSectionBuilder:
     """Constructs Markdown text for each ABNT report section with dynamic sequential numbering."""
@@ -43,7 +45,9 @@ class ReportSectionBuilder:
 
     @staticmethod
     def build_summary_conclusions_section(resumo_consolidado: str, secao_conclusao: str, sec_num: int = 6) -> str:
-        return f"## {sec_num}. RESUMO CONSOLIDADO E RECOMENDAÇÕES DE AÇÃO\n\n{resumo_consolidado}\n\n{secao_conclusao}\n\n"
+        return (
+            f"## {sec_num}. RESUMO CONSOLIDADO E RECOMENDAÇÕES DE AÇÃO\n\n{resumo_consolidado}\n\n{secao_conclusao}\n\n"
+        )
 
     @staticmethod
     def build_comparative_section(clean_comp: str, sec_num: int = 7) -> str:
@@ -53,19 +57,19 @@ class ReportSectionBuilder:
 
     @staticmethod
     def build_final_opinion_section(
-        total_j_count: int, 
+        total_j_count: int,
         signalized_count: int,
         unsignalized_count: int,
-        add_count: int, 
+        add_count: int,
         optimize_count: int,
-        keep_count: int, 
+        keep_count: int,
         no_signal_count: int,
         slm_synthesis: str = "",
         agency_name: str = "Prefeitura Municipal",
         department_name: str = "Secretaria Municipal de Mobilidade e Trânsito",
         sec_num: int = 8,
         add_junction_ids: str = "",
-        optimize_junction_ids: str = ""
+        optimize_junction_ids: str = "",
     ) -> str:
         """
         Final Opinion Section
@@ -75,7 +79,11 @@ class ReportSectionBuilder:
         3. Formal signature block
         """
         slm_part = f"\n\n{slm_synthesis.strip()}" if slm_synthesis and len(slm_synthesis.strip()) > 10 else ""
-        clean_dept = department_name.replace("|", "").strip() if department_name else "Secretaria Municipal de Mobilidade e Trânsito"
+        clean_dept = (
+            department_name.replace("|", "").strip()
+            if department_name
+            else "Secretaria Municipal de Mobilidade e Trânsito"
+        )
         clean_agency = agency_name.replace("|", "").strip() if agency_name else "Prefeitura Municipal"
 
         add_ids_text = f" (IDs: {add_junction_ids})" if add_junction_ids else ""

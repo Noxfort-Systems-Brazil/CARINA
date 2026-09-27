@@ -22,16 +22,19 @@
 Define o DashboardSettingsCard, um widget componente para a tela de Configurações.
 """
 
+from typing import Any, Dict
+
 import flet as ft
-from typing import Dict, Any
 
 # --- CHANGE 1: Import LocaleManager for type annotation ---
 from ui.handlers.locale_manager import LocaleManager
+
 
 class DashboardSettingsCard(ft.Card):
     """
     Um Card que encapsula as configurações de visualização e do dashboard.
     """
+
     def __init__(self, initial_values: Dict[str, Any]):
         """
         Inicializa o Card com os valores fornecidos.
@@ -44,24 +47,25 @@ class DashboardSettingsCard(ft.Card):
         self.title_text = ft.Text(size=18, weight=ft.FontWeight.BOLD)
         self.dd_heatmap_strategy = ft.Dropdown(
             options=[ft.dropdown.Option("max"), ft.dropdown.Option("average")],
-            value=initial_values.get('heatmap_strategy', 'max'),
-            width=270
+            value=initial_values.get("heatmap_strategy", "max"),
+            width=270,
         )
         self.tf_heatmap_saturation = ft.TextField(
-            value=initial_values.get('heatmap_saturation', '100.0'),
-            input_filter=numeric_filter
+            value=initial_values.get("heatmap_saturation", "100.0"), input_filter=numeric_filter
         )
-        
+
         # --- Card Structure ---
         self.content = ft.Container(
             padding=15,
-            content=ft.Column([
-                self.title_text,
-                ft.Divider(),
-                ft.Container(height=5),
-                self.dd_heatmap_strategy,
-                self.tf_heatmap_saturation,
-            ])
+            content=ft.Column(
+                [
+                    self.title_text,
+                    ft.Divider(),
+                    ft.Container(height=5),
+                    self.dd_heatmap_strategy,
+                    self.tf_heatmap_saturation,
+                ]
+            ),
         )
 
     def get_values(self) -> Dict[str, Any]:
@@ -69,17 +73,18 @@ class DashboardSettingsCard(ft.Card):
         Retorna um dicionário com os valores atuais dos controles neste card.
         """
         return {
-            'heatmap_strategy': self.dd_heatmap_strategy.value,
-            'heatmap_saturation': self.tf_heatmap_saturation.value,
+            "heatmap_strategy": self.dd_heatmap_strategy.value,
+            "heatmap_saturation": self.tf_heatmap_saturation.value,
         }
 
     def set_values(self, values: Dict[str, Any]):
         """
         Atualiza os valores dos controles neste card com base no dicionário fornecido.
         """
-        self.dd_heatmap_strategy.value = values.get('heatmap_strategy', 'max')
-        self.tf_heatmap_saturation.value = values.get('heatmap_saturation', '100.0')
-        if self.page: self.update()
+        self.dd_heatmap_strategy.value = values.get("heatmap_strategy", "max")
+        self.tf_heatmap_saturation.value = values.get("heatmap_saturation", "100.0")
+        if self.page:
+            self.update()
 
     # --- CHANGE 2: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
@@ -88,4 +93,5 @@ class DashboardSettingsCard(ft.Card):
         self.title_text.value = lm.get_string("settings_view.dashboard_card.title")
         self.dd_heatmap_strategy.label = lm.get_string("settings_view.dashboard_card.heatmap_strategy")
         self.tf_heatmap_saturation.label = lm.get_string("settings_view.dashboard_card.heatmap_saturation")
-        if self.page: self.update()
+        if self.page:
+            self.update()

@@ -18,24 +18,28 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
+from typing import Any, Dict
+
 import flet as ft
-from typing import Dict, Any
+
 from ui.handlers.locale_manager import LocaleManager
+
 
 class TypographySection(ft.Column):
     """
     Sub-widget of ReportFormattingCard managing font selection, size, alignment, and line spacing.
     """
+
     def __init__(self, initial_values: Dict[str, Any]):
         super().__init__()
         self.spacing = 15
-        
+
         self.lbl_typography_title = ft.Text(weight=ft.FontWeight.BOLD)
         self.lbl_font = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_size = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_alignment = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_spacing = ft.Text(size=11, weight=ft.FontWeight.W_500)
-        
+
         self.dd_font_name = ft.Dropdown(
             options=[
                 ft.dropdown.Option("Arial", "Arial"),
@@ -45,9 +49,9 @@ class TypographySection(ft.Column):
                 ft.dropdown.Option("Verdana", "Verdana"),
             ],
             value=initial_values.get("xai_font_name", "Arial"),
-            width=200
+            width=200,
         )
-        
+
         self.dd_font_size = ft.Dropdown(
             options=[
                 ft.dropdown.Option("9", "9 pt"),
@@ -58,9 +62,9 @@ class TypographySection(ft.Column):
                 ft.dropdown.Option("16", "16 pt"),
             ],
             value=str(initial_values.get("xai_font_size", "11")),
-            width=120
+            width=120,
         )
-        
+
         self.dd_alignment = ft.Dropdown(
             options=[
                 ft.dropdown.Option("left", "À Esquerda"),
@@ -69,9 +73,9 @@ class TypographySection(ft.Column):
                 ft.dropdown.Option("justify", "Justificado"),
             ],
             value=initial_values.get("xai_alignment", "justify"),
-            width=180
+            width=180,
         )
-        
+
         self.dd_line_spacing = ft.Dropdown(
             options=[
                 ft.dropdown.Option("1.0", "Simples (1.0)"),
@@ -80,9 +84,9 @@ class TypographySection(ft.Column):
                 ft.dropdown.Option("2.0", "Duplo (2.0)"),
             ],
             value=str(initial_values.get("xai_line_spacing", "1.15")),
-            width=140
+            width=140,
         )
-        
+
         self.controls = [
             self.lbl_typography_title,
             ft.Row(
@@ -93,8 +97,8 @@ class TypographySection(ft.Column):
                     ft.Column([self.lbl_spacing, self.dd_line_spacing]),
                 ],
                 spacing=20,
-                alignment=ft.MainAxisAlignment.START
-            )
+                alignment=ft.MainAxisAlignment.START,
+            ),
         ]
 
     def get_values(self) -> Dict[str, Any]:
@@ -112,20 +116,34 @@ class TypographySection(ft.Column):
         self.dd_line_spacing.value = str(values.get("xai_line_spacing", "1.15"))
 
     def update_translations(self, lm: LocaleManager):
-        self.lbl_typography_title.value = lm.get_string("settings_view.formatting_card.typography_title", default="Tipografia e Espaçamento")
+        self.lbl_typography_title.value = lm.get_string(
+            "settings_view.formatting_card.typography_title", default="Tipografia e Espaçamento"
+        )
         self.lbl_font.value = lm.get_string("settings_view.formatting_card.font_label", default="Fonte")
         self.lbl_size.value = lm.get_string("settings_view.formatting_card.size_label", default="Tamanho")
         self.lbl_alignment.value = lm.get_string("settings_view.formatting_card.alignment_label", default="Alinhamento")
         self.lbl_spacing.value = lm.get_string("settings_view.formatting_card.spacing_label", default="Espaçamento")
-        
+
         if len(self.dd_alignment.options) >= 4:
-            self.dd_alignment.options[0].text = lm.get_string("settings_view.formatting_card.alignment_left", default="À Esquerda")
-            self.dd_alignment.options[1].text = lm.get_string("settings_view.formatting_card.alignment_center", default="Centralizado")
-            self.dd_alignment.options[2].text = lm.get_string("settings_view.formatting_card.alignment_right", default="À Direita")
-            self.dd_alignment.options[3].text = lm.get_string("settings_view.formatting_card.alignment_justify", default="Justificado")
-            
+            self.dd_alignment.options[0].text = lm.get_string(
+                "settings_view.formatting_card.alignment_left", default="À Esquerda"
+            )
+            self.dd_alignment.options[1].text = lm.get_string(
+                "settings_view.formatting_card.alignment_center", default="Centralizado"
+            )
+            self.dd_alignment.options[2].text = lm.get_string(
+                "settings_view.formatting_card.alignment_right", default="À Direita"
+            )
+            self.dd_alignment.options[3].text = lm.get_string(
+                "settings_view.formatting_card.alignment_justify", default="Justificado"
+            )
+
         if len(self.dd_line_spacing.options) >= 4:
-            self.dd_line_spacing.options[0].text = lm.get_string("settings_view.formatting_card.spacing_simple", default="Simples (1.0)")
+            self.dd_line_spacing.options[0].text = lm.get_string(
+                "settings_view.formatting_card.spacing_simple", default="Simples (1.0)"
+            )
             self.dd_line_spacing.options[1].text = "1.15"
             self.dd_line_spacing.options[2].text = "1.5"
-            self.dd_line_spacing.options[3].text = lm.get_string("settings_view.formatting_card.spacing_double", default="Duplo (2.0)")
+            self.dd_line_spacing.options[3].text = lm.get_string(
+                "settings_view.formatting_card.spacing_double", default="Duplo (2.0)"
+            )

@@ -19,7 +19,8 @@
 # Date: August 12, 2026
 
 import logging
-from typing import TYPE_CHECKING, Optional, Any, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
+
 from repositories.fluid_dynamics_query_provider import FluidDynamicsQueryProvider
 
 if TYPE_CHECKING:
@@ -30,10 +31,10 @@ class MFDDataFetcher:
     """
     Handles database queries for retrieving baseline timestamps and batch streaming
     fluid dynamics rows for MFD reconstruction.
-    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/fluid_dynamics_queries.json.
+    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/database/fluid_dynamics_queries.json.
     """
 
-    def __init__(self, db_manager: 'DatabaseManager'):
+    def __init__(self, db_manager: "DatabaseManager"):
         self.db = db_manager
         self.query_provider = FluidDynamicsQueryProvider(db_manager.engine)
 
@@ -84,6 +85,7 @@ class MFDDataFetcher:
                     if isinstance(c, str):
                         try:
                             from datetime import datetime
+
                             parsed_candidates.append(datetime.fromisoformat(c))
                         except Exception:
                             parsed_candidates.append(c)

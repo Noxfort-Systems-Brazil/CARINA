@@ -20,6 +20,7 @@
 
 import logging
 
+
 class RewardComputer:
     """
     Component specialized in calculating the Reward Function.
@@ -33,44 +34,44 @@ class RewardComputer:
             state_extractor: Reference to the state extractor (for lane map access).
         """
         self.state_extractor = state_extractor
-        
+
         # Load weights from configuration or use defensive default values
         self.weights = {
-            'queue': settings.getfloat('REWARD_WEIGHTS', 'weight_waiting_time', fallback=-2.0),
-            'occupancy': settings.getfloat('REWARD_WEIGHTS', 'weight_flow', fallback=-0.5)
+            "queue": settings.getfloat("REWARD_WEIGHTS", "weight_waiting_time", fallback=-2.0),
+            "occupancy": settings.getfloat("REWARD_WEIGHTS", "weight_flow", fallback=-0.5),
         }
-        
+
         logging.info(f"[REWARD_COMPUTER] Pesos carregados: {self.weights}")
 
     def calculate(self, tl_id: str, edges_data: dict) -> float:
         """
         Calculates the immediate reward for a specific agent based on edge states.
-        
+
         Args:
             tl_id (str): Traffic light ID.
             edges_data (dict): Edge traffic data (queues, occupancy).
-            
+
         Returns:
             float: Scalar reward value.
         """
         reward = 0.0
-        
+
         # Check if we have the lane mapping for this traffic light
-        if hasattr(self.state_extractor, 'tl_lanes') and tl_id in self.state_extractor.tl_lanes:
+        if hasattr(self.state_extractor, "tl_lanes") and tl_id in self.state_extractor.tl_lanes:
             lanes = self.state_extractor.tl_lanes[tl_id]
-            
+
             # Identifies unique edges (edges) associated with controlled lanes
             unique_edges = set()
             for lane in lanes:
                 # Remove the lane index to get the edge ID (ex: "edge_0" from "edge_0_1")
-                edge = lane.rpartition('_')[0]
+                edge = lane.rpartition("_")[0]
                 unique_edges.add(edge)
-            
+
             # Sums the penalties/rewards of all connected edges
             for edge in unique_edges:
                 if edge in edges_data:
                     data = edges_data[edge]
-                    reward += data.get('queue_length', 0) * self.weights['queue']
-                    reward += data.get('occupancy', 0) * self.weights['occupancy']
-                    
+                    reward += data.get("queue_length", 0) * self.weights["queue"]
+                    reward += data.get("occupancy", 0) * self.weights["occupancy"]
+
         return reward

@@ -21,19 +21,21 @@
 import queue
 from typing import Dict, Tuple
 
+
 class OverrideStateManager:
     """
     Responsible for managing manual command queues and tracking the override
     state for map elements (streets and traffic lights).
     """
+
     def __init__(self):
         self.command_queue = queue.Queue()
         self.semaphore_overrides: Dict[str, str] = {}
         self.street_overrides: Dict[str, str] = {}
-        
+
     def enqueue_command(self, command: dict):
         self.command_queue.put(command)
-        
+
     def process_queue(self):
         """Empties the queue and updates the override dictionaries."""
         while not self.command_queue.empty():
@@ -42,7 +44,7 @@ class OverrideStateManager:
                 cmd_type = cmd.get("type", "semaphore")
                 cmd_id = cmd.get("id")
                 cmd_state = cmd.get("state")
-                
+
                 if cmd_type == "street":
                     if cmd_state == "NORMAL":
                         self.street_overrides.pop(cmd_id, None)

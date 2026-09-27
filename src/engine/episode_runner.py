@@ -5,43 +5,14 @@
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 # File: src/engine/episode_runner.py
 # Author: Gabriel Moraes
-# Date: 2026-06-09
-
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/episode_runner.py (Fixed: Re-added Authorization logic, Decision Log and Detailed Timers)
-# Author: Gabriel Moraes
-# Date: November 1, 2025
+# Date: September 2026
 
 import configparser
 import logging
 import os
-
-# Add 'src' directory to path (kept)
 import sys
 import time
 from collections import defaultdict, deque
@@ -56,15 +27,13 @@ src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-
 from core.childhood_analyzer import ChildhoodAnalyzer
 from core.decision_coordinator import DecisionCoordinator
 from core.enums import Maturity
 from core.maturity_manager import MaturityManager
-
-# Imports that should not cause a cycle
 from core.system_reporter import SystemReporter
 from engine.action_filter import ActionFilter
+from engine.episode_override_manager import EpisodeOverrideManager
 from engine.guardian_communicator import GuardianCommunicator
 from engine.metrics_tracker import MetricsTracker
 from engine.state_history_manager import StateHistoryManager
@@ -92,11 +61,10 @@ class EpisodeRunner:
         strategic_coordinator: "StrategicCoordinator",
         childhood_analyzer: ChildhoodAnalyzer,
         action_authorizer: "ActionAuthorizer",
-        n_observations: int,  # Received from Trainer
+        n_observations: int,
         guardian_state_queue: Union[Queue, None] = None,
         guardian_signal_queue: Union[Queue, None] = None,
     ):
-
         self.settings = settings
         self.env = env
         self.learning_coordinator = learning_coordinator
@@ -108,9 +76,7 @@ class EpisodeRunner:
         self.n_observations = n_observations
 
         self.locale_manager = maturity_manager.locale_manager
-
         self.state_history: Dict[str, deque] = {}
-
         self.override_states: Dict[str, str] = {}
         self.current_operation_mode = "AUTOMATIC"
 
@@ -127,7 +93,6 @@ class EpisodeRunner:
         seq_len = self.settings.getint("AI_TRAINING", "sequence_length", fallback=4)
         self.state_history_manager = StateHistoryManager(seq_len, self.n_observations)
 
-        # Database manager for real-time telemetry streaming
         try:
             from database.database_manager import DatabaseManager
 
@@ -136,7 +101,6 @@ class EpisodeRunner:
             self.db_manager = None
             logging.warning(f"[EpisodeRunner] Could not initialize DatabaseManager: {e_db}")
 
-        # old sumolib or direct Lane object
         self.decision_coordinator = DecisionCoordinator(
             agents=population_manager.agents,
             neighborhoods=(
@@ -177,17 +141,15 @@ class EpisodeRunner:
             return {}
 
         self.state_history_manager.initialize_history(current_states_dict, list(self.population_manager.agents.keys()))
-
         self.current_operation_mode = current_states_dict.get("operation_mode", "AUTOMATIC")
 
         metrics_tracker = MetricsTracker()
         done = False
         step_count = 0
         last_decision_data = {}
-        self.latest_veto_map = {}  # Store the latest veto map from background thinking
+        self.latest_veto_map = {}
 
         logging.info(lm.get_string("episode_runner.run.start_unified").format(episode=episode_count))
-
         timer = StepTimer(self.log_step_progress, self.log_progress_frequency)
 
         while not done and step_count < self.episode_max_steps:
@@ -197,7 +159,6 @@ class EpisodeRunner:
                 break
 
             timer.mark_total_start()
-
             step_count += 1
             current_sim_time = 0.0
             try:
@@ -233,7 +194,7 @@ class EpisodeRunner:
                 current_states_dict,
                 self.state_history_manager.history,
                 self.current_operation_mode,
-                self.latest_veto_map,  # Inject background thought
+                self.latest_veto_map,
             )
             timer.mark_decision_end()
 
@@ -255,7 +216,6 @@ class EpisodeRunner:
                     for tl_id, data in last_decision_data.items()
                     if "state_sequence" in data and data["state_sequence"]
                 }
-            # Ensure we send something if augmented is missing
             state_to_send = augmented_states_dict if augmented_states_dict else current_states_dict
             self.guardian_comm.send_state(state_to_send, done)
             timer.mark_guardian_send_end()
@@ -276,22 +236,13 @@ class EpisodeRunner:
             timer.mark_analysis_post_start()
             timer.mark_analysis_post_end()
 
-            if next_states_dict:
-                if "operation_mode" in next_states_dict:
-                    self.current_operation_mode = next_states_dict["operation_mode"]
-                if "override_commands" in next_states_dict:
-                    commands = next_states_dict.pop("override_commands")
-                    for command in commands:
-                        semaphore_id = command.get("semaphore_id")
-                        state = command.get("state")
-                        if semaphore_id and state:
-                            self.decision_coordinator.override_states[semaphore_id] = state
-                            if self.env.action_supervisor:
-                                self.env.action_supervisor.apply_hardware_override(semaphore_id, state)
-                if "active_overrides" in next_states_dict:
-                    self.decision_coordinator.override_states.clear()
-                    self.decision_coordinator.override_states.update(next_states_dict.get("active_overrides", {}))
-                    next_states_dict.pop("active_overrides", None)
+            # Delegate overrides & operation mode to EpisodeOverrideManager (SRP)
+            self.current_operation_mode = EpisodeOverrideManager.process_overrides(
+                next_states_dict=next_states_dict,
+                decision_coordinator=self.decision_coordinator,
+                action_supervisor=self.env.action_supervisor,
+                current_operation_mode=self.current_operation_mode,
+            )
 
             timer.mark_learning_start()
             if rewards and last_decision_data:

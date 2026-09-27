@@ -29,26 +29,36 @@ from blocks.report_number_formatter import ReportNumberFormatter
 class ReportSemanticCleaner:
     """
     Responsibility (SRP): Enforces ABNT semantic consistency, unit masking, ABNT bold labels,
-    RL maturation purges, demographic hallucination purges, and list renumbering via rules in config/semantic_rules.json.
+    RL maturation purges, demographic hallucination purges, and list renumbering via rules in config/rules/semantic_rules.json.
     """
 
     _semantic_rules_cache = None
 
     @classmethod
     def _load_semantic_rules(cls) -> dict:
-        """Loads semantic consistency rules from config/semantic_rules.json into cache."""
+        """Loads semantic consistency rules from config/rules/semantic_rules.json into cache."""
         if cls._semantic_rules_cache is not None:
             return cls._semantic_rules_cache
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        json_path = os.path.join(base_dir, "config", "semantic_rules.json")
+        candidates = [
+            os.path.join(base_dir, "config", "rules", "semantic_rules.json"),
+            os.path.join(base_dir, "config", "semantic_rules.json"),
+        ]
 
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                cls._semantic_rules_cache = json.load(f)
-                logging.info(f"[REPORT_SEMANTIC_CLEANER] Loaded semantic rules from: {json_path}")
-        except Exception as e:
-            logging.error(f"[REPORT_SEMANTIC_CLEANER] Error loading semantic_rules.json from {json_path}: {e}")
+        loaded = False
+        for json_path in candidates:
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        cls._semantic_rules_cache = json.load(f)
+                        logging.info(f"[REPORT_SEMANTIC_CLEANER] Loaded semantic rules from: {json_path}")
+                        loaded = True
+                        break
+                except Exception as e:
+                    logging.error(f"[REPORT_SEMANTIC_CLEANER] Error loading semantic_rules.json from {json_path}: {e}")
+
+        if not loaded:
             cls._semantic_rules_cache = {}
 
         return cls._semantic_rules_cache

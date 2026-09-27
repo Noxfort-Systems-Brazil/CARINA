@@ -24,18 +24,20 @@ configuração da UI para o backend.
 """
 
 import logging
-from typing import Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 # Prevents circular import, allowing type annotation
 if TYPE_CHECKING:
     from ui.providers.live_data_provider import LiveDataProvider
+
 
 class SettingsClient:
     """
     Envia comandos de atualização de configurações para o backend através
     do provedor de dados em tempo real (WebSocket).
     """
-    def __init__(self, live_data_provider: 'LiveDataProvider'):
+
+    def __init__(self, live_data_provider: "LiveDataProvider"):
         """
         Inicializa o cliente de configurações.
 
@@ -59,30 +61,28 @@ class SettingsClient:
             logging.error("[SettingsClient] LiveDataProvider não foi fornecido. Impossível enviar configurações.")
             return
 
-        command = {
-            "type": "save_settings",
-            "payload": settings_payload
-        }
-        
+        command = {"type": "save_settings", "payload": settings_payload}
+
         self.live_data_provider.send_command_to_backend(command)
-        logging.info(f"[SettingsClient] Comando 'save_settings' enviado para o backend com {len(settings_payload)} chaves.")
+        logging.info(
+            f"[SettingsClient] Comando 'save_settings' enviado para o backend com {len(settings_payload)} chaves."
+        )
 
     def send_command(self, cmd_type: str, payload: Dict[str, Any]):
         """
         Envia um comando genérico para o backend.
-        
+
         Args:
             cmd_type (str): O tipo de comando (ex: 'set_hardware_connection').
             payload (Dict[str, Any]): Os dados associados ao comando.
         """
         if not self.live_data_provider:
-            logging.error(f"[SettingsClient] LiveDataProvider não foi fornecido. Impossível enviar comando '{cmd_type}'.")
+            logging.error(
+                f"[SettingsClient] LiveDataProvider não foi fornecido. Impossível enviar comando '{cmd_type}'."
+            )
             return
 
-        command = {
-            "type": cmd_type,
-            "payload": payload
-        }
-        
+        command = {"type": cmd_type, "payload": payload}
+
         self.live_data_provider.send_command_to_backend(command)
         logging.info(f"[SettingsClient] Comando '{cmd_type}' enviado para o backend.")

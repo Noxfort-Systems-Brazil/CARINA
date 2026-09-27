@@ -18,7 +18,7 @@
 # Author: Gabriel Moraes
 # Date: August 10, 2026
 
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 
 class IntersectionResolver:
@@ -51,7 +51,9 @@ class IntersectionResolver:
             if getattr(driver_wrapper, "is_connected", False):
                 drv_ip = getattr(driver_wrapper, "ip_address", "")
                 clean_driver_ip = drv_ip.split(":")[0] if ":" in drv_ip else drv_ip
-                if clean_req_ip == clean_driver_ip or (clean_req_ip in ["127.0.0.1", "localhost"] and clean_driver_ip in ["127.0.0.1", "localhost"]):
+                if clean_req_ip == clean_driver_ip or (
+                    clean_req_ip in ["127.0.0.1", "localhost"] and clean_driver_ip in ["127.0.0.1", "localhost"]
+                ):
                     return tl_id
 
         # 2. Check any active driver wrapper
@@ -68,10 +70,7 @@ class IntersectionResolver:
                 return tl_id
 
         # 4. Fallback: If only 1 connected intersection exists, resolve to it!
-        connected_ids = [
-            tid for tid, drv in self.active_connections.items()
-            if getattr(drv, "is_connected", False)
-        ]
+        connected_ids = [tid for tid, drv in self.active_connections.items() if getattr(drv, "is_connected", False)]
         if len(connected_ids) == 1:
             return connected_ids[0]
 
@@ -120,14 +119,18 @@ class IntersectionResolver:
 
         for pid in possible_ids:
             driver_wrapper = self.active_connections.get(pid)
-            if driver_wrapper and getattr(driver_wrapper, "is_connected", False) and getattr(driver_wrapper, "hardware_driver", None):
+            if (
+                driver_wrapper
+                and getattr(driver_wrapper, "is_connected", False)
+                and getattr(driver_wrapper, "hardware_driver", None)
+            ):
                 hw_drv = driver_wrapper.hardware_driver
                 brand = getattr(hw_drv, "brand", None)
                 model = getattr(hw_drv, "model", None)
                 return {
                     "is_connected": True,
                     "brand": brand if brand else "Não informado",
-                    "model": model if model else "Não informado"
+                    "model": model if model else "Não informado",
                 }
 
         return {"is_connected": False, "brand": "Desconectado", "model": "Desconectado"}

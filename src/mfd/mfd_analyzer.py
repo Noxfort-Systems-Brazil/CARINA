@@ -19,8 +19,9 @@
 # Date: July 03, 2026
 
 from mfd.mfd_baseline_manager import MFDReportBaselineManager
-from mfd.mfd_metrics_calculator import MFDMetricsCalculator
 from mfd.mfd_comparison_engine import MFDComparisonEngine
+from mfd.mfd_metrics_calculator import MFDMetricsCalculator
+
 
 class MFDAnalyzer:
     """
@@ -30,16 +31,20 @@ class MFDAnalyzer:
     """
 
     @staticmethod
-    def analyze(history: list, peak_prod: float, peak_accum: float, scenario_results_dir: str = None,
-                scenario_name: str = None, db_manager=None) -> dict:
+    def analyze(
+        history: list,
+        peak_prod: float,
+        peak_accum: float,
+        scenario_results_dir: str = None,
+        scenario_name: str = None,
+        db_manager=None,
+    ) -> dict:
         if not history:
             return {}
 
         # 1. Load baseline history files (last + first)
         last_data, first_data = MFDReportBaselineManager.load_baselines(
-            scenario_results_dir=scenario_results_dir,
-            scenario_name=scenario_name,
-            db_manager=db_manager
+            scenario_results_dir=scenario_results_dir, scenario_name=scenario_name, db_manager=db_manager
         )
 
         # 2. Calculate current run metrics, averages, trends and raw stats
@@ -50,7 +55,7 @@ class MFDAnalyzer:
             scenario_results_dir=scenario_results_dir,
             current_analysis_snapshot=metrics["raw_snapshot"],
             scenario_name=scenario_name,
-            db_manager=db_manager
+            db_manager=db_manager,
         )
 
         # 4. Format current run speed units and vehicles counts
@@ -60,7 +65,7 @@ class MFDAnalyzer:
             intersection_raw_stats=metrics["intersection_raw_stats"],
             avg_eff=metrics["avg_eff"],
             avg_prod=metrics["avg_prod"],
-            avg_accum=metrics["avg_accum"]
+            avg_accum=metrics["avg_accum"],
         )
 
         # 5. Compute comparison dimensions
@@ -68,14 +73,14 @@ class MFDAnalyzer:
             current_raw=metrics["raw_snapshot"],
             last_data=last_data,
             speed_factor=formatting["speed_factor"],
-            speed_label=formatting["speed_label"]
+            speed_label=formatting["speed_label"],
         )
 
         comparison_first = MFDComparisonEngine.compare_since_first(
             current_raw=metrics["raw_snapshot"],
             first_data=first_data,
             speed_factor=formatting["speed_factor"],
-            speed_label=formatting["speed_label"]
+            speed_label=formatting["speed_label"],
         )
 
         # 6. Build and return structured output
@@ -92,7 +97,6 @@ class MFDAnalyzer:
             "min_efficiency": round(metrics["min_eff"], 4),
             "network_state_percentages": metrics["state_pct"],
             "speed_unit": formatting["speed_label"],
-
             "trend_analysis_current_run": {
                 "average_speed_first_half": round(metrics["avg_speed_first"] * formatting["speed_factor"], 2),
                 "average_speed_second_half": round(metrics["avg_speed_second"] * formatting["speed_factor"], 2),
@@ -100,11 +104,9 @@ class MFDAnalyzer:
                 "efficiency_first_half": round(metrics["avg_eff_first"], 4),
                 "efficiency_second_half": round(metrics["avg_eff_second"], 4),
                 "efficiency_improvement_percentage": round(metrics["eff_diff_pct"], 2),
-                "overall_traffic_outcome": metrics["trend"]
+                "overall_traffic_outcome": metrics["trend"],
             },
-
             "intersections_current": formatting["intersection_current_stats"],
-
             "comparison_since_last_analysis": {
                 "last_analysis_timestamp": comparison_last["last_analysis_timestamp"],
                 "current_analysis_timestamp": metrics["current_timestamp"],
@@ -118,9 +120,8 @@ class MFDAnalyzer:
                 "previous_efficiency": comparison_last["previous_efficiency"],
                 "current_efficiency": comparison_last["current_efficiency"],
                 "global_efficiency_change_pct": comparison_last["global_efficiency_change_pct"],
-                "intersection_comparisons": comparison_last["intersection_comparisons"]
+                "intersection_comparisons": comparison_last["intersection_comparisons"],
             },
-
             "comparison_since_first_analysis": {
                 "first_analysis_timestamp": comparison_first["first_analysis_timestamp"],
                 "current_analysis_timestamp": metrics["current_timestamp"],
@@ -132,6 +133,6 @@ class MFDAnalyzer:
                 "current_speed": comparison_first["current_speed"],
                 "baseline_queue": comparison_first["baseline_queue"],
                 "current_queue": comparison_first["current_queue"],
-                "intersection_comparisons": comparison_first["intersection_comparisons"]
-            }
+                "intersection_comparisons": comparison_first["intersection_comparisons"],
+            },
         }

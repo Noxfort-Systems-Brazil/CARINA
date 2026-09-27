@@ -18,49 +18,66 @@
 # Author: Gabriel Moraes
 # Date: November 22, 2025
 
+from typing import Any, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 from torch.nn.utils import weight_norm
-from typing import Tuple, List, Optional, Any
+
 
 class Chomp1d(nn.Module):
     """
     Removes extra right padding to ensure causality.
     This ensures that the output at t depends only on inputs t, t-1, ...
     """
+
     def __init__(self, chomp_size: int) -> None:
         super(Chomp1d, self).__init__()
         self.chomp_size = chomp_size
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x[:, :, :-self.chomp_size].contiguous()
+        return x[:, :, : -self.chomp_size].contiguous()
+
 
 class TemporalBlock(nn.Module):
     """
     Um bloco residual TCN padrão consistindo de duas convoluções dilatadas,
     normalização de peso, ReLU, Dropout e corte (Chomp).
     """
-    def __init__(self, n_inputs: int, n_outputs: int, kernel_size: int, stride: int, dilation: int, padding: int, dropout: float = 0.2) -> None:
+
+    def __init__(
+        self,
+        n_inputs: int,
+        n_outputs: int,
+        kernel_size: int,
+        stride: int,
+        dilation: int,
+        padding: int,
+        dropout: float = 0.2,
+    ) -> None:
         super(TemporalBlock, self).__init__()
-        
+
         # First convolutional layer
-        self.conv1 = weight_norm(nn.Conv1d(n_inputs, n_outputs, kernel_size,
-                                           stride=stride, padding=padding, dilation=dilation))
+        self.conv1 = weight_norm(
+            nn.Conv1d(n_inputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
+        )
         self.chomp1 = Chomp1d(padding)
         self.relu1 = nn.ReLU()
         self.dropout1 = nn.Dropout(dropout)
 
         # Second convolutional layer
-        self.conv2 = weight_norm(nn.Conv1d(n_outputs, n_outputs, kernel_size,
-                                           stride=stride, padding=padding, dilation=dilation))
+        self.conv2 = weight_norm(
+            nn.Conv1d(n_outputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
+        )
         self.chomp2 = Chomp1d(padding)
         self.relu2 = nn.ReLU()
         self.dropout2 = nn.Dropout(dropout)
 
-        self.net = nn.Sequential(self.conv1, self.chomp1, self.relu1, self.dropout1,
-                                 self.conv2, self.chomp2, self.relu2, self.dropout2)
-        
+        self.net = nn.Sequential(
+            self.conv1, self.chomp1, self.relu1, self.dropout1, self.conv2, self.chomp2, self.relu2, self.dropout2
+        )
+
         # Residual connection (downsample if dimensions change)
         self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
         self.relu = nn.ReLU()
@@ -77,62 +94,66 @@ class TemporalBlock(nn.Module):
         res = x if self.downsample is None else self.downsample(x)
         return self.relu(out + res)
 
+
 class TemporalConvNet(nn.Module):
     """
     A rede TCN completa, composta por uma pilha de TemporalBlocks.
     """
+
     def __init__(self, num_inputs: int, num_channels: List[int], kernel_size: int = 2, dropout: float = 0.2) -> None:
         super(TemporalConvNet, self).__init__()
         layers: List[nn.Module] = []
         num_levels = len(num_channels)
         for i in range(num_levels):
-            dilation_size = 2 ** i
-            in_channels = num_inputs if i == 0 else num_channels[i-1]
+            dilation_size = 2**i
+            in_channels = num_inputs if i == 0 else num_channels[i - 1]
             out_channels = num_channels[i]
-            layers += [TemporalBlock(in_channels, out_channels, kernel_size, stride=1,
-                                     dilation=dilation_size,
-                                     padding=(kernel_size-1) * dilation_size, dropout=dropout)]
+            layers += [
+                TemporalBlock(
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    stride=1,
+                    dilation=dilation_size,
+                    padding=(kernel_size - 1) * dilation_size,
+                    dropout=dropout,
+                )
+            ]
 
         self.network = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.network(x)
 
+
 class ActorCriticNet(nn.Module):
     """
     Actor-Critic network using TCN as the base for temporal processing.
     Replaces the LSTM-based version while maintaining I/O compatibility.
     """
+
     def __init__(self, n_observations: int, n_actions: int, hidden_size: int = 128, dropout_p: float = 0.1) -> None:
         super(ActorCriticNet, self).__init__()
-        
+
         # TCN Configuration
         # We define 2 levels with hidden_size channels each.
         # This creates a reasonable receptive field for short/medium sequences.
         num_channels = [hidden_size, hidden_size]
         kernel_size = 3
-        
+
         # TCN processes the temporal dimension
         self.tcn = TemporalConvNet(n_observations, num_channels, kernel_size=kernel_size, dropout=dropout_p)
-        
+
         # Processing layers after TCN
         self.post_tcn_layer = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.ReLU(),
-            nn.Dropout(dropout_p)
+            nn.Linear(hidden_size, hidden_size), nn.LayerNorm(hidden_size), nn.ReLU(), nn.Dropout(dropout_p)
         )
-        
+
         # Actor Head (Policy): Determines the probability of each action
-        self.actor_head = nn.Sequential(
-            nn.Linear(hidden_size, n_actions),
-            nn.Softmax(dim=-1)
-        )
-        
+        self.actor_head = nn.Sequential(nn.Linear(hidden_size, n_actions), nn.Softmax(dim=-1))
+
         # Critical Head (Value): Estimates the value of the current state
-        self.critic_head = nn.Sequential(
-            nn.Linear(hidden_size, 1)
-        )
+        self.critic_head = nn.Sequential(nn.Linear(hidden_size, 1))
 
     def forward(self, state_sequence: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -144,20 +165,20 @@ class ActorCriticNet(nn.Module):
         # The TCN expects input in the format [batch_size, channels (n_obs), sequence_length]
         # We need to transpose the input, as the PPO sends [batch, seq, obs]
         x = state_sequence.transpose(1, 2)
-        
+
         # Pass through TCN
-        y = self.tcn(x) 
+        y = self.tcn(x)
         # Output y: [batch_size, hidden_size, sequence_length]
-        
+
         # We only take the output of the last time step (equivalent to LSTM output[-1])
         # This represents the encoding of all history up to the present moment.
         last_timestep = y[:, :, -1]
-        
+
         # Final processing
         features = self.post_tcn_layer(last_timestep)
-        
+
         # Heads
         action_probs = self.actor_head(features)
         state_value = self.critic_head(features)
-        
+
         return action_probs, state_value

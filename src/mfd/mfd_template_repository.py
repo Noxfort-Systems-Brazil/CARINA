@@ -18,16 +18,17 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-import os
 import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any, Dict, List
+
 
 class MFDTemplateRepository:
     """
     Responsibility (SRP & DIP): Handles file I/O operations for reading modular MFD report templates
     (mfd_report_sections.json, mfd_table_templates.json, mfd_summary_directives.json, mfd_audit_sheet_templates.json)
-    from config/ and managing memory caching with 100% backwards compatibility.
+    from config/templates/mfd/ and managing memory caching with 100% backwards compatibility.
     Follows SOLID principles.
     """
 
@@ -37,13 +38,13 @@ class MFDTemplateRepository:
         "mfd_report_sections.json",
         "mfd_table_templates.json",
         "mfd_summary_directives.json",
-        "mfd_audit_sheet_templates.json"
+        "mfd_audit_sheet_templates.json",
     ]
 
     @classmethod
     def load_templates(cls) -> Dict[str, Any]:
         """
-        Loads report templates from specialized JSON files in config/ with caching.
+        Loads report templates from specialized JSON files in config/templates/mfd/ with caching.
 
         :return: Unified dictionary containing parsed JSON template configurations
         """
@@ -51,14 +52,22 @@ class MFDTemplateRepository:
             return cls._templates_cache
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        config_dir = os.path.join(base_dir, "config")
         unified_cache: Dict[str, Any] = {}
 
         for config_filename in cls._MODULAR_CONFIG_FILES:
-            json_path = os.path.join(config_dir, config_filename)
-            if os.path.exists(json_path):
+            candidates = [
+                os.path.join(base_dir, "config", "templates", "mfd", config_filename),
+                os.path.join(base_dir, "config", config_filename),
+            ]
+            json_path = None
+            for p in candidates:
+                if os.path.exists(p):
+                    json_path = p
+                    break
+
+            if json_path:
                 try:
-                    with open(json_path, 'r', encoding='utf-8') as f:
+                    with open(json_path, "r", encoding="utf-8") as f:
                         file_content = json.load(f)
                         if isinstance(file_content, dict):
                             unified_cache.update(file_content)

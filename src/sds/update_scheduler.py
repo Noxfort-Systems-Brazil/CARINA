@@ -19,13 +19,13 @@
 # Date: April 25, 2026
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 
 class UpdateScheduler:
     """
     Manages the scheduling of periodic updates for heatmap visualization.
-    
+
     This class determines when enough time has passed to trigger a dashboard update
     based on configurable intervals similar to Waze and Google Maps update frequency.
     """
@@ -33,41 +33,41 @@ class UpdateScheduler:
     def __init__(self, update_interval: float = 5.0):
         """
         Initializes the UpdateScheduler.
-        
+
         Args:
             update_interval (float): Seconds between visual updates (similar to Waze/Maps: 5-30 seconds).
         """
         self.update_interval = update_interval
         self.last_update_time = 0.0
         self.first_sample_time = None
-        
+
         logging.info(f"[UpdateScheduler] Initialized with {update_interval}s update interval")
 
     def should_update(self, current_time: float) -> bool:
         """
         Checks if enough time has passed to trigger a dashboard update.
-        
+
         Args:
             current_time (float): The current timestamp
-            
+
         Returns:
             bool: True if update is due
         """
         # If no samples have been collected yet, no update is due
         if self.first_sample_time is None:
             return False
-            
+
         # If last_update_time is 0 (initial value), check against first_sample_time
         if self.last_update_time == 0.0:
             return (current_time - self.first_sample_time) >= self.update_interval
-            
+
         # Otherwise, check against last_update_time
         return (current_time - self.last_update_time) >= self.update_interval
 
     def update_last_update_time(self, current_time: float) -> None:
         """
         Updates the last update time to the current time.
-        
+
         Args:
             current_time (float): The current timestamp
         """
@@ -78,7 +78,7 @@ class UpdateScheduler:
     def set_first_sample_time(self, timestamp: float) -> None:
         """
         Sets the first sample time if not already set.
-        
+
         Args:
             timestamp (float): The timestamp of the first sample
         """

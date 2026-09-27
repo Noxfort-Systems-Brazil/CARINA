@@ -19,18 +19,19 @@
 # Date: July 25, 2026
 
 import re
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 try:
-    from docx.shared import Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml import parse_xml
     from docx.oxml.ns import nsdecls
+    from docx.shared import Pt
 except ImportError:
     pass
 
-from blocks.math_cleaner import clean_latex_math
 from blocks.docx_text_builder import add_formatted_text_to_paragraph
+from blocks.math_cleaner import clean_latex_math
+
 
 def render_markdown_table(doc, table_lines: list, font_name: str = "Arial", font_size: float = 9.5):
     """Parses markdown table lines and builds a styled graphic docx Table with 0.5pt borders and shaded header."""
@@ -38,12 +39,12 @@ def render_markdown_table(doc, table_lines: list, font_name: str = "Arial", font
     for line in table_lines:
         clean_l = line.strip()
         # Ignore separator lines like |---|---|
-        if re.match(r'^\|[\s:\|-]+\|?$', clean_l):
+        if re.match(r"^\|[\s:\|-]+\|?$", clean_l):
             continue
-        cells = [c.replace('|', '').strip() for c in clean_l.split('|')]
-        if cells and cells[0] == '':
+        cells = [c.replace("|", "").strip() for c in clean_l.split("|")]
+        if cells and cells[0] == "":
             cells = cells[1:]
-        if cells and cells[-1] == '':
+        if cells and cells[-1] == "":
             cells = cells[:-1]
         if cells:
             rows_data.append(cells)
@@ -55,11 +56,11 @@ def render_markdown_table(doc, table_lines: list, font_name: str = "Arial", font
     num_cols = max(len(r) for r in rows_data)
 
     table = doc.add_table(rows=num_rows, cols=num_cols)
-    table.style = 'Table Grid'
+    table.style = "Table Grid"
     table.autofit = True
 
     # Apply clean 0.5pt thin table grid borders
-    tblPr = table._element.xpath('w:tblPr')
+    tblPr = table._element.xpath("w:tblPr")
     if tblPr:
         borders_xml = parse_xml(
             f'<w:tblBorders {nsdecls("w")}>\n'
@@ -69,7 +70,7 @@ def render_markdown_table(doc, table_lines: list, font_name: str = "Arial", font
             f'  <w:right w:val="single" w:sz="4" w:space="0" w:color="B0BEC5"/>\n'
             f'  <w:insideH w:val="single" w:sz="4" w:space="0" w:color="E0E0E0"/>\n'
             f'  <w:insideV w:val="single" w:sz="4" w:space="0" w:color="E0E0E0"/>\n'
-            f'</w:tblBorders>'
+            f"</w:tblBorders>"
         )
         tblPr[0].append(borders_xml)
 
@@ -84,7 +85,7 @@ def render_markdown_table(doc, table_lines: list, font_name: str = "Arial", font
                 clean_cell_text = clean_latex_math(cell_text).replace("|", "").strip()
 
                 # Align numeric or short ID columns to center, text columns to left
-                clean_num_check = clean_cell_text.replace('.', '', 1).replace(',', '', 1).strip()
+                clean_num_check = clean_cell_text.replace(".", "", 1).replace(",", "", 1).strip()
                 if clean_num_check.isdigit() or len(clean_cell_text) <= 6:
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 else:
@@ -97,14 +98,17 @@ def render_markdown_table(doc, table_lines: list, font_name: str = "Arial", font
                     header_border = parse_xml(
                         f'<w:tcBorders {nsdecls("w")}>\n'
                         f'  <w:bottom w:val="single" w:sz="8" w:space="0" w:color="222222"/>\n'
-                        f'</w:tcBorders>'
+                        f"</w:tcBorders>"
                     )
                     tcPr.append(header_border)
-                    add_formatted_text_to_paragraph(p, clean_cell_text, font_size=font_size, bold=True, font_name=font_name)
+                    add_formatted_text_to_paragraph(
+                        p, clean_cell_text, font_size=font_size, bold=True, font_name=font_name
+                    )
                 else:
                     if row_idx % 2 == 1:
                         set_cell_background(cell, "F8FAFC")  # Subtle alternating row tint
                     add_formatted_text_to_paragraph(p, clean_cell_text, font_size=font_size, font_name=font_name)
+
 
 def set_cell_background(cell, fill_hex: str):
     """Applies a background fill color to a docx table cell."""

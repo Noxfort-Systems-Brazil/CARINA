@@ -54,12 +54,12 @@ class MonitorPayloadBuilder:
 
         level_final = level_upper if level_upper in ["INFO", "WARNING", "CRITICAL"] else "CRITICAL"
 
-        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+        current_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
         payload = {
             "category": category_final,
             "origin": MonitorPayloadBuilder.ORIGIN,
             "level": level_final,
             "message": str(message),
-            "occurred_at": current_time
+            "occurred_at": current_time,
         }
         return json.dumps(payload)

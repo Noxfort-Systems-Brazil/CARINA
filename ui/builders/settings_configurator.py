@@ -153,9 +153,6 @@ def build_settings_view(locale_manager, settings_client):
         warning_text_ref=warning_text,
     )
 
-    # Wire up the db toggle to the view's save mechanism
-    db_card.on_toggle_connection = lambda is_connected: view.save_silently()
-
     view.hardware_handler = hardware_handler
     view.hardware_card = hardware_card
     view.account_card = account_card

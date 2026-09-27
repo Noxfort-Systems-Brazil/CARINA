@@ -19,11 +19,12 @@
 # Date: August 8, 2026
 
 import logging
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from mfd.mfd_impact_labels import MFDImpactLabels
-from mfd.mfd_zone_calculator import MFDZoneCalculator
 from mfd.mfd_intersection_metrics_calculator import MFDIntersectionMetricsCalculator
+from mfd.mfd_zone_calculator import MFDZoneCalculator
+
 
 class MFDImpactCalculator:
     """
@@ -36,7 +37,9 @@ class MFDImpactCalculator:
     EVAL_LABELS = MFDImpactLabels.load_labels_config()
 
     @staticmethod
-    def calculate_full_impacts(stages_data: Dict[str, Any], history: List[Dict[str, Any]] = None, lang: str = "pt_br") -> Dict[str, Any]:
+    def calculate_full_impacts(
+        stages_data: Dict[str, Any], history: List[Dict[str, Any]] = None, lang: str = "pt_br"
+    ) -> Dict[str, Any]:
         """
         Orchestrate complete impact evaluation across physical speed, production, queue, delay, efficiency,
         zone statistics, and socio-environmental metrics.
@@ -123,7 +126,7 @@ class MFDImpactCalculator:
             queue_delta_pct=queue_delta_pct,
             delay_delta_pct=delay_delta_pct,
             eff_delta_pct=eff_delta_pct,
-            lang=lang
+            lang=lang,
         )
 
         return {
@@ -133,36 +136,36 @@ class MFDImpactCalculator:
                     "intermediate": round(speed_inter_kmh, 2),
                     "mature": round(speed_mature_kmh, 2),
                     "delta_pct": round(speed_delta_pct, 1),
-                    "evaluation": eval_labels["speed"]
+                    "evaluation": eval_labels["speed"],
                 },
                 "production": {
                     "initial": round(prod_init, 1),
                     "intermediate": round(inter.get("production", 0.0), 1),
                     "mature": round(prod_mature, 1),
                     "delta_pct": round(prod_delta_pct, 1),
-                    "evaluation": eval_labels["production"]
+                    "evaluation": eval_labels["production"],
                 },
                 "queue": {
                     "initial": round(queue_init, 1),
                     "intermediate": round(inter.get("avg_queue", 0.0), 1),
                     "mature": round(queue_mature, 1),
                     "delta_pct": round(queue_delta_pct, 1),
-                    "evaluation": eval_labels["queue"]
+                    "evaluation": eval_labels["queue"],
                 },
                 "delay": {
                     "initial": round(delay_init, 1),
                     "intermediate": round(inter.get("avg_delay", 0.0), 1),
                     "mature": round(delay_mature, 1),
                     "delta_pct": round(delay_delta_pct, 1),
-                    "evaluation": eval_labels["delay"]
+                    "evaluation": eval_labels["delay"],
                 },
                 "efficiency": {
                     "initial": round(eff_init, 4),
                     "intermediate": round(inter.get("efficiency", 0.0), 4),
                     "mature": round(eff_mature, 4),
                     "delta_pct": round(eff_delta_pct, 1),
-                    "evaluation": eval_labels["efficiency"]
-                }
+                    "evaluation": eval_labels["efficiency"],
+                },
             },
             "intersections_table": intersections_table,
             "mfd_zones": zone_stats,
@@ -170,8 +173,8 @@ class MFDImpactCalculator:
                 "man_hours_saved_daily": round(man_hours_saved_daily, 1),
                 "speed_gain_mature_pct": round(speed_delta_pct, 1),
                 "delay_reduction_mature_pct": round(abs(delay_delta_pct), 1),
-                "production_gain_mature_pct": round(prod_delta_pct, 1)
-            }
+                "production_gain_mature_pct": round(prod_delta_pct, 1),
+            },
         }
 
     @staticmethod

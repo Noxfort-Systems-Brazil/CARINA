@@ -5,7 +5,7 @@ aliases: [Database Architecture, Relational Schemas, Persistence Tier, Step Deci
 
 # 🗄️ Database Architecture & Relational Schemas
 
-This document details CARINA's persistence tier, connection pooling, asynchronous non-blocking telemetry batching ([`StepDecisionWorker`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/database/step_decision_worker.py), [`FluidDynamicsWriter`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/repositories/fluid_dynamics_writer.py)), 12-Factor App credentials, and relational table schemas for PostgreSQL and SQLite.
+This document details CARINA's persistence tier, connection pooling, asynchronous non-blocking telemetry batching ([`StepDecisionWorker`](../src/database/step_decision_worker.py), [`FluidDynamicsWriter`](../src/repositories/fluid_dynamics_writer.py)), 12-Factor App credentials, and relational table schemas for PostgreSQL and SQLite.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🔐 See [Security & Authentication](SECURITY_AND_AUTH.md) | 🚦 See [Hardware Drivers](HARDWARE_DRIVERS.md) | 🛠️ See [Developer Guides](DEVELOPER_GUIDES.md)
 
@@ -34,7 +34,7 @@ RealTime_Decision_Loop (< 0.001 ms RAM Push)
 
 ## 2. 12-Factor App Database Configuration
 
-In accordance with the 12-Factor App principles implemented in [`src/database/db_engine.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/database/db_engine.py), all database credentials are loaded directly from the [`.env`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/.env.example) environment file:
+In accordance with the 12-Factor App principles implemented in [`src/database/db_engine.py`](../src/database/db_engine.py), all database credentials are loaded directly from the [`.env`](../.env.example) environment file:
 
 ```bash
 CARINA_DB_USER=admin
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
 ```
 
 ### 3.5 Table: `users` (Security Tier)
-Stores operator accounts and hashed credentials managed by [`src/utils/security/user_repository.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/utils/security/user_repository.py).
+Stores operator accounts and hashed credentials managed by [`src/utils/security/user_repository.py`](../src/utils/security/user_repository.py).
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (

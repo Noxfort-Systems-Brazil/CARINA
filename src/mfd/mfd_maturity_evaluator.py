@@ -19,11 +19,13 @@
 # Date: 2026
 
 import logging
-from typing import Dict, Any, List
-from utils.locale_manager_backend import LocaleManagerBackend
+from typing import Any, Dict, List
+
+from mfd.mfd_fallback_factory import MFDFallbackFactory
 from mfd.mfd_map_resolver import MFDMapResolver
 from mfd.mfd_stage_aggregator import MFDStageAggregator
-from mfd.mfd_fallback_factory import MFDFallbackFactory
+from utils.locale_manager_backend import LocaleManagerBackend
+
 
 class MFDMaturityEvaluator:
     """
@@ -34,10 +36,7 @@ class MFDMaturityEvaluator:
     """
 
     @staticmethod
-    def extract_maturity_stages(
-        mfd_history_data: Dict[str, Any],
-        lang: str = "pt_br"
-    ) -> Dict[str, Any]:
+    def extract_maturity_stages(mfd_history_data: Dict[str, Any], lang: str = "pt_br") -> Dict[str, Any]:
         """
         Orchestrates the extraction and mathematical evaluation of representative metrics
         for the 3 maturation stages: CHILD (Baseline), TEEN (Intermediate), and ADULT (Mature).
@@ -66,11 +65,21 @@ class MFDMaturityEvaluator:
             level_mature_label = "Sample End (Optimized)"
         else:
             stage_init_label = lm.get_string("mfd.stage_initial", lang=lang, default="Fase Criança (Linha Base)")
-            stage_inter_label = lm.get_string("mfd.stage_intermediate", lang=lang, default="Fase Adolescente (Em Otimização)")
+            stage_inter_label = lm.get_string(
+                "mfd.stage_intermediate", lang=lang, default="Fase Adolescente (Em Otimização)"
+            )
             stage_mature_label = lm.get_string("mfd.stage_mature", lang=lang, default="Fase Adulta (Otimizado)")
-            level_init_label = lm.get_string("mfd.level_initial", lang=lang, default="Início da Amostragem (Ponto Zero / Plano Fixo Tradicional)")
-            level_inter_label = lm.get_string("mfd.level_intermediate", lang=lang, default="Meio da Amostragem (Aprendizado Ativo / Autonomia Supervisada)")
-            level_mature_label = lm.get_string("mfd.level_mature", lang=lang, default="Fim da Amostragem (Estado Estável / Otimizado 24/7)")
+            level_init_label = lm.get_string(
+                "mfd.level_initial", lang=lang, default="Início da Amostragem (Ponto Zero / Plano Fixo Tradicional)"
+            )
+            level_inter_label = lm.get_string(
+                "mfd.level_intermediate",
+                lang=lang,
+                default="Meio da Amostragem (Aprendizado Ativo / Autonomia Supervisada)",
+            )
+            level_mature_label = lm.get_string(
+                "mfd.level_mature", lang=lang, default="Fim da Amostragem (Estado Estável / Otimizado 24/7)"
+            )
 
         labels_dict = {
             "initial": stage_init_label,
@@ -78,7 +87,7 @@ class MFDMaturityEvaluator:
             "mature": stage_mature_label,
             "level_init": level_init_label,
             "level_inter": level_inter_label,
-            "level_mature": level_mature_label
+            "level_mature": level_mature_label,
         }
 
         history = mfd_history_data.get("history", [])
@@ -115,41 +124,84 @@ class MFDMaturityEvaluator:
                 child_snaps or [history[0]],
                 level_name=labels_dict["level_init"],
                 stage_label=labels_dict["initial"],
-                stage_key="initial"
+                stage_key="initial",
             )
             inter_metrics = MFDStageAggregator.aggregate_snapshots(
                 teen_snaps or [history[n // 2]],
                 level_name=labels_dict["level_inter"],
                 stage_label=labels_dict["intermediate"],
-                stage_key="intermediate"
+                stage_key="intermediate",
             )
             mature_metrics = MFDStageAggregator.aggregate_snapshots(
                 adult_snaps or [history[-1]],
                 level_name=labels_dict["level_mature"],
                 stage_label=labels_dict["mature"],
-                stage_key="mature"
+                stage_key="mature",
             )
         elif n == 1:
-            initial_metrics = MFDStageAggregator.summarize_single_snapshot(history[0], level_name=labels_dict["level_init"], stage_label=labels_dict["initial"], stage_key="initial")
-            inter_metrics = MFDStageAggregator.summarize_single_snapshot(history[0], level_name=labels_dict["level_inter"], stage_label=labels_dict["intermediate"], stage_key="intermediate")
-            mature_metrics = MFDStageAggregator.summarize_single_snapshot(history[0], level_name=labels_dict["level_mature"], stage_label=labels_dict["mature"], stage_key="mature")
+            initial_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[0],
+                level_name=labels_dict["level_init"],
+                stage_label=labels_dict["initial"],
+                stage_key="initial",
+            )
+            inter_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[0],
+                level_name=labels_dict["level_inter"],
+                stage_label=labels_dict["intermediate"],
+                stage_key="intermediate",
+            )
+            mature_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[0],
+                level_name=labels_dict["level_mature"],
+                stage_label=labels_dict["mature"],
+                stage_key="mature",
+            )
         elif n == 2:
-            initial_metrics = MFDStageAggregator.summarize_single_snapshot(history[0], level_name=labels_dict["level_init"], stage_label=labels_dict["initial"], stage_key="initial")
-            inter_metrics = MFDStageAggregator.summarize_single_snapshot(history[0], level_name=labels_dict["level_inter"], stage_label=labels_dict["intermediate"], stage_key="intermediate")
-            mature_metrics = MFDStageAggregator.summarize_single_snapshot(history[1], level_name=labels_dict["level_mature"], stage_label=labels_dict["mature"], stage_key="mature")
+            initial_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[0],
+                level_name=labels_dict["level_init"],
+                stage_label=labels_dict["initial"],
+                stage_key="initial",
+            )
+            inter_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[0],
+                level_name=labels_dict["level_inter"],
+                stage_label=labels_dict["intermediate"],
+                stage_key="intermediate",
+            )
+            mature_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[1],
+                level_name=labels_dict["level_mature"],
+                stage_label=labels_dict["mature"],
+                stage_key="mature",
+            )
         else:
             idx_initial = 0
             idx_inter = n // 2
             idx_mature = n - 1
 
-            initial_metrics = MFDStageAggregator.summarize_single_snapshot(history[idx_initial], level_name=labels_dict["level_init"], stage_label=labels_dict["initial"], stage_key="initial")
-            inter_metrics = MFDStageAggregator.summarize_single_snapshot(history[idx_inter], level_name=labels_dict["level_inter"], stage_label=labels_dict["intermediate"], stage_key="intermediate")
-            mature_metrics = MFDStageAggregator.summarize_single_snapshot(history[idx_mature], level_name=labels_dict["level_mature"], stage_label=labels_dict["mature"], stage_key="mature")
+            initial_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[idx_initial],
+                level_name=labels_dict["level_init"],
+                stage_label=labels_dict["initial"],
+                stage_key="initial",
+            )
+            inter_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[idx_inter],
+                level_name=labels_dict["level_inter"],
+                stage_label=labels_dict["intermediate"],
+                stage_key="intermediate",
+            )
+            mature_metrics = MFDStageAggregator.summarize_single_snapshot(
+                history[idx_mature],
+                level_name=labels_dict["level_mature"],
+                stage_label=labels_dict["mature"],
+                stage_key="mature",
+            )
 
         comparison_metrics = MFDStageAggregator.calculate_comparative_metrics(
-            initial_metrics=initial_metrics,
-            inter_metrics=inter_metrics,
-            mature_metrics=mature_metrics
+            initial_metrics=initial_metrics, inter_metrics=inter_metrics, mature_metrics=mature_metrics
         )
 
         return {
@@ -159,7 +211,7 @@ class MFDMaturityEvaluator:
             "comparison_metrics": comparison_metrics,
             "total_steps_recorded": n,
             "peak_production": peak_prod,
-            "peak_accumulation": peak_accum
+            "peak_accumulation": peak_accum,
         }
 
     @staticmethod
@@ -172,38 +224,26 @@ class MFDMaturityEvaluator:
 
     @staticmethod
     def _generate_fallback_intersections(
-        stage_key: str = "initial",
-        avg_speed: float = 0.0,
-        avg_delay: float = 0.0,
-        avg_queue: float = 0.0
+        stage_key: str = "initial", avg_speed: float = 0.0, avg_delay: float = 0.0, avg_queue: float = 0.0
     ) -> Dict[str, Any]:
         """
         Delegates fallback intersection generation to MFDFallbackFactory.
         Maintains backward compatibility.
         """
         return MFDFallbackFactory.generate_fallback_intersections(
-            stage_key=stage_key,
-            avg_speed=avg_speed,
-            avg_delay=avg_delay,
-            avg_queue=avg_queue
+            stage_key=stage_key, avg_speed=avg_speed, avg_delay=avg_delay, avg_queue=avg_queue
         )
 
     @staticmethod
     def _summarize_stage(
-        point: Dict[str, Any],
-        level_name: str,
-        stage_label: str,
-        stage_key: str = "initial"
+        point: Dict[str, Any], level_name: str, stage_label: str, stage_key: str = "initial"
     ) -> Dict[str, Any]:
         """
         Delegates single snapshot summarization to MFDStageAggregator.
         Maintains backward compatibility.
         """
         return MFDStageAggregator.summarize_single_snapshot(
-            point=point,
-            level_name=level_name,
-            stage_label=stage_label,
-            stage_key=stage_key
+            point=point, level_name=level_name, stage_label=stage_label, stage_key=stage_key
         )
 
     @staticmethod

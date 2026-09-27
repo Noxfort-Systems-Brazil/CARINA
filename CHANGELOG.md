@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-25
+
+### Added
+- **Native Go Hardware Gateway (`src_go/` & `bin/carina-go`)**: Ultra-high-performance, compiled Go field micro-daemon handling real-world traffic signal controller communication (UDP 161 and 162). Transcribes NTCIP 1202 and UTMC2 protocols from Python to Go with sub-millisecond determinism, zero GIL contention, and minimal memory footprint (~3.5 MB static binary, `CGO_ENABLED=0`).
+- **Autonomous JSON OID Engine (`src_go/configs/` & `//go:embed`)**: Fully dynamic, configuration-driven OID mappings for NTCIP 1202 and UTMC2 loaded from JSON with embedded defaults, decoupling hardware variations from compiled code.
+- **Zero-Port Anonymous Pipe IPC (`src/drivers/go_gateway_client.py`)**: Communication between CARINA Python core and the Go Gateway runs strictly through standard OS pipes (`stdin`/`stdout`) via Line-Delimited JSON (NDJSON), opening zero host network ports and eliminating firewall/port collision risks.
+- **Atomic Safety Fail-Safe**: Immediate kernel-level fail-safe on `EOF` or `SIGPIPE`—if the Python AI process closes or encounters a fatal crash, the Go Gateway detects the closed pipe in microseconds and dispatches an emergency `release_control` via SNMP, restoring physical cabinets to their local fixed-time plans.
+- **Concurrent Keepalive & Trap Engine (`src_go/pkg/heartbeat/` & `traplistener/`)**: Microsecond-resolution ticker goroutines for 2.0s keepalive heartbeats per intersection and asynchronous UDP 162 trap decoding with automatic push dispatch to CARINA's `IncidentReporter`, `IncidentFilter`, and UI layers.
+- **Python Liskov Adapter (`src/drivers/go_driver_proxy.py` & `driver_factory.py`)**: Drop-in `BaseTrafficDriver` proxy seamlessly integrated into `DriverFactory` and `HardwareConnectionManager`, with zero breaking changes for `ActionSupervisor`, `StepProcessor`, or UI components.
+- **F.E.N.I.X. Process Supervisor & Self-Healing (`src/fenix/`)**: Complete crash recovery and high-availability subsystem. Features `FenixSupervisor` facade, `WindowedCrashRecoveryPolicy` with exponential backoff and crash rate limiting, `SubprocessRunner` with clean signal management, and `StateReconciler` with zero-collision stage boundary handover.
+- **Watchdog F.E.N.I.X. Integration (`src/watchdog/watchdog_logic.py`)**: Automatic trigger of F.E.N.I.X. resurrection (`on_fenix_trigger`) when process heartbeat failure is detected.
+- **Unit Test Suite Expansion (`tests/unit/`)**: Expanded test suite to 53 isolated test modules, adding comprehensive coverage for FENIX supervisor, process runner, recovery policy, state reconciler, Go gateway bridge, and Watchdog integration.
+
+---
+
+## [1.1.0] - 2026-09-15
+
+### Added
+- **Modular Settings Architecture (`src/settings/`)**: Fully decoupled configuration system conforming to SOLID principles. Features `ISettingsReader`, `ISettingsWriter`, `ISettingsStorage`, and `IEnvironmentProvider` interfaces, typed schema validation via `SettingsSchema`, INI file persistence via `IniFileStorage`, and 12-Factor `.env` secret resolution via `DotenvSecretProvider`, with backwards-compatible `SettingsManager` facade.
+- **Polymorphic Monitoring & Telemetry Transports (`src/transports/`)**: Flexible Strategy & Factory transport architecture (`BaseMonitorTransport`, `MonitorHttpTransport`, `MonitorMqttTransport`, `create_monitor_transport`). Supports both local/network MQTT brokers and remote HTTP/HTTPS cloud endpoints (REST APIs, Webhooks, Ngrok tunnels) with automated URL/IP classification.
+- **Hardware Incident Reporting & Filtering (`src/drivers/incident_reporter.py` & `incident_filter.py`)**: Asynchronous incident publisher capturing controller disconnects, failsafes, and status transitions with hash-based caching and debounce deduplication.
+- **Native System Tray Integration (`ui/handlers/tray_handler.py`)**: Multi-backend tray support (AyatanaAppIndicator and X11) powered by `pystray` and `Pillow`, featuring window minimization to tray and context menus.
+
+### Changed
+- **Dependencies Update (`requirements.txt` & `pyproject.toml`)**:
+  - Added missing `python-dotenv>=1.0.0` for 12-Factor environment secrets.
+  - Added `Pillow>=10.0.0` for desktop system tray icon processing.
+  - Upgraded `pysnmp` from deprecated `>=5.0.0` to modern LeXtudio `>=7.0.0` for Python 3.12 compatibility.
+  - Documented `pynvml>=11.5.0` for optional GPU/VRAM hardware metrics.
+- **Comprehensive Documentation Sync**: Updated `README.md`, `ARCHITECTURE.md`, `CARINA_MOC.md`, `API_REFERENCE.md`, `DEVELOPER_GUIDES.md`, `HARDWARE_DRIVERS.md`, `SECURITY_AND_AUTH.md`, and `TESTING.md` to reflect new modular subsystems, transport protocols, and 45 unit tests.
+
+---
+
 ## [1.0.0] - 2026-08-13
 
 ### Added

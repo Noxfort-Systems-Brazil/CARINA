@@ -29,13 +29,14 @@ itself. It delegates each responsibility to the appropriate specialist.
 """
 
 import logging
-import sumolib
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
-from mfd.snapshot import MFDSnapshot
+import sumolib
+
 from mfd.calculator import MFDCalculator
-from mfd.tracker import MFDTracker
 from mfd.classifier import MFDClassifier
+from mfd.snapshot import MFDSnapshot
+from mfd.tracker import MFDTracker
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,9 @@ class MacroscopicFundamentalDiagram:
     # Core Step Computation (Facade)
     # ─────────────────────────────────────────────────────────
 
-    def compute_step(self, edges_data: Dict[str, Dict[str, Any]], sim_time: float, intersections: dict = None) -> MFDSnapshot:
+    def compute_step(
+        self, edges_data: Dict[str, Dict[str, Any]], sim_time: float, intersections: dict = None
+    ) -> MFDSnapshot:
         """
         Computes network-wide MFD metrics for the current simulation step.
 
@@ -140,19 +143,13 @@ class MacroscopicFundamentalDiagram:
 
         # 1. Delegate computation to the Calculator
         production, accumulation, mean_speed, mean_density, mean_flow, active_edges = (
-            self._calculator.compute_network_metrics(
-                edges_data, self._edge_lengths, self._topology_loaded
-            )
+            self._calculator.compute_network_metrics(edges_data, self._edge_lengths, self._topology_loaded)
         )
 
         # 2. Compute derived metrics using the Tracker's peak state
         if self._tracker.is_warmed_up:
-            efficiency = self._calculator.compute_efficiency(
-                production, self._tracker.peak_production
-            )
-            congestion_ratio = self._calculator.compute_congestion_ratio(
-                accumulation, self._tracker.peak_accumulation
-            )
+            efficiency = self._calculator.compute_efficiency(production, self._tracker.peak_production)
+            congestion_ratio = self._calculator.compute_congestion_ratio(accumulation, self._tracker.peak_accumulation)
         else:
             efficiency = 1.0  # During warmup, assume optimal
             congestion_ratio = 0.0
@@ -168,7 +165,7 @@ class MacroscopicFundamentalDiagram:
             efficiency=efficiency,
             congestion_ratio=congestion_ratio,
             active_edges=active_edges,
-            intersections=intersections
+            intersections=intersections,
         )
 
         # 4. Delegate tracking to the Tracker

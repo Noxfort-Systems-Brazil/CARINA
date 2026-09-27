@@ -19,13 +19,13 @@
 # Date: July 10, 2026
 
 import logging
-from typing import Optional, Any
+from typing import Any, Optional
 
-from utils.locale_manager_backend import LocaleManagerBackend
 from database.database_manager import DatabaseManager
-from mfd.mfd_network_parser import MFDNetworkParser
 from mfd.mfd_db_fetcher import MFDDataFetcher
 from mfd.mfd_metrics_processor import MFDMetricsProcessor
+from mfd.mfd_network_parser import MFDNetworkParser
+from utils.locale_manager_backend import LocaleManagerBackend
 
 
 class MFDHistoryReconstructor:
@@ -67,7 +67,9 @@ class MFDHistoryReconstructor:
 
         t_child = self.get_earliest_child_timestamp()
         if t_child:
-            logging.info(f"[MFDHistoryReconstructor] Ancorando análise MFD no início da Fase Infância (CHILD / Linha Base) em {t_child}.")
+            logging.info(
+                f"[MFDHistoryReconstructor] Ancorando análise MFD no início da Fase Infância (CHILD / Linha Base) em {t_child}."
+            )
 
         history = []
         peak_production = 0.0
@@ -89,10 +91,19 @@ class MFDHistoryReconstructor:
                 has_rows = True
                 for row in rows:
                     if len(row) >= 8:
-                        collected_at, edge_id, density, mean_speed, queue_length, occupancy, edge_length, maturity_stage = row[:8]
+                        (
+                            collected_at,
+                            edge_id,
+                            density,
+                            mean_speed,
+                            queue_length,
+                            occupancy,
+                            edge_length,
+                            maturity_stage,
+                        ) = row[:8]
                     else:
                         collected_at, edge_id, density, mean_speed, queue_length, occupancy, edge_length = row[:7]
-                        maturity_stage = 'CHILD'
+                        maturity_stage = "CHILD"
 
                     timestamp_key = str(collected_at)
                     if current_timestamp is None:
@@ -116,12 +127,14 @@ class MFDHistoryReconstructor:
                         "queue_length": float(queue_length) if queue_length is not None else 0.0,
                         "occupancy": float(occupancy) if occupancy is not None else 0.0,
                         "edge_length": float(edge_length) if edge_length is not None else 100.0,
-                        "maturity_stage": maturity_stage
+                        "maturity_stage": maturity_stage,
                     }
 
             # Fallback to synapse_edge_phase_hourly_summary if no raw rows found
             if not has_rows:
-                logging.info("[MFDHistoryReconstructor] synapse_fluid_dynamics is empty. Reconstructing MFD from synapse_edge_phase_hourly_summary.")
+                logging.info(
+                    "[MFDHistoryReconstructor] synapse_fluid_dynamics is empty. Reconstructing MFD from synapse_edge_phase_hourly_summary."
+                )
                 query, params = self.db_fetcher.get_query_and_params(t_child, table="synapse_edge_phase_hourly_summary")
                 cursor.execute(query, params)
 
@@ -130,7 +143,16 @@ class MFDHistoryReconstructor:
                     if not rows:
                         break
                     for row in rows:
-                        collected_at, edge_id, density, mean_speed, queue_length, occupancy, edge_length, maturity_stage = row[:8]
+                        (
+                            collected_at,
+                            edge_id,
+                            density,
+                            mean_speed,
+                            queue_length,
+                            occupancy,
+                            edge_length,
+                            maturity_stage,
+                        ) = row[:8]
                         timestamp_key = str(collected_at)
                         if current_timestamp is None:
                             current_timestamp = timestamp_key
@@ -153,14 +175,12 @@ class MFDHistoryReconstructor:
                             "queue_length": float(queue_length) if queue_length is not None else 0.0,
                             "occupancy": float(occupancy) if occupancy is not None else 0.0,
                             "edge_length": float(edge_length) if edge_length is not None else 100.0,
-                            "maturity_stage": maturity_stage
+                            "maturity_stage": maturity_stage,
                         }
 
             # Process the last remaining step
             if current_edges:
-                step_data = self._process_mfd_step_data(
-                    current_timestamp, current_edges, edge_lengths, edge_to_tl
-                )
+                step_data = self._process_mfd_step_data(current_timestamp, current_edges, edge_lengths, edge_to_tl)
                 if step_data:
                     history.append(step_data)
                     if step_data["production"] > peak_production:
@@ -175,8 +195,4 @@ class MFDHistoryReconstructor:
         # 3. Post-process history
         self.metrics_processor.post_process_history(history, peak_production, peak_accumulation)
 
-        return {
-            "peak_production": peak_production,
-            "peak_accumulation": peak_accumulation,
-            "history": history
-        }
+        return {"peak_production": peak_production, "peak_accumulation": peak_accumulation, "history": history}

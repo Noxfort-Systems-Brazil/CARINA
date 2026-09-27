@@ -19,9 +19,11 @@
 # Date: July 03, 2026
 
 import time
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 from mfd.classifier import MFDClassifier
 from utils.settings_manager import SettingsManager
+
 
 def _classify_outcome(speed_change_pct: float) -> str:
     """Classify a speed change percentage into IMPROVED, STABLE, or WORSENED."""
@@ -120,12 +122,14 @@ class MFDMetricsCalculator:
                 "average_speed_m_s": round(avg_spd, 2),
                 "average_queue_length": round(avg_q, 2),
                 "average_production": round(avg_prd, 4),
-                "average_accumulation": round(avg_acc, 4)
+                "average_accumulation": round(avg_acc, 4),
             }
 
-        avg_global_queue_raw = sum(
-            intersection_raw_stats[tid]["average_queue_length"] for tid in intersection_ids
-        ) / len(intersection_ids) if intersection_ids else 0.0
+        avg_global_queue_raw = (
+            sum(intersection_raw_stats[tid]["average_queue_length"] for tid in intersection_ids) / len(intersection_ids)
+            if intersection_ids
+            else 0.0
+        )
 
         # Construct raw snapshot dictionary
         raw_snapshot = {
@@ -134,9 +138,9 @@ class MFDMetricsCalculator:
                 "average_speed_m_s": round(avg_speed, 2),
                 "average_queue_length": round(avg_global_queue_raw, 2),
                 "average_efficiency": round(avg_eff, 4),
-                "average_production": round(avg_prod, 4)
+                "average_production": round(avg_prod, 4),
             },
-            "intersections_stats": intersection_raw_stats
+            "intersections_stats": intersection_raw_stats,
         }
 
         return {
@@ -159,7 +163,7 @@ class MFDMetricsCalculator:
             "trend": trend,
             "intersection_ids": intersection_ids,
             "intersection_raw_stats": intersection_raw_stats,
-            "current_timestamp": current_timestamp
+            "current_timestamp": current_timestamp,
         }
 
     @staticmethod
@@ -173,8 +177,15 @@ class MFDMetricsCalculator:
         return 1.0, "m/s"
 
     @classmethod
-    def format_current_metrics(cls, global_speed: float, global_queue: float, intersection_raw_stats: dict,
-                               avg_eff: float, avg_prod: float, avg_accum: float) -> dict:
+    def format_current_metrics(
+        cls,
+        global_speed: float,
+        global_queue: float,
+        intersection_raw_stats: dict,
+        avg_eff: float,
+        avg_prod: float,
+        avg_accum: float,
+    ) -> dict:
         speed_factor, speed_label = cls.get_speed_factors()
 
         intersection_current_stats = {}
@@ -183,11 +194,11 @@ class MFDMetricsCalculator:
                 "average_speed": round(raw["average_speed_m_s"] * speed_factor, 2),
                 "average_queue_length": int(round(raw["average_queue_length"])),
                 "average_production": round(raw["average_production"] * speed_factor, 2),
-                "average_accumulation": int(round(raw["average_accumulation"]))
+                "average_accumulation": int(round(raw["average_accumulation"])),
             }
 
         return {
             "speed_factor": speed_factor,
             "speed_label": speed_label,
-            "intersection_current_stats": intersection_current_stats
+            "intersection_current_stats": intersection_current_stats,
         }

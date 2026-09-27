@@ -19,10 +19,12 @@
 # Date: 2026-06-10
 
 import json
-import os
 import logging
+import os
 import shutil
-from src.utils.paths import resource_path, get_user_config_dir
+
+from src.utils.paths import get_user_config_dir, resource_path
+
 
 class AliasManager:
     _instance = None
@@ -36,9 +38,9 @@ class AliasManager:
     def __init__(self):
         if self._initialized:
             return
-        
+
         self.filepath = os.path.join(get_user_config_dir(), "aliases.json")
-        
+
         # Migration from old path (config/aliases.json relative to project root)
         old_filepath = resource_path(os.path.join("config", "aliases.json"))
         if not os.path.exists(self.filepath) and os.path.exists(old_filepath):
@@ -47,7 +49,7 @@ class AliasManager:
                 logging.info(f"[AliasManager] Migrated aliases.json from {old_filepath} to {self.filepath}")
             except Exception as e:
                 logging.error(f"[AliasManager] Failed to migrate aliases.json: {e}")
-                
+
         self.aliases = {}
         self.load()
         self._initialized = True
@@ -55,7 +57,7 @@ class AliasManager:
     def load(self):
         if os.path.exists(self.filepath):
             try:
-                with open(self.filepath, 'r', encoding='utf-8') as f:
+                with open(self.filepath, "r", encoding="utf-8") as f:
                     self.aliases = json.load(f)
             except Exception as e:
                 logging.error(f"[AliasManager] Erro ao carregar aliases: {e}")
@@ -64,7 +66,7 @@ class AliasManager:
     def save(self):
         try:
             os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
-            with open(self.filepath, 'w', encoding='utf-8') as f:
+            with open(self.filepath, "w", encoding="utf-8") as f:
                 json.dump(self.aliases, f, indent=4)
         except Exception as e:
             logging.error(f"[AliasManager] Erro ao salvar aliases: {e}")

@@ -18,7 +18,8 @@
 # Author: Gabriel Moraes
 # Date: August 10, 2026
 
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
+
 from sas.report_template_provider import ReportTemplateProvider
 
 
@@ -72,11 +73,7 @@ class ReportIntersectionProcessor:
 
     @classmethod
     def process_single_intersection(
-        cls,
-        j_id: Any,
-        j_data: Dict[str, Any],
-        stats: Dict[str, Any],
-        ui_language: str = "pt_br"
+        cls, j_id: Any, j_data: Dict[str, Any], stats: Dict[str, Any], ui_language: str = "pt_br"
     ) -> Dict[str, Any]:
         """
         Parses junction metrics, determines recommendation status, extracts geometry,
@@ -133,5 +130,5 @@ class ReportIntersectionProcessor:
             "speed_p": speed_p,
             "speed_s": speed_s,
             "len_p": len_p,
-            "len_s": len_s
+            "len_s": len_s,
         }

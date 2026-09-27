@@ -18,11 +18,12 @@
 # Author: Gabriel Moraes
 # Date: July 29, 2026
 
-import os
 import logging
+import os
 from typing import Any
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [SLM_LOADER] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [SLM_LOADER] - %(levelname)s - %(message)s")
+
 
 class SLMModelLoader:
     """
@@ -45,27 +46,21 @@ class SLMModelLoader:
 
         if n_gpu_layers != 0:
             try:
-                logging.info(f"[SLMModelLoader] Loading GGUF model with GPU acceleration (gpu_layers={n_gpu_layers}): {model_path}")
-                model = Llama(
-                    model_path=model_path,
-                    n_ctx=8192,
-                    n_gpu_layers=n_gpu_layers,
-                    verbose=False
+                logging.info(
+                    f"[SLMModelLoader] Loading GGUF model with GPU acceleration (gpu_layers={n_gpu_layers}): {model_path}"
                 )
+                model = Llama(model_path=model_path, n_ctx=8192, n_gpu_layers=n_gpu_layers, verbose=False)
                 logging.info("[SLMModelLoader] GGUF model loaded successfully on GPU.")
                 return model
             except Exception as e:
-                logging.warning(f"[SLMModelLoader] GPU load failed (gpu_layers={n_gpu_layers}): {e}. Attempting CPU fallback...")
+                logging.warning(
+                    f"[SLMModelLoader] GPU load failed (gpu_layers={n_gpu_layers}): {e}. Attempting CPU fallback..."
+                )
 
         if model is None:
             try:
                 logging.info(f"[SLMModelLoader] Loading GGUF model on CPU (gpu_layers=0): {model_path}")
-                model = Llama(
-                    model_path=model_path,
-                    n_ctx=8192,
-                    n_gpu_layers=0,
-                    verbose=False
-                )
+                model = Llama(model_path=model_path, n_ctx=8192, n_gpu_layers=0, verbose=False)
                 logging.info("[SLMModelLoader] GGUF model loaded successfully on CPU.")
                 return model
             except ImportError:

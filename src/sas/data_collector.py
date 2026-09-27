@@ -19,25 +19,26 @@
 # Date: October 13, 2025
 
 import logging
-from collections import defaultdict, deque
 import math
-import sys
 import os
+import sys
+from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
+
 class DataCollector:
     """Accumulates performance and safety data of a simulation."""
 
-    def __init__(self, locale_manager: 'LocaleManagerBackend'):
+    def __init__(self, locale_manager: "LocaleManagerBackend"):
         """Initializes the data accumulators."""
         self.locale_manager = locale_manager
         self.total_waiting_time_per_lane = defaultdict(float)
@@ -53,7 +54,7 @@ class DataCollector:
         self.lane_to_edge_map = None
         self.edge_to_lanes_map = None
         # --- END OF CORRECTION ---
-        
+
         logging.info(self.locale_manager.get_string("sas_collector.init.collector_created"))
 
     def reset(self):
@@ -68,15 +69,16 @@ class DataCollector:
         # Resets caches so they are reloaded on the next run
         self.lane_to_edge_map = None
         self.edge_to_lanes_map = None
-        
+
         logging.info(self.locale_manager.get_string("sas_collector.reset.data_reset"))
-    
+
     def _find_nearest_junction(self, event_pos: tuple, junction_positions: dict) -> str | None:
-        if not junction_positions: return None
+        if not junction_positions:
+            return None
         nearest_junction_id = None
-        min_dist_sq = float('inf')
+        min_dist_sq = float("inf")
         for j_id, j_pos in junction_positions.items():
-            dist_sq = (event_pos[0] - j_pos[0])**2 + (event_pos[1] - j_pos[1])**2
+            dist_sq = (event_pos[0] - j_pos[0]) ** 2 + (event_pos[1] - j_pos[1]) ** 2
             if dist_sq < min_dist_sq:
                 min_dist_sq = dist_sq
                 nearest_junction_id = j_id
@@ -85,15 +87,17 @@ class DataCollector:
         return None
 
     def collect(self, raw_data: dict):
-        if not raw_data: return
+        if not raw_data:
+            return
         self._collect_step_counter += 1
 
         # --- PERFORMANCE FIX (Part 2): Lazy Map Loading ---
         # It only reads the XML file the first time.
         if self.lane_to_edge_map is None:
-            net_file = raw_data.get('net_file')
+            net_file = raw_data.get("net_file")
             if net_file:
                 from utils.network_parser import build_lane_to_edge_map
+
                 self.lane_to_edge_map = build_lane_to_edge_map(net_file, self.locale_manager)
                 self.edge_to_lanes_map = defaultdict(list)
                 if self.lane_to_edge_map:
@@ -102,34 +106,34 @@ class DataCollector:
         # --- END OF CORRECTION ---
 
         # Collection logic for infrastructure analysis (unchanged)
-        lane_waiting_times = raw_data.get('lane_waiting_time', {})
+        lane_waiting_times = raw_data.get("lane_waiting_time", {})
         for lane_id, time in lane_waiting_times.items():
             self.total_waiting_time_per_lane[lane_id] += time
-            
-        current_vehicles_per_lane = raw_data.get('lane_vehicle_ids', {})
+
+        current_vehicles_per_lane = raw_data.get("lane_vehicle_ids", {})
         if self._last_step_vehicles_per_lane:
             for lane_id, vehicles_before in self._last_step_vehicles_per_lane.items():
                 vehicles_after = set(current_vehicles_per_lane.get(lane_id, []))
                 departed_count = len(set(vehicles_before) - vehicles_after)
                 self.total_vehicles_departed_per_lane[lane_id] += departed_count
-        
-        junction_positions = raw_data.get('junction_positions', {})
-        emergency_positions = raw_data.get('sim_emergency_stop_positions', [])
+
+        junction_positions = raw_data.get("junction_positions", {})
+        emergency_positions = raw_data.get("sim_emergency_stop_positions", [])
         if emergency_positions and junction_positions:
             for event_pos in emergency_positions:
                 nearest_junction = self._find_nearest_junction(event_pos, junction_positions)
                 if nearest_junction:
                     self.conflict_events_per_junction[nearest_junction] += 1
-        
+
         # Collection logic for heatmap calibration
-        total_bad_events = len(emergency_positions) + raw_data.get('sim_starting_teleports_len', 0)
+        total_bad_events = len(emergency_positions) + raw_data.get("sim_starting_teleports_len", 0)
 
         # Create a snapshot for each street in this step
-        if self.edge_to_lanes_map: # Only runs if the street map has been loaded
+        if self.edge_to_lanes_map:  # Only runs if the street map has been loaded
             for edge_id, lanes in self.edge_to_lanes_map.items():
-                occupancies = [raw_data.get('lane_occupancies', {}).get(lane, 0.0) for lane in lanes]
-                waiting_times = [raw_data.get('lane_waiting_time', {}).get(lane, 0.0) for lane in lanes]
-                
+                occupancies = [raw_data.get("lane_occupancies", {}).get(lane, 0.0) for lane in lanes]
+                waiting_times = [raw_data.get("lane_waiting_time", {}).get(lane, 0.0) for lane in lanes]
+
                 flow = 0
                 if self._last_step_vehicles_per_lane:
                     for lane_id in lanes:
@@ -137,12 +141,14 @@ class DataCollector:
                         vehicles_after = set(current_vehicles_per_lane.get(lane_id, []))
                         flow += len(vehicles_before - vehicles_after)
 
-                self.calibration_data_points.append({
-                    'occupancy': max(occupancies) if occupancies else 0.0,
-                    'waiting_time': sum(waiting_times),
-                    'flow': flow,
-                    'bad_events': total_bad_events 
-                })
+                self.calibration_data_points.append(
+                    {
+                        "occupancy": max(occupancies) if occupancies else 0.0,
+                        "waiting_time": sum(waiting_times),
+                        "flow": flow,
+                        "bad_events": total_bad_events,
+                    }
+                )
 
         # MEMORY FIX: Shallow-copy only the lane IDs we need, breaking the reference
         # to the full raw_sim_data dict so the GC can free it promptly.
@@ -154,7 +160,7 @@ class DataCollector:
         processed_data = {
             "total_waiting_time_per_lane": dict(self.total_waiting_time_per_lane),
             "total_vehicles_departed_per_lane": dict(self.total_vehicles_departed_per_lane),
-            "conflict_events_per_junction": dict(self.conflict_events_per_junction)
+            "conflict_events_per_junction": dict(self.conflict_events_per_junction),
         }
         logging.info(self.locale_manager.get_string("sas_collector.get_data.data_processed"))
         return processed_data

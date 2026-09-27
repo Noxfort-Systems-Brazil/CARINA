@@ -18,49 +18,53 @@
 # Author: Gabriel Moraes
 # Date: 2026-07-01
 
+from typing import Any, Dict
+
 import flet as ft
-from typing import Dict, Any
+
 from ui.handlers.locale_manager import LocaleManager
+
 
 class MarginsSection(ft.Column):
     """
     Sub-widget of ReportFormattingCard managing page margins in centimeters.
     """
+
     def __init__(self, initial_values: Dict[str, Any]):
         super().__init__()
         self.spacing = 15
-        
+
         self.lbl_margins_title = ft.Text(weight=ft.FontWeight.BOLD)
         self.lbl_margin_top = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_margin_bottom = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_margin_left = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_margin_right = ft.Text(size=11, weight=ft.FontWeight.W_500)
-        
+
         self.tf_margin_top = ft.TextField(
             value=str(initial_values.get("xai_margin_top", "3.0")),
             width=100,
             text_align=ft.TextAlign.RIGHT,
-            keyboard_type=ft.KeyboardType.NUMBER
+            keyboard_type=ft.KeyboardType.NUMBER,
         )
         self.tf_margin_bottom = ft.TextField(
             value=str(initial_values.get("xai_margin_bottom", "2.0")),
             width=100,
             text_align=ft.TextAlign.RIGHT,
-            keyboard_type=ft.KeyboardType.NUMBER
+            keyboard_type=ft.KeyboardType.NUMBER,
         )
         self.tf_margin_left = ft.TextField(
             value=str(initial_values.get("xai_margin_left", "3.0")),
             width=100,
             text_align=ft.TextAlign.RIGHT,
-            keyboard_type=ft.KeyboardType.NUMBER
+            keyboard_type=ft.KeyboardType.NUMBER,
         )
         self.tf_margin_right = ft.TextField(
             value=str(initial_values.get("xai_margin_right", "2.0")),
             width=100,
             text_align=ft.TextAlign.RIGHT,
-            keyboard_type=ft.KeyboardType.NUMBER
+            keyboard_type=ft.KeyboardType.NUMBER,
         )
-        
+
         self.controls = [
             self.lbl_margins_title,
             ft.Row(
@@ -70,8 +74,8 @@ class MarginsSection(ft.Column):
                     ft.Column([self.lbl_margin_left, self.tf_margin_left]),
                     ft.Column([self.lbl_margin_right, self.tf_margin_right]),
                 ],
-                spacing=20
-            )
+                spacing=20,
+            ),
         ]
 
     def get_values(self) -> Dict[str, Any]:
@@ -89,7 +93,9 @@ class MarginsSection(ft.Column):
         self.tf_margin_right.value = str(values.get("xai_margin_right", "2.0"))
 
     def update_translations(self, lm: LocaleManager):
-        self.lbl_margins_title.value = lm.get_string("settings_view.formatting_card.margins_title", default="Margens da Página (centímetros)")
+        self.lbl_margins_title.value = lm.get_string(
+            "settings_view.formatting_card.margins_title", default="Margens da Página (centímetros)"
+        )
         self.lbl_margin_top.value = lm.get_string("settings_view.formatting_card.margin_top", default="Superior")
         self.lbl_margin_bottom.value = lm.get_string("settings_view.formatting_card.margin_bottom", default="Inferior")
         self.lbl_margin_left.value = lm.get_string("settings_view.formatting_card.margin_left", default="Esquerda")

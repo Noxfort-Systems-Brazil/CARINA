@@ -5,7 +5,7 @@ aliases: [Explainable AI, SAS Analytics, XAI Pipeline, Forensic Auditing]
 
 # 🔍 Explainable AI (XAI), Forensic Auditing & SAS Analytics
 
-This document specifies CARINA's forensic explainability pipeline located in [`src/xai/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai) and [`src/sas/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/sas). It details **Google Captum Integrated Gradients**, the 5 formal neural equations, Guardian Agent safety veto audit tables, and ABNT NBR 14724 report generation.
+This document specifies CARINA's forensic explainability pipeline located in [`src/xai/`](../src/xai) and [`src/sas/`](../src/sas). It details **Google Captum Integrated Gradients**, the 5 formal neural equations, Guardian Agent safety veto audit tables, and ABNT NBR 14724 report generation.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 📄 See [Report Blocks & Word](REPORT_BLOCKS_AND_TEMPLATES.md) | 🤖 See [Small Language Models](SLM_AND_LOCAL_LLM.md)
 
@@ -24,10 +24,10 @@ In municipal traffic management, black-box AI decisions are legally unacceptable
 ```
 
 The XAI pipeline uses a modular multi-agent builder architecture:
-- [`src/xai/multi_agent_report_builder.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/multi_agent_report_builder.py): Coordinates the generation of municipal reports across all intersections.
-- [`src/xai/captum_attribution_engine.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/captum_attribution_engine.py): Computes gradient attributions along the interpolation path from baseline to current input.
-- [`src/xai/network_attribution_aggregator.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/network_attribution_aggregator.py): Aggregates feature importance across arterial avenues.
-- [`src/xai/report_block_registry.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/xai/report_block_registry.py): Dispatches report sections to specialized renderers.
+- [`src/xai/multi_agent_report_builder.py`](../src/xai/multi_agent_report_builder.py): Coordinates the generation of municipal reports across all intersections.
+- [`src/xai/captum_attribution_engine.py`](../src/xai/captum_attribution_engine.py): Computes gradient attributions along the interpolation path from baseline to current input.
+- [`src/xai/network_attribution_aggregator.py`](../src/xai/network_attribution_aggregator.py): Aggregates feature importance across arterial avenues.
+- [`src/xai/report_block_registry.py`](../src/xai/report_block_registry.py): Dispatches report sections to specialized renderers.
 
 ---
 

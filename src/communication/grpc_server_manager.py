@@ -19,13 +19,16 @@
 # Date: 2026-06-09
 
 import logging
-import grpc
 from concurrent import futures
+
+import grpc
+
 
 class GrpcServerManager:
     """
     Manages the lifecycle of the gRPC server (start, stop, bind).
     """
+
     def __init__(self, settings, locale_manager, implementation_instance):
         self.settings = settings
         self.locale_manager = locale_manager
@@ -33,26 +36,41 @@ class GrpcServerManager:
         self.server = None
 
     def start(self):
-        server_port = self.settings.get('SYNAPSE', 'port', fallback='50051')
-        max_workers = self.settings.getint('SYNAPSE', 'max_workers', fallback=10)
-        
+        server_port = self.settings.get("SYNAPSE", "port", fallback="50051")
+        max_workers = self.settings.getint("SYNAPSE", "max_workers", fallback=10)
+
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-        
+
         try:
             import synapse_hft_pb2_grpc as pb2_grpc
+
             from communication.hft_server import CarinaHFTImpl
-            pb2_grpc.add_HFTLinkServicer_to_server(CarinaHFTImpl(self.implementation_instance, locale_manager=self.locale_manager), self.server)
+
+            pb2_grpc.add_HFTLinkServicer_to_server(
+                CarinaHFTImpl(self.implementation_instance, locale_manager=self.locale_manager), self.server
+            )
         except ImportError:
-            logging.critical(self.locale_manager.get_string("hft_server.import_failed", default="[GrpcServerManager] Failed to import generated gRPC modules. Ensure 'proto' folder exists."))
+            logging.critical(
+                self.locale_manager.get_string(
+                    "hft_server.import_failed",
+                    default="[GrpcServerManager] Failed to import generated gRPC modules. Ensure 'proto' folder exists.",
+                )
+            )
             return
 
-        bind_address = f'[::]:{server_port}'
+        bind_address = f"[::]:{server_port}"
         self.server.add_insecure_port(bind_address)
-        
-        logging.info(self.locale_manager.get_string("grpc_server.starting", default="[gRPC] Starting gRPC HFT Server on port {port}...", port=server_port))
+
+        logging.info(
+            self.locale_manager.get_string(
+                "grpc_server.starting", default="[gRPC] Starting gRPC HFT Server on port {port}...", port=server_port
+            )
+        )
         self.server.start()
 
     def stop(self):
         if self.server:
             self.server.stop(0)
-            logging.info(self.locale_manager.get_string("grpc_server.stopped", default="[gRPC] gRPC HFT Server stopped."))
+            logging.info(
+                self.locale_manager.get_string("grpc_server.stopped", default="[gRPC] gRPC HFT Server stopped.")
+            )

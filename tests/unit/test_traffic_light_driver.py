@@ -112,33 +112,44 @@ def test_traffic_light_driver_shutdown_calls_release_control():
 
         mock_hw.release_control.assert_called_once()
         mock_hw.stop_heartbeat.assert_called_once()
+        mock_hw.shutdown.assert_called_once()
         assert driver.is_connected is False
         assert driver.hardware_driver is None
 
 
 @pytest.mark.unit
-def test_ntcip_driver_release_control():
-    from src.drivers.ntcip_driver import NtcipDriver
+def test_go_traffic_driver_proxy_release_control():
+    from src.drivers.go_driver_proxy import GoTrafficDriverProxy
 
-    ntcip = NtcipDriver(ip_address="127.0.0.1", port=161, intersection_id="J_NTCIP")
-    ntcip.snmp_set = MagicMock(return_value=(True, "OK"))
+    mock_client = MagicMock()
+    mock_client.apply_action.return_value = True
 
-    result = ntcip.release_control()
+    proxy = GoTrafficDriverProxy(
+        ip_address="127.0.0.1",
+        port=161,
+        intersection_id="J_PROXY",
+        client=mock_client,
+    )
 
+    result = proxy.release_control()
     assert result is True
-    # Verify snmp_set was called for hold, force_off, omit, flash, dark
-    assert ntcip.snmp_set.call_count >= 5
+    mock_client.apply_action.assert_called_once_with("J_PROXY", {"action_type": "release_hold"})
 
 
 @pytest.mark.unit
-def test_utmc_driver_release_control():
-    from src.drivers.utmc_driver import UtmcDriver
+def test_go_traffic_driver_proxy_apply_decision():
+    from src.drivers.go_driver_proxy import GoTrafficDriverProxy
 
-    utmc = UtmcDriver(ip_address="127.0.0.1", port=161, intersection_id="J_UTMC")
-    utmc.snmp_set = MagicMock(return_value=(True, "OK"))
+    mock_client = MagicMock()
+    mock_client.apply_decision.return_value = True
 
-    result = utmc.release_control()
+    proxy = GoTrafficDriverProxy(
+        ip_address="127.0.0.1",
+        port=161,
+        intersection_id="J_PROXY_DECISION",
+        client=mock_client,
+    )
 
+    result = proxy.apply_decision("ADVANCE")
     assert result is True
-    # Verify snmp_set was called for hold, force_off, omit, flash, dark
-    assert utmc.snmp_set.call_count >= 5
+    mock_client.apply_decision.assert_called_once_with("J_PROXY_DECISION", "ADVANCE")

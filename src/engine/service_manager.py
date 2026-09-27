@@ -18,8 +18,8 @@
 # Author: Gabriel Moraes
 # Date: October 3, 2025
 
-import logging
 import configparser
+import logging
 import os
 from multiprocessing import Process, Queue
 from typing import TYPE_CHECKING
@@ -32,11 +32,12 @@ if TYPE_CHECKING:
 from safety.guardian_worker import run_guardian_worker
 from xai.xai_worker import run_xai_worker
 
+
 class ServiceManager:
     """Gerencia a inicialização e o encerramento dos processos de serviço."""
 
     # --- CHANGE 2: Modify the constructor ---
-    def __init__(self, locale_manager: 'LocaleManagerBackend'):
+    def __init__(self, locale_manager: "LocaleManagerBackend"):
         """Initializes the service manager."""
         self.locale_manager = locale_manager
         self.guardian_worker_process: Process | None = None
@@ -50,7 +51,7 @@ class ServiceManager:
         guardian_state_queue: Queue,
         guardian_signal_queue: Queue,
         scenario_dir: str,
-        agent_ids: list
+        agent_ids: list,
     ):
         """
         Inicia todos os processos de serviço em segundo plano.
@@ -62,18 +63,14 @@ class ServiceManager:
         self.guardian_worker_process = Process(
             target=run_guardian_worker,
             args=(settings, guardian_state_queue, guardian_signal_queue, scenario_dir, agent_ids),
-            name="GuardianWorker"
+            name="GuardianWorker",
         )
         self.guardian_worker_process.daemon = True
         self.guardian_worker_process.start()
         # --- CHANGE 5 ---
         logging.info(lm.get_string("service_manager.start.guardian_success", pid=self.guardian_worker_process.pid))
 
-        self.xai_worker_process = Process(
-            target=run_xai_worker,
-            args=(settings, scenario_dir),
-            name="XaiWorker"
-        )
+        self.xai_worker_process = Process(target=run_xai_worker, args=(settings, scenario_dir), name="XaiWorker")
         self.xai_worker_process.daemon = True
         self.xai_worker_process.start()
         # --- CHANGE 6 ---
@@ -86,11 +83,8 @@ class ServiceManager:
         lm = self.locale_manager
         # --- CHANGE 7 ---
         logging.info(lm.get_string("service_manager.stop.all"))
-        
-        processes = {
-            "Guardião Worker": self.guardian_worker_process,
-            "XAI Worker": self.xai_worker_process
-        }
+
+        processes = {"Guardião Worker": self.guardian_worker_process, "XAI Worker": self.xai_worker_process}
 
         for name, process in processes.items():
             if process and process.is_alive():

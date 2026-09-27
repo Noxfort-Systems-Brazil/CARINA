@@ -22,24 +22,27 @@
 Define o MapLegendWidget.
 """
 
-import flet as ft
 import os
+
+import flet as ft
 
 # --- CHANGE 1: Import LocaleManager ---
 from ui.handlers.locale_manager import LocaleManager
+
 
 class MapLegendWidget(ft.Container):
     """
     Um painel flutuante que exibe a legenda do mapa.
     """
+
     def __init__(self, locale_manager: LocaleManager):
         super().__init__(left=10, top=10)
 
         # --- CHANGE 2: Store LocaleManager and refactor text controls ---
         self.locale_manager = locale_manager
-        
+
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        
+
         def get_asset_path(icon_name: str) -> str:
             return os.path.join(project_root, "ui", "assets", icon_name)
 
@@ -49,25 +52,33 @@ class MapLegendWidget(ft.Container):
         self.text_remove = ft.Text(size=12)
 
         legend_items = [
-            ft.Row(controls=[ft.Image(src=get_asset_path("icon_existing.png"), width=24, height=24), self.text_existing], spacing=10),
-            ft.Row(controls=[ft.Image(src=get_asset_path("icon_add.png"), width=24, height=24), self.text_add], spacing=10),
-            ft.Row(controls=[ft.Image(src=get_asset_path("icon_remove.png"), width=24, height=24), self.text_remove], spacing=10),
+            ft.Row(
+                controls=[ft.Image(src=get_asset_path("icon_existing.png"), width=24, height=24), self.text_existing],
+                spacing=10,
+            ),
+            ft.Row(
+                controls=[ft.Image(src=get_asset_path("icon_add.png"), width=24, height=24), self.text_add], spacing=10
+            ),
+            ft.Row(
+                controls=[ft.Image(src=get_asset_path("icon_remove.png"), width=24, height=24), self.text_remove],
+                spacing=10,
+            ),
         ]
-        
+
         legend_content = ft.Column(controls=legend_items, spacing=8)
 
         # Main container settings
-        self.bgcolor="#A6000000"
-        self.border=ft.border.all(1, ft.Colors.WHITE24)
-        self.border_radius=10
-        self.padding=ft.padding.all(10)
-        self.content=ft.GestureDetector(
+        self.bgcolor = "#A6000000"
+        self.border = ft.border.all(1, ft.Colors.WHITE24)
+        self.border_radius = 10
+        self.padding = ft.padding.all(10)
+        self.content = ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.MOVE,
             drag_interval=10,
             on_pan_update=self._pan_update,
             content=legend_content,
         )
-        
+
     def did_mount(self):
         """Chamado quando o widget é montado na página."""
         self.update_translations(self.locale_manager)
@@ -78,7 +89,8 @@ class MapLegendWidget(ft.Container):
         self.text_existing.value = lm.get_string("planning_view.legend_existing")
         self.text_add.value = lm.get_string("planning_view.legend_add")
         self.text_remove.value = lm.get_string("planning_view.legend_remove")
-        if self.page: self.update()
+        if self.page:
+            self.update()
 
     def _pan_update(self, e: ft.DragUpdateEvent):
         """
@@ -96,5 +108,5 @@ class MapLegendWidget(ft.Container):
         else:
             self.left = new_left
             self.top = new_top
-        
+
         self.update()

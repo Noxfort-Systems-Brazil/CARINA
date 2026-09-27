@@ -18,11 +18,13 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-from typing import Dict, Any, List
-from mfd.mfd_template_repository import MFDTemplateRepository
-from mfd.mfd_table_formatter import MFDTableFormatter
-from mfd.mfd_justification_resolver import MFDJustificationResolver
+from typing import Any, Dict, List
+
 from mfd.mfd_audit_sheet_formatter import MFDAuditSheetFormatter
+from mfd.mfd_justification_resolver import MFDJustificationResolver
+from mfd.mfd_table_formatter import MFDTableFormatter
+from mfd.mfd_template_repository import MFDTemplateRepository
+
 
 class MFDTemplateProvider:
     """
@@ -67,11 +69,15 @@ class MFDTemplateProvider:
         return MFDJustificationResolver.generate_deterministic_justification(row, lang=lang)
 
     @classmethod
-    def get_intersection_audit_sheet_template(cls, row: Dict[str, Any], justification: str = None, lang: str = "pt_br") -> str:
+    def get_intersection_audit_sheet_template(
+        cls, row: Dict[str, Any], justification: str = None, lang: str = "pt_br"
+    ) -> str:
         """Delegates Anexo I Audit Sheet formatting to MFDAuditSheetFormatter."""
         return MFDAuditSheetFormatter.get_intersection_audit_sheet_template(row, justification=justification, lang=lang)
 
     @classmethod
-    def get_intersection_ficha_template(cls, row: Dict[str, Any], justificativa: str = None, lang: str = "pt_br") -> str:
+    def get_intersection_ficha_template(
+        cls, row: Dict[str, Any], justificativa: str = None, lang: str = "pt_br"
+    ) -> str:
         """Backwards-compatible alias for get_intersection_audit_sheet_template."""
         return cls.get_intersection_audit_sheet_template(row, justification=justificativa, lang=lang)

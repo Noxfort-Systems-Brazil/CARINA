@@ -5,7 +5,7 @@ aliases: [Traffic Engineering Warrants, Signal Warrants, MUTCD Analysis, Warrant
 
 # 🚦 Traffic Engineering Signal Warrants & Infrastructure Analysis
 
-This document specifies CARINA's engineering warrant analysis subsystem located in [`src/analysis/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/analysis). It details the mathematical formulation and automated evaluation of formal traffic signal warrants based on the **FHWA MUTCD** (Manual on Uniform Traffic Control Devices) and Brazilian municipal standards.
+This document specifies CARINA's engineering warrant analysis subsystem located in [`src/analysis/`](../src/analysis). It details the mathematical formulation and automated evaluation of formal traffic signal warrants based on the **FHWA MUTCD** (Manual on Uniform Traffic Control Devices) and Brazilian municipal standards.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 📈 See [MFD & Analytics](MFD_AND_ANALYTICS.md) | 🔍 See [Explainable AI & SAS](XAI_AND_SAS.md)
 
@@ -47,7 +47,7 @@ Evaluates whether traffic volume on intersecting streets meets minimum vehicular
 - **Condition B (Interruption of Continuous Traffic):** Traffic volume on a major street is so heavy that traffic on a minor intersecting street suffers excessive delay ($V_{major} \ge 750\text{ veh/h}$ and $V_{minor} \ge 75\text{ veh/h}$).
 
 ### 2.2 Warrant 2: Four-Hour Vehicular Volume
-Applies when volume on major and minor streets satisfies the MUTCD 4-hour curves plotted in [`src/analysis/warrant_math.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/analysis/warrant_math.py).
+Applies when volume on major and minor streets satisfies the MUTCD 4-hour curves plotted in [`src/analysis/warrant_math.py`](../src/analysis/warrant_math.py).
 
 ### 2.3 Warrant 3: Peak Hour Volume & Delay
 Evaluates whether traffic conditions during the single highest-volume hour of the day cause extreme delay or hazard:
@@ -66,7 +66,7 @@ Justifies signal installation to encourage concentration and organization of tra
 
 ## 3. Mathematical Utilities (`warrant_math.py`)
 
-Located in [`src/analysis/warrant_math.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/analysis/warrant_math.py):
+Located in [`src/analysis/warrant_math.py`](../src/analysis/warrant_math.py):
 - **85th-Percentile Speed Calculation:** Evaluates if posted speed limits should scale warrant threshold volumes down by 70% (applicable when major street speed exceeds $70\text{ km/h}$ or in isolated rural communities).
 - **Critical Flow Ratio:** Computes lane-by-lane saturation flows and degree of saturation ($X = v/c$).
 - **Moving-Window Accumulation:** Aggregates time-series samples into robust hourly volume bins.

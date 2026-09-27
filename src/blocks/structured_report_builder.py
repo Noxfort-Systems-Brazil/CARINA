@@ -18,23 +18,24 @@
 # Author: Gabriel Moraes
 # Date: July 24, 2026
 
-import os
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any, Dict, List
 
 try:
     from docx import Document
-    from docx.shared import Pt, Inches, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Inches, Pt, RGBColor
 except ImportError:
     logging.warning("[STRUCTURED_REPORT_BUILDER] python-docx not installed. DOCX reports will not be available.")
 
-from blocks.header import HeaderBlock
-from blocks.title import TitleBlock
-from blocks.metadata import MetadataBlock
 from blocks.chart import ChartBlock
 from blocks.content import ContentBlock
+from blocks.header import HeaderBlock
+from blocks.metadata import MetadataBlock
 from blocks.signature import SignatureBlock
+from blocks.title import TitleBlock
+
 
 class StructuredReportBuilder:
     """
@@ -49,7 +50,7 @@ class StructuredReportBuilder:
         "chart": ChartBlock(),
         "planning_map": ChartBlock(),
         "content": ContentBlock(),
-        "signature": SignatureBlock()
+        "signature": SignatureBlock(),
     }
 
     def __init__(self, block_order: List[str] = None) -> None:
@@ -70,14 +71,14 @@ class StructuredReportBuilder:
             line_spacing = float(config.get("line_spacing", 1.15))
 
             # Apply Normal style font, size, and black color
-            style = doc.styles['Normal']
+            style = doc.styles["Normal"]
             style.font.name = font_name
             style.font.size = Pt(font_size)
             style.font.color.rgb = RGBColor(0, 0, 0)
             style.paragraph_format.line_spacing = line_spacing
 
             # Apply black color to other styles if they exist
-            for style_name in ['Heading 1', 'Heading 2', 'Heading 3']:
+            for style_name in ["Heading 1", "Heading 2", "Heading 3"]:
                 if style_name in doc.styles:
                     s = doc.styles[style_name]
                     s.font.name = font_name
@@ -88,7 +89,7 @@ class StructuredReportBuilder:
                 "left": WD_ALIGN_PARAGRAPH.LEFT,
                 "center": WD_ALIGN_PARAGRAPH.CENTER,
                 "right": WD_ALIGN_PARAGRAPH.RIGHT,
-                "justify": WD_ALIGN_PARAGRAPH.JUSTIFY
+                "justify": WD_ALIGN_PARAGRAPH.JUSTIFY,
             }
             alignment_str = str(config.get("alignment", "justify"))
             style.paragraph_format.alignment = align_map.get(alignment_str.lower(), WD_ALIGN_PARAGRAPH.JUSTIFY)
@@ -111,6 +112,7 @@ class StructuredReportBuilder:
             if not context.get("_signature_rendered", False):
                 try:
                     from blocks.signature import SignatureBlock
+
                     SignatureBlock().build(doc, context, config)
                 except Exception as sig_err:
                     logging.warning(f"[STRUCTURED_REPORT_BUILDER] Fallback signature rendering failed: {sig_err}")

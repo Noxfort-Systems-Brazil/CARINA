@@ -17,4 +17,3 @@
 # File: src/mfd/__init__.py
 # Author: Gabriel Moraes
 # Date: 2026
-

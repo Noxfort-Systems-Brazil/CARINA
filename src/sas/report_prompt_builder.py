@@ -18,14 +18,26 @@
 # Author: Gabriel Moraes
 # Date: July 25, 2026
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from sas.sas_helpers import formatar_br
+
 
 class ReportPromptBuilder:
     """Builds structured inputs and prompts for LLM Transducer inference."""
 
     @staticmethod
-    def build_executive_summary_input(analysis_results: Dict[str, Any], light_results: Dict[str, Any], intervention_rate: float = 0.0, add_count: int = 0, optimize_count: int = 0, keep_count: int = 0, signalized_count: int = 0, unsignalized_count: int = 0, time_window_str: str = "") -> Dict[str, Any]:
+    def build_executive_summary_input(
+        analysis_results: Dict[str, Any],
+        light_results: Dict[str, Any],
+        intervention_rate: float = 0.0,
+        add_count: int = 0,
+        optimize_count: int = 0,
+        keep_count: int = 0,
+        signalized_count: int = 0,
+        unsignalized_count: int = 0,
+        time_window_str: str = "",
+    ) -> Dict[str, Any]:
         """Constructs input dictionary for executive summary generation including optimization and addition counts."""
         total_j = len(analysis_results)
         return {
@@ -46,8 +58,8 @@ class ReportPromptBuilder:
                 "unsignalized_count": unsignalized_count,
                 "qtd_sinalizados_criticos": optimize_count,
                 "qtd_nao_sinalizados_criticos": add_count,
-                "summary": "Análise técnica da malha viária"
-            }
+                "summary": "Análise técnica da malha viária",
+            },
         }
 
     @staticmethod
@@ -75,7 +87,7 @@ class ReportPromptBuilder:
             "mode": "INTERSECTION_DETAIL",
             "language": "pt_br",
             "intersection_id": clean_j_id,
-            "attributions": formatted_data
+            "attributions": formatted_data,
         }
 
     @staticmethod
@@ -84,27 +96,25 @@ class ReportPromptBuilder:
         return {
             "mode": "COMPARATIVE_REPORT",
             "language": "pt_br",
-            "attributions": {
-                "intersections_count": len(analysis_results)
-            }
+            "attributions": {"intersections_count": len(analysis_results)},
         }
 
     @staticmethod
     def build_final_opinion_input(
-        analysis_results: Dict[str, Any], 
-        light_results: Dict[str, Any], 
-        add_count: int, 
-        optimize_count: int, 
-        keep_count: int, 
-        no_signal_count: int, 
-        signalized_count: int = 0, 
+        analysis_results: Dict[str, Any],
+        light_results: Dict[str, Any],
+        add_count: int,
+        optimize_count: int,
+        keep_count: int,
+        no_signal_count: int,
+        signalized_count: int = 0,
         unsignalized_count: int = 0,
-        stats: Optional[Dict[str, Any]] = None
+        stats: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Constructs input dictionary for SLM qualitative synthesis with explicit subgroup variable names and real calculated statistics."""
         total_j = len(analysis_results)
         st = stats or {}
-        
+
         max_sat = st.get("max_saturation_val", 0.0)
         max_sat_id = st.get("max_saturation_junction_id", "N/A")
         max_delay = st.get("max_delay_val", 0.0)
@@ -142,6 +152,6 @@ class ReportPromptBuilder:
                 "optimize_junction_ids": optimize_ids,
                 "add_junction_ids": add_ids,
                 "keep_junction_ids": keep_ids,
-                "no_signal_junction_ids": no_signal_ids
-            }
+                "no_signal_junction_ids": no_signal_ids,
+            },
         }

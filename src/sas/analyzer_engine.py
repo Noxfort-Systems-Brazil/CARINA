@@ -18,11 +18,11 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
-import os
+import configparser
 import gc
 import logging
+import os
 import time
-import configparser
 from multiprocessing import Queue
 from typing import TYPE_CHECKING
 
@@ -39,13 +39,19 @@ class AnalyzerEngine:
     """Orchestrates infrastructure analysis statelessly via in-memory IPC queue."""
 
     UNIT_TO_SECONDS = {
-        'days': 86400,
-        'weeks': 604800,
-        'months': 2592000,
-        'years': 31536000,
+        "days": 86400,
+        "weeks": 604800,
+        "months": 2592000,
+        "years": 31536000,
     }
 
-    def __init__(self, settings: configparser.ConfigParser, db_data_queue: Queue, locale_manager: 'LocaleManagerBackend', sas_result_queue: Queue = None):
+    def __init__(
+        self,
+        settings: configparser.ConfigParser,
+        db_data_queue: Queue,
+        locale_manager: "LocaleManagerBackend",
+        sas_result_queue: Queue = None,
+    ):
         self.settings = settings
         self.locale_manager = locale_manager
         self.db_data_queue = db_data_queue
@@ -61,36 +67,47 @@ class AnalyzerEngine:
     def _get_required_seconds(self) -> int:
         required_seconds = 7 * 86400  # Default 7 days
         try:
-            if 'ANALYSIS_SCHEDULE' in self.settings:
-                section = self.settings['ANALYSIS_SCHEDULE']
-                value = section.getint('analysis_interval_value', 7)
-                unit = section.get('analysis_interval_unit', 'days').strip().lower()
+            if "ANALYSIS_SCHEDULE" in self.settings:
+                section = self.settings["ANALYSIS_SCHEDULE"]
+                value = section.getint("analysis_interval_value", 7)
+                unit = section.get("analysis_interval_unit", "days").strip().lower()
                 required_seconds = max(value, 1) * self.UNIT_TO_SECONDS.get(unit, 86400)
         except Exception as e:
             logging.warning(f"[ANALYZER_ENGINE] Could not read analysis frequency settings: {e}")
         return required_seconds
 
-    def run_analysis(self, accumulated_data: dict, sim_duration: float, scenario_name: str,
-                     net_file_path: str, run_id: int, calibration_data_points: list = None,
-                     db_manager=None):
+    def run_analysis(
+        self,
+        accumulated_data: dict,
+        sim_duration: float,
+        scenario_name: str,
+        net_file_path: str,
+        run_id: int,
+        calibration_data_points: list = None,
+        db_manager=None,
+    ):
         """Runs the full analysis pipeline."""
         lm = self.locale_manager
 
         if db_manager is None:
             try:
                 from database.database_manager import DatabaseManager
+
                 db_manager = DatabaseManager(self.locale_manager)
             except Exception as e:
                 logging.error(f"[ANALYZER_ENGINE] Failed to initialize DatabaseManager: {e}")
 
         from utils.paths import get_base_output_dir
+
         self.scenario_dir = os.path.join(get_base_output_dir(), "results", scenario_name)
         os.makedirs(self.scenario_dir, exist_ok=True)
 
         if sim_duration <= 0 or not net_file_path:
             logging.warning(lm.get_string("sas_engine.run.analysis_skipped_no_data"))
             if self.sas_result_queue:
-                self.sas_result_queue.put({"status": "error", "message": lm.get_string("sas_engine.run.analysis_skipped_no_data")})
+                self.sas_result_queue.put(
+                    {"status": "error", "message": lm.get_string("sas_engine.run.analysis_skipped_no_data")}
+                )
             return
 
         required_seconds = self._get_required_seconds()
@@ -98,7 +115,9 @@ class AnalyzerEngine:
 
         if db_manager is not None:
             db_time_range = db_manager.get_fluid_dynamics_time_range()
-            logging.info(f"[ANALYZER_ENGINE] Time span of traffic data in DB: {db_time_range:.1f}s (configured: {required_seconds:.1f}s)")
+            logging.info(
+                f"[ANALYZER_ENGINE] Time span of traffic data in DB: {db_time_range:.1f}s (configured: {required_seconds:.1f}s)"
+            )
             if db_time_range <= 0 and not accumulated_data:
                 err_msg = "Nenhum dado de tráfego disponível no banco de dados nem na sessão ativa."
                 logging.warning(f"[ANALYZER_ENGINE] {err_msg}")
@@ -110,30 +129,40 @@ class AnalyzerEngine:
         limit_sec = min(required_seconds, db_time_range) if db_time_range > 0 else 0
 
         if db_manager is not None and db_time_range > 0:
-            processed_data, true_traffic_light_ids = processor.process_historical_data(db_manager, net_file_path, limit_seconds=limit_sec)
+            processed_data, true_traffic_light_ids = processor.process_historical_data(
+                db_manager, net_file_path, limit_seconds=limit_sec
+            )
         else:
-            processed_data, true_traffic_light_ids = processor.process_accumulated_data(accumulated_data, sim_duration, net_file_path)
+            processed_data, true_traffic_light_ids = processor.process_accumulated_data(
+                accumulated_data, sim_duration, net_file_path
+            )
 
         if not processed_data:
             logging.warning("[ANALYZER_ENGINE] No processed data available for analysis.")
             if self.sas_result_queue:
-                self.sas_result_queue.put({"status": "error", "message": "Nenhum dado de tráfego processado disponível para a análise."})
+                self.sas_result_queue.put(
+                    {"status": "error", "message": "Nenhum dado de tráfego processado disponível para a análise."}
+                )
             return
 
-        last_analysis_cache, has_previous_report = self.cache_manager.load_cache(db_manager, scenario_name, self.scenario_dir)
+        last_analysis_cache, has_previous_report = self.cache_manager.load_cache(
+            db_manager, scenario_name, self.scenario_dir
+        )
 
         analysis_result = self.analyzer.analyze_collected_data(
             collected_data=processed_data,
             last_analysis_cache=last_analysis_cache,
             scenario_name=scenario_name,
-            true_traffic_light_ids=true_traffic_light_ids
+            true_traffic_light_ids=true_traffic_light_ids,
         )
 
         del processor
         del processed_data
 
         if "new_cache_data" in analysis_result:
-            self.cache_manager.save_cache(db_manager, scenario_name, self.scenario_dir, analysis_result["new_cache_data"])
+            self.cache_manager.save_cache(
+                db_manager, scenario_name, self.scenario_dir, analysis_result["new_cache_data"]
+            )
 
         if "analysis_results" in analysis_result and analysis_result["analysis_results"]:
             for j_res in analysis_result["analysis_results"].values():
@@ -144,7 +173,11 @@ class AnalyzerEngine:
         analysis_result["scenario_dir"] = self.scenario_dir
 
         try:
-            log_payload = {"run_id": run_id, "summary": analysis_result.get("summary", "N/A"), "report_content": analysis_result.get("report_content", "")}
+            log_payload = {
+                "run_id": run_id,
+                "summary": analysis_result.get("summary", "N/A"),
+                "report_content": analysis_result.get("report_content", ""),
+            }
             self.db_data_queue.put({"type": "log_report", "payload": log_payload})
             logging.info(lm.get_string("sas_engine.run.report_sent_to_db"))
         except Exception as e:
@@ -156,6 +189,7 @@ class AnalyzerEngine:
 
             try:
                 from sas.report_generator import ReportGenerator
+
                 report_gen = ReportGenerator(self.locale_manager)
                 significant_change = analysis_result.get("significant_change", False)
 
@@ -175,32 +209,37 @@ class AnalyzerEngine:
                     net_file_path=net_file_path,
                     has_significant_change=significant_change,
                     has_last_report=has_previous_report,
-                    time_window_str=time_window_str
+                    time_window_str=time_window_str,
                 )
                 if generated_text:
                     analysis_result["report_content"] = generated_text
             except Exception as e:
                 logging.error(f"[ANALYZER_ENGINE] Failed to invoke ReportGenerator: {e}", exc_info=True)
 
-        pruned_results = {j_id: {"recommendation": j_res.get("recommendation")}
-                          for j_id, j_res in analysis_result.get("analysis_results", {}).items()}
+        pruned_results = {
+            j_id: {"recommendation": j_res.get("recommendation")}
+            for j_id, j_res in analysis_result.get("analysis_results", {}).items()
+        }
 
         if self.sas_result_queue is not None:
             try:
-                self.sas_result_queue.put({
-                    "status": "success",
-                    "timestamp": time.time(),
-                    "report_content": analysis_result.get("report_content"),
-                    "scenario_dir": analysis_result.get("scenario_dir"),
-                    "significant_change": analysis_result.get("significant_change"),
-                    "analysis_results": pruned_results
-                })
+                self.sas_result_queue.put(
+                    {
+                        "status": "success",
+                        "timestamp": time.time(),
+                        "report_content": analysis_result.get("report_content"),
+                        "scenario_dir": analysis_result.get("scenario_dir"),
+                        "significant_change": analysis_result.get("significant_change"),
+                        "analysis_results": pruned_results,
+                    }
+                )
                 logging.info("[ANALYZER_ENGINE] Analysis report sent to UI IPC queue.")
             except Exception as e:
                 logging.error(f"[ANALYZER_ENGINE] Failed to send report to IPC queue: {e}")
 
         if calibration_data_points:
             from sas.heatmap_calibrator import HeatmapCalibrator
+
             calibrator = HeatmapCalibrator()
             if calibrator.is_available():
                 new_weights = calibrator.calibrate(calibration_data_points)

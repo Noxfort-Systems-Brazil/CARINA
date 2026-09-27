@@ -18,18 +18,20 @@
 # Author: Gabriel Moraes
 # Date: December 17, 2025
 
-import os
 import json
+import logging
+import os
 import threading
 import time
-import logging
 from typing import Callable, List, Optional
+
 
 class XaiClient:
     """
     Manages communication to initiate XAI analyses and load the agent list.
     Handles file-based IPC between the UI and the XaiWorker backend.
     """
+
     def __init__(self, on_analysis_complete_callback: Callable[[dict], None], results_dir: Optional[str] = None):
         """
         Initializes the client.
@@ -53,15 +55,19 @@ class XaiClient:
         """Finds the absolute path to the most recent scenario folder in 'results'."""
         try:
             from src.utils.paths import get_base_output_dir
+
             results_dir = os.path.join(get_base_output_dir(), "results")
             if os.path.exists(results_dir):
                 ignored_dirs = {"database"}
                 all_scenarios = [
-                    d for d in os.listdir(results_dir) 
+                    d
+                    for d in os.listdir(results_dir)
                     if os.path.isdir(os.path.join(results_dir, d)) and d not in ignored_dirs
                 ]
                 if all_scenarios:
-                    latest_scenario_name = max(all_scenarios, key=lambda d: os.path.getmtime(os.path.join(results_dir, d)))
+                    latest_scenario_name = max(
+                        all_scenarios, key=lambda d: os.path.getmtime(os.path.join(results_dir, d))
+                    )
                     return os.path.join(results_dir, latest_scenario_name)
         except Exception as e:
             logging.error(f"[XaiClient] Error finding latest scenario: {e}")
@@ -86,7 +92,7 @@ class XaiClient:
             logging.error(f"[XaiClient] Error loading agent list: {e}")
             return []
         return []
-        
+
     def _fetch_agent_list_thread_target(self, on_list_loaded_callback: Callable[[List[str]], None]):
         """
         Background target: fetches the agent list and invokes the callback.
@@ -101,9 +107,7 @@ class XaiClient:
         """
         logging.info("[XaiClient] Starting asynchronous agent list fetch...")
         thread = threading.Thread(
-            target=self._fetch_agent_list_thread_target,
-            args=(on_list_loaded_callback,),
-            daemon=True
+            target=self._fetch_agent_list_thread_target, args=(on_list_loaded_callback,), daemon=True
         )
         thread.start()
 
@@ -112,11 +116,7 @@ class XaiClient:
         Starts the XAI analysis in a new thread. Returns immediately.
         The result will be delivered via the callback provided in __init__.
         """
-        thread = threading.Thread(
-            target=self._analysis_worker_thread_target,
-            args=(agent_id,),
-            daemon=True
-        )
+        thread = threading.Thread(target=self._analysis_worker_thread_target, args=(agent_id,), daemon=True)
         thread.start()
 
     def _analysis_worker_thread_target(self, agent_id: str, timeout_seconds: int = 900):
@@ -142,17 +142,17 @@ class XaiClient:
             response_path = os.path.join(responses_dir, f"{agent_id}.response")
 
             # Clean up old files to avoid false positives
-            if os.path.exists(response_path): 
+            if os.path.exists(response_path):
                 os.remove(response_path)
-            if os.path.exists(request_path): 
+            if os.path.exists(request_path):
                 os.remove(request_path)
 
             # Write request
             with open(request_path, "w", encoding="utf-8") as f:
                 json.dump({"agent_id": agent_id}, f)
-            
+
             logging.info(f"[XaiClient] Request sent for Agent {agent_id}")
-        
+
         except Exception as e:
             logging.error(f"[XaiClient] Failed to create request file: {e}")
             if self.on_analysis_complete:
@@ -162,27 +162,27 @@ class XaiClient:
         # Poll for response
         start_time = time.time()
         response_data = None
-        
+
         while time.time() - start_time < timeout_seconds:
             if os.path.exists(response_path):
                 try:
                     # Small delay to ensure file write is complete
-                    time.sleep(0.2) 
+                    time.sleep(0.2)
                     with open(response_path, "r", encoding="utf-8") as f:
                         response_data = json.load(f)
-                    
+
                     # Cleanup response file after reading
                     os.remove(response_path)
-                    break 
+                    break
                 except Exception as e:
                     logging.error(f"[XaiClient] Error reading response: {e}")
                     response_data = {"status": "error", "message": f"Failed to read response file: {e}"}
                     break
             time.sleep(2)
 
-        if response_data is None: 
+        if response_data is None:
             response_data = {"status": "error", "message": "Timeout. The XAI backend did not respond in time."}
-        
+
         # Delivery result
         if self.on_analysis_complete:
             self.on_analysis_complete(response_data)

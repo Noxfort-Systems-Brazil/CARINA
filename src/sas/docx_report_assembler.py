@@ -18,28 +18,31 @@
 # Author: Gabriel Moraes
 # Date: July 21, 2026
 
-import os
 import logging
+import os
 from datetime import datetime
 
 try:
     from docx import Document
-    from docx.shared import Pt, Inches, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt, RGBColor
 except ImportError:
     logging.warning("[DOCX_ASSEMBLER] python-docx not installed. Reports cannot be generated in .docx format.")
 
-from sas.report_template_provider import ReportTemplateProvider
 from blocks.markdown_to_docx import render_markdown_to_docx
+from sas.report_template_provider import ReportTemplateProvider
+
 
 class DocxReportAssembler:
     """
     Handles the physical document formatting, styles, alignments, image embedding,
     and compilation of markdown report text into a professional .docx Word document.
     """
-    
+
     @classmethod
-    def assemble_docx_to_path(cls, target_path: str, scenario_dir: str, report_text: str, ui_language: str = "pt_br", mode: str = "MFD") -> str:
+    def assemble_docx_to_path(
+        cls, target_path: str, scenario_dir: str, report_text: str, ui_language: str = "pt_br", mode: str = "MFD"
+    ) -> str:
         """
         Compiles the report text into a Word document using the modular src/blocks/ pipeline
         and saves it directly to target_path. Returns target_path on success.
@@ -58,17 +61,39 @@ class DocxReportAssembler:
                 logging.warning(f"[DOCX_ASSEMBLER] Failed to load user settings via SettingsManager: {e}")
 
             logo_path = user_settings.get("report_logo_path") or user_settings.get("xai_logo_path", "")
-            secretary_name = user_settings.get("report_secretary_name") or user_settings.get("xai_secretary_name") or "Dr. Gabriel Moraes"
-            secretary_title = user_settings.get("report_secretary_title") or user_settings.get("xai_secretary_title") or "Secretário de Mobilidade e Trânsito"
-            agency_name = user_settings.get("report_agency_name") or user_settings.get("xai_agency_name") or "Prefeitura Municipal / Secretaria de Trânsito"
-            department_name = user_settings.get("report_department_name") or user_settings.get("xai_department_name") or "Departamento de Mobilidade Inteligente"
-            
+            secretary_name = (
+                user_settings.get("report_secretary_name")
+                or user_settings.get("xai_secretary_name")
+                or "Dr. Gabriel Moraes"
+            )
+            secretary_title = (
+                user_settings.get("report_secretary_title")
+                or user_settings.get("xai_secretary_title")
+                or "Secretário de Mobilidade e Trânsito"
+            )
+            agency_name = (
+                user_settings.get("report_agency_name")
+                or user_settings.get("xai_agency_name")
+                or "Prefeitura Municipal / Secretaria de Trânsito"
+            )
+            department_name = (
+                user_settings.get("report_department_name")
+                or user_settings.get("xai_department_name")
+                or "Departamento de Mobilidade Inteligente"
+            )
+
             if mode == "MFD":
                 report_title = "LAUDO TÉCNICO DE DESEMPENHO E OTIMIZAÇÃO MFD"
                 engine_ver = "CARINA v1.0 (MFD Engine)"
                 conf_txt = "Este laudo foi gerado de forma determinística pelo motor de otimização CARINA MFD. Ele atesta as métricas de performance macroscópica da rede de tráfego analisada."
             else:
-                report_title = user_settings.get("report_title") or user_settings.get("xai_report_title") or lang_dict.get("main_title", "LAUDO TÉCNICO DE ENGENHARIA DE TRÁFEGO E AUDITORIA DE INFRAESTRUTURA")
+                report_title = (
+                    user_settings.get("report_title")
+                    or user_settings.get("xai_report_title")
+                    or lang_dict.get(
+                        "main_title", "LAUDO TÉCNICO DE ENGENHARIA DE TRÁFEGO E AUDITORIA DE INFRAESTRUTURA"
+                    )
+                )
                 engine_ver = "CARINA v1.0 (Neuro-Symbolic)"
                 conf_txt = "Este documento foi consolidado de forma determinística pelo motor Neuro-Simbólico CARINA XAI. Ele atesta as condições puras da leitura de topologia e do comportamento da rede neural."
 
@@ -81,19 +106,31 @@ class DocxReportAssembler:
                     return default
 
             font_size = _parse_float(user_settings.get("report_font_size") or user_settings.get("xai_font_size"), 11.0)
-            margin_top = _parse_float(user_settings.get("report_margin_top") or user_settings.get("xai_margin_top"), 1.0)
-            margin_bottom = _parse_float(user_settings.get("report_margin_bottom") or user_settings.get("xai_margin_bottom"), 1.0)
-            margin_left = _parse_float(user_settings.get("report_margin_left") or user_settings.get("xai_margin_left"), 1.0)
-            margin_right = _parse_float(user_settings.get("report_margin_right") or user_settings.get("xai_margin_right"), 1.0)
-            line_spacing = _parse_float(user_settings.get("report_line_spacing") or user_settings.get("xai_line_spacing"), 1.15)
+            margin_top = _parse_float(
+                user_settings.get("report_margin_top") or user_settings.get("xai_margin_top"), 1.0
+            )
+            margin_bottom = _parse_float(
+                user_settings.get("report_margin_bottom") or user_settings.get("xai_margin_bottom"), 1.0
+            )
+            margin_left = _parse_float(
+                user_settings.get("report_margin_left") or user_settings.get("xai_margin_left"), 1.0
+            )
+            margin_right = _parse_float(
+                user_settings.get("report_margin_right") or user_settings.get("xai_margin_right"), 1.0
+            )
+            line_spacing = _parse_float(
+                user_settings.get("report_line_spacing") or user_settings.get("xai_line_spacing"), 1.15
+            )
             alignment = user_settings.get("report_alignment") or user_settings.get("xai_alignment") or "justify"
 
-            block_order_str = user_settings.get("report_block_order") or user_settings.get("xai_block_order") or "header,title,metadata,chart,content,signature"
+            block_order_str = (
+                user_settings.get("report_block_order")
+                or user_settings.get("xai_block_order")
+                or "header,title,metadata,chart,content,signature"
+            )
             block_order = [b.strip() for b in block_order_str.split(",") if b.strip()]
 
-            builder = StructuredReportBuilder(
-                block_order=block_order
-            )
+            builder = StructuredReportBuilder(block_order=block_order)
 
             map_path = os.path.join(scenario_dir, "map_planning.png")
             if not os.path.exists(map_path):
@@ -111,7 +148,7 @@ class DocxReportAssembler:
                 "engine_version": engine_ver,
                 "text_content": report_text,
                 "image_path": map_path,
-                "results_dir": scenario_dir
+                "results_dir": scenario_dir,
             }
 
             config = {
@@ -138,7 +175,7 @@ class DocxReportAssembler:
                 "margin_left": margin_left,
                 "margin_right": margin_right,
                 "line_spacing": line_spacing,
-                "alignment": alignment
+                "alignment": alignment,
             }
 
             os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)

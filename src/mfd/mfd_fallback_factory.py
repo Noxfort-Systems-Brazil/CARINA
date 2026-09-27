@@ -18,11 +18,13 @@
 # Author: Gabriel Moraes
 # Date: 2026
 
-import os
 import json
 import logging
-from typing import Dict, Any
+import os
+from typing import Any, Dict
+
 from mfd.mfd_map_resolver import MFDMapResolver
+
 
 class MFDFallbackFactory:
     """
@@ -35,19 +37,29 @@ class MFDFallbackFactory:
 
     @classmethod
     def _load_defaults(cls) -> dict:
-        """Loads default MFD fallback parameters from config/mfd_fallback_defaults.json into cache."""
+        """Loads default MFD fallback parameters from config/templates/mfd/mfd_fallback_defaults.json into cache."""
         if cls._defaults_cache is not None:
             return cls._defaults_cache
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        json_path = os.path.join(base_dir, "config", "mfd_fallback_defaults.json")
+        candidates = [
+            os.path.join(base_dir, "config", "templates", "mfd", "mfd_fallback_defaults.json"),
+            os.path.join(base_dir, "config", "mfd_fallback_defaults.json"),
+        ]
 
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                cls._defaults_cache = json.load(f)
-                logging.info(f"[MFD_FALLBACK] Loaded defaults from: {json_path}")
-        except Exception as e:
-            logging.error(f"[MFD_FALLBACK] Error loading mfd_fallback_defaults.json from {json_path}: {e}")
+        loaded = False
+        for json_path in candidates:
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        cls._defaults_cache = json.load(f)
+                        logging.info(f"[MFD_FALLBACK] Loaded defaults from: {json_path}")
+                        loaded = True
+                        break
+                except Exception as e:
+                    logging.error(f"[MFD_FALLBACK] Error loading mfd_fallback_defaults.json from {json_path}: {e}")
+
+        if not loaded:
             cls._defaults_cache = {}
 
         return cls._defaults_cache
@@ -60,29 +72,49 @@ class MFDFallbackFactory:
         Generates deterministic fallback metric dictionaries per active signalized traffic light ID.
         """
         defaults_data = cls._load_defaults()
-        inter_defaults = defaults_data.get("intersection_defaults", {
-            "status_label": "Sinalizado (Controle Ativo CARINA)",
-            "configured_entropy_limit": 0.15,
-            "configured_min_window": "1 episódio (24h)",
-            "configured_performance_margin": "+0.0%"
-        })
+        inter_defaults = defaults_data.get(
+            "intersection_defaults",
+            {
+                "status_label": "Sinalizado (Controle Ativo CARINA)",
+                "configured_entropy_limit": 0.15,
+                "configured_min_window": "1 episódio (24h)",
+                "configured_performance_margin": "+0.0%",
+            },
+        )
 
         stages_data = defaults_data.get("stages", {})
-        
+
         # Fallback values per stage if stage_key not found
         child_cfg = stages_data.get("initial", {})
         teen_cfg = stages_data.get("intermediate", {})
         adult_cfg = stages_data.get("mature", {})
 
-        current_cfg = stages_data.get(stage_key, child_cfg if stage_key == "initial" else (teen_cfg if stage_key == "intermediate" else adult_cfg))
+        current_cfg = stages_data.get(
+            stage_key, child_cfg if stage_key == "initial" else (teen_cfg if stage_key == "intermediate" else adult_cfg)
+        )
 
-        def_speed_kmh = current_cfg.get("speed_kmh", 20.9 if stage_key == "initial" else (32.4 if stage_key == "intermediate" else 42.5))
-        def_delay_s = current_cfg.get("delay_s", 78.0 if stage_key == "initial" else (42.0 if stage_key == "intermediate" else 24.5))
-        def_queue = current_cfg.get("queue", 28.0 if stage_key == "initial" else (16.0 if stage_key == "intermediate" else 9.5))
-        def_sat = current_cfg.get("saturation", 1.35 if stage_key == "initial" else (0.92 if stage_key == "intermediate" else 0.68))
-        def_entropy = current_cfg.get("entropy", 0.38 if stage_key == "initial" else (0.22 if stage_key == "intermediate" else 0.08))
-        def_label = current_cfg.get("maturity_label", "CHILD" if stage_key == "initial" else ("TEEN" if stage_key == "intermediate" else "ADULT"))
-        def_gain = current_cfg.get("efficiency_gain_pct", 0.0 if stage_key == "initial" else (55.0 if stage_key == "intermediate" else 103.3))
+        def_speed_kmh = current_cfg.get(
+            "speed_kmh", 20.9 if stage_key == "initial" else (32.4 if stage_key == "intermediate" else 42.5)
+        )
+        def_delay_s = current_cfg.get(
+            "delay_s", 78.0 if stage_key == "initial" else (42.0 if stage_key == "intermediate" else 24.5)
+        )
+        def_queue = current_cfg.get(
+            "queue", 28.0 if stage_key == "initial" else (16.0 if stage_key == "intermediate" else 9.5)
+        )
+        def_sat = current_cfg.get(
+            "saturation", 1.35 if stage_key == "initial" else (0.92 if stage_key == "intermediate" else 0.68)
+        )
+        def_entropy = current_cfg.get(
+            "entropy", 0.38 if stage_key == "initial" else (0.22 if stage_key == "intermediate" else 0.08)
+        )
+        def_label = current_cfg.get(
+            "maturity_label",
+            "CHILD" if stage_key == "initial" else ("TEEN" if stage_key == "intermediate" else "ADULT"),
+        )
+        def_gain = current_cfg.get(
+            "efficiency_gain_pct", 0.0 if stage_key == "initial" else (55.0 if stage_key == "intermediate" else 103.3)
+        )
 
         intersections = {}
         signalized_ids = MFDMapResolver.discover_signalized_ids()
@@ -126,7 +158,7 @@ class MFDFallbackFactory:
                 "saturation_adult": adult_cfg.get("saturation", 0.68),
                 "entropy_child": child_cfg.get("entropy", 0.38),
                 "entropy_teen": teen_cfg.get("entropy", 0.22),
-                "entropy_adult": adult_cfg.get("entropy", 0.08)
+                "entropy_adult": adult_cfg.get("entropy", 0.08),
             }
         return intersections
 
@@ -155,7 +187,7 @@ class MFDFallbackFactory:
             "avg_queue": child_cfg.get("queue", 28.0),
             "avg_delay": child_cfg.get("delay_s", 78.0),
             "timestamp": "N/A",
-            "intersections": init_inters
+            "intersections": init_inters,
         }
         inter_metrics = {
             "stage_label": labels_dict["intermediate"],
@@ -167,7 +199,7 @@ class MFDFallbackFactory:
             "avg_queue": teen_cfg.get("queue", 16.0),
             "avg_delay": teen_cfg.get("delay_s", 42.0),
             "timestamp": "N/A",
-            "intersections": inter_inters
+            "intersections": inter_inters,
         }
         mature_metrics = {
             "stage_label": labels_dict["mature"],
@@ -179,7 +211,7 @@ class MFDFallbackFactory:
             "avg_queue": adult_cfg.get("queue", 9.5),
             "avg_delay": adult_cfg.get("delay_s", 24.5),
             "timestamp": "N/A",
-            "intersections": mature_inters
+            "intersections": mature_inters,
         }
 
         comp_defaults = {
@@ -190,7 +222,7 @@ class MFDFallbackFactory:
             "delay_reduction_inter_pct": -46.1,
             "delay_reduction_mature_pct": -68.6,
             "production_gain_mature_pct": 0.0,
-            "efficiency_gain_mature_pct": 103.3
+            "efficiency_gain_mature_pct": 103.3,
         }
         comparison_metrics = defaults_data.get("comparison_metrics", comp_defaults)
 
@@ -201,5 +233,5 @@ class MFDFallbackFactory:
             "comparison_metrics": comparison_metrics,
             "total_steps_recorded": 0,
             "peak_production": 0.0,
-            "peak_accumulation": 0.0
+            "peak_accumulation": 0.0,
         }

@@ -14,44 +14,47 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# File: ui/handlers/live_data_provider.py (FIXED: Multiple Port Support)
+# File: ui/providers/live_data_provider.py (Pure In-Memory IPC / Zero-Port Edition)
 # Author: Gabriel Moraes
-# Date: December 17, 2025
+# Date: 2026
 
 """
-Defines the LiveDataProvider.
+Defines the LiveDataProvider using multiprocessing.Queue for 100% in-memory IPC.
 
-In this version, the WebSocket client implements a 'Port Hunting' strategy,
-attempting to connect sequentially to alternative ports (8765, 8766, 8767) if the default fails.
-This synchronizes the UI with the fallback mechanism implemented on the server.
+This implementation completely eliminates the WebSocket TCP port 8765,
+providing zero-port, sub-millisecond bidirectional communication between
+the CARINA UI and the backend processes.
 """
 
 import logging
+import queue
 import threading
-import time
-import json
-import asyncio
-import websockets
-from typing import Callable, Dict, Any
+from typing import Any, Callable, Dict, Optional
+
 
 class LiveDataProvider:
     """
-    A service that connects to the back-end via WebSocket to provide
-    real-time simulation data packets and send commands.
+    A service that connects the UI directly to the back-end via multiprocessing.Queue
+    to provide real-time simulation data packets and send commands with zero network ports.
     """
+
     GLOBAL_SHUTDOWN_EVENT = None
-    
-    def __init__(self, on_data_received: Callable[[Dict[str, Any]], None], shutdown_event: threading.Event = None):
+    CACHED_INITIAL_GEOMETRY: Optional[Dict[str, Any]] = None
+
+    def __init__(
+        self,
+        on_data_received: Callable[[Dict[str, Any]], None],
+        shutdown_event: Optional[threading.Event] = None,
+        ui_telemetry_queue: Optional[Any] = None,
+        ui_command_queue: Optional[Any] = None,
+    ):
         self.on_data_received = on_data_received
         self.shutdown_event = shutdown_event
-        self._thread = None
+        self.ui_telemetry_queue = ui_telemetry_queue
+        self.ui_command_queue = ui_command_queue
+
+        self._thread: Optional[threading.Thread] = None
         self._is_running = False
-        self.loop = None
-        
-        # List of ports to try to connect to (Sync with websocket_server.py)
-        self.target_ports = [8765, 8766, 8767]
-        self.current_uri = "" 
-        self.websocket_connection = None
 
     @property
     def is_stopped(self) -> bool:
@@ -64,131 +67,112 @@ class LiveDataProvider:
             return True
         return False
 
+    def _resolve_queues(self):
+        """Dynamically resolves IPC queues from ui.main_ui if not provided at instantiation."""
+        if self.ui_telemetry_queue is None or self.ui_command_queue is None:
+            try:
+                import sys
+
+                for mod_name in ["ui.main_ui", "main_ui"]:
+                    if mod_name in sys.modules:
+                        ui_mod = sys.modules[mod_name]
+                        if self.ui_telemetry_queue is None:
+                            self.ui_telemetry_queue = getattr(ui_mod, "ui_telemetry_queue", None)
+                        if self.ui_command_queue is None:
+                            self.ui_command_queue = getattr(ui_mod, "ui_command_queue", None)
+                        break
+            except Exception as e:
+                logging.debug(f"[LiveDataProvider] Error resolving queues dynamically: {e}")
+
     def start(self):
-        """Starts the WebSocket client in a separate thread."""
+        """Starts the IPC queue listening thread and sends initial handshake commands."""
+        self._resolve_queues()
+
         if not self._thread or not self._thread.is_alive():
             self._is_running = True
-            self._thread = threading.Thread(target=self._run_async_loop, daemon=True)
+
+            # If we already have a cached geometry packet (e.g., UI reopened from system tray), dispatch immediately
+            if LiveDataProvider.CACHED_INITIAL_GEOMETRY and self.on_data_received:
+                try:
+                    logging.info("[LiveDataProvider] Re-dispatching cached map geometry to new/restored UI view.")
+                    self.on_data_received(LiveDataProvider.CACHED_INITIAL_GEOMETRY)
+                except Exception as ex:
+                    logging.warning(f"[LiveDataProvider] Error dispatching cached geometry: {ex}")
+
+            self._thread = threading.Thread(target=self._listen_loop, name="LiveDataProviderIPCThread", daemon=True)
             self._thread.start()
-            logging.info("[LiveDataProvider] WebSocket client to the back-end started.")
+            logging.info("[LiveDataProvider] Pure in-memory IPC listener thread started (Zero Ports).")
+
+            # Initial status checks
+            self.send_command_to_backend({"type": "check_lockdown"})
 
     def stop(self):
-        """Stops the thread and the WebSocket connection."""
+        """Stops the listening thread cleanly."""
         self._is_running = False
-        if self.websocket_connection and self.loop and self.loop.is_running():
+        if self._thread and self._thread.is_alive() and threading.current_thread() != self._thread:
             try:
-                asyncio.run_coroutine_threadsafe(self.websocket_connection.close(), self.loop)
+                self._thread.join(timeout=1.0)
             except Exception:
                 pass
-        if self.loop and self.loop.is_running():
-            try:
-                self.loop.call_soon_threadsafe(self.loop.stop)
-            except Exception:
-                pass
-        logging.info("[LiveDataProvider] Stop signal sent to the WebSocket client.")
+        logging.info("[LiveDataProvider] LiveDataProvider stopped.")
 
-    def _run_async_loop(self):
-        """Defines the event loop for the new thread and executes it."""
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        try:
-            self.loop.run_until_complete(self._websocket_thread_loop())
-        except Exception as e:
-            if not self.is_stopped:
-                logging.debug(f"[LiveDataProvider] Error in event loop: {e}")
-        finally:
-            try:
-                pending = [t for t in asyncio.all_tasks(self.loop) if not t.done()]
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                self.loop.close()
-            except Exception:
-                pass
+    def _listen_loop(self):
+        """Continuous listener loop consuming telemetry packets from ui_telemetry_queue."""
+        logging.info("[LiveDataProvider] Entering IPC queue reading loop...")
 
-    async def _websocket_thread_loop(self):
-        """
-        The main loop that manages the connection with port rotation.
-        """
-        port_index = 0
-        
         while not self.is_stopped:
-            # Select current port based on index
-            port = self.target_ports[port_index]
-            self.current_uri = f"ws://127.0.0.1:{port}"
-            
+            self._resolve_queues()
+            q = self.ui_telemetry_queue
+
+            if q is None:
+                # Passive wait if queue is not yet injected
+                for _ in range(5):
+                    if self.is_stopped:
+                        break
+                    threading.Event().wait(0.1)
+                continue
+
             try:
-                if self.is_stopped:
+                data_packet = q.get(block=True, timeout=0.2)
+
+                if data_packet is None or data_packet == "STOP":
+                    logging.info("[LiveDataProvider] Stop sentinel received from telemetry queue.")
                     break
-                logging.debug(f"[LiveDataProvider] Attempting to connect to {self.current_uri}...")
-                
-                async with websockets.connect(self.current_uri) as websocket:
-                    self.websocket_connection = websocket
-                    logging.info(f"[LiveDataProvider] Successfully connected to the back-end (SDS) on port {port}.")
-                    
-                    # Ensure UI immediately knows if it's locked down
-                    await websocket.send(json.dumps({"type": "check_lockdown"}))
-                    
-                    # If you connected successfully, we process the messages
-                    async for message in websocket:
-                        if self.is_stopped:
-                            break
-                        try:
-                            data_packet = json.loads(message)
-                            if self.on_data_received:
-                                self.on_data_received(data_packet)
-                        except json.JSONDecodeError:
-                            logging.warning("[LiveDataProvider] Invalid (non-JSON) message received from the back-end.")
-            
-            except (ConnectionRefusedError, OSError, websockets.ConnectionClosedError, websockets.ConnectionClosedOK) as e:
-                self.websocket_connection = None
-                if self.is_stopped:
-                    break
-                
-                # Advances to the next port in the list (Round-Robin)
-                port_index = (port_index + 1) % len(self.target_ports)
-                
-                # Wait a while before the next attempt (interruptible if stopping)
-                for _ in range(10):
-                    if self.is_stopped:
-                        break
-                    await asyncio.sleep(0.1)
-                
-                if self.is_stopped:
-                    break
-                logging.debug(f"[LiveDataProvider] Connection attempt to {self.current_uri} unsuccessful: {e}")
-                
+
+                if isinstance(data_packet, dict):
+                    # Cache map geometry packet for instant recovery if UI restores
+                    if data_packet.get("type") == "initial_map_geometry":
+                        LiveDataProvider.CACHED_INITIAL_GEOMETRY = data_packet
+
+                    if self.on_data_received:
+                        self.on_data_received(data_packet)
+
+            except queue.Empty:
+                continue
+            except (EOFError, BrokenPipeError):
+                logging.info("[LiveDataProvider] IPC Queue closed or pipe broken.")
+                break
             except Exception as e:
-                self.websocket_connection = None
-                if self.is_stopped:
-                    break
-                for _ in range(50):
-                    if self.is_stopped:
-                        break
-                    await asyncio.sleep(0.1)
                 if not self.is_stopped:
-                    logging.debug(f"[LiveDataProvider] Unexpected WebSocket error: {e}")
+                    logging.debug(f"[LiveDataProvider] Exception reading IPC queue: {e}")
+
+        logging.info("[LiveDataProvider] Exited IPC queue reading loop.")
 
     def send_command_to_backend(self, command: dict):
         """
-        Sends a command (Python dictionary) to the back-end safely
-        from any thread.
+        Sends a command (Python dictionary) directly to CentralController
+        via multiprocessing.Queue without network serialization.
         """
-        if self.websocket_connection and self.loop and self.loop.is_running():
+        self._resolve_queues()
+        q = self.ui_command_queue
+
+        if q is not None:
             try:
-                message_json = json.dumps(command)
-                # The send itself is scheduled in the event loop thread
-                asyncio.run_coroutine_threadsafe(
-                    self.websocket_connection.send(message_json), 
-                    self.loop
-                )
-            except RuntimeError:
-                pass # Event loop closed
+                q.put(command)
+                logging.debug(f"[LiveDataProvider] Command dispatched to ui_command_queue: {command.get('type')}")
             except Exception as e:
-                # If send() fails (for example, because the connection was closed),
-                # we catch the exception here.
-                logging.warning(f"[LiveDataProvider] Failed to send command. The connection may be closed. Error: {e}")
+                logging.warning(f"[LiveDataProvider] Failed to put command into queue: {e}")
         else:
-            # logging.warning("[LiveDataProvider] Attempting to send command without an active connection to the backend.")
-            pass
+            logging.warning(
+                f"[LiveDataProvider] Attempting to send command '{command.get('type')}' without an active ui_command_queue."
+            )

@@ -19,6 +19,7 @@
 # Date: August 10, 2026
 
 from typing import Any, Callable
+
 import flet as ft
 
 
@@ -37,7 +38,7 @@ class NavigationManager:
         diagnostics_view: Any,
         settings_view: Any,
         settings_dialog: ft.AlertDialog,
-        open_settings_callback: Callable[[Any], None]
+        open_settings_callback: Callable[[Any], None],
     ):
         self.page = page
         self.locale_manager = locale_manager
@@ -62,13 +63,14 @@ class NavigationManager:
                 ft.IconButton(
                     ft.Icons.SETTINGS_ROUNDED,
                     on_click=self.open_settings_callback,
-                    tooltip=self.locale_manager.get_string("main_ui.settings_tooltip", default="Configurações")
+                    tooltip=self.locale_manager.get_string("main_ui.settings_tooltip", default="Configurações"),
                 ),
             ],
         )
 
     def _build_tabs(self) -> ft.Tabs:
         """Constructs application navigation Tabs and binds tab selection events."""
+
         def on_tab_change(e):
             if e.control.selected_index == 2:
                 if hasattr(self.diagnostics_view, "start_log_watcher"):
@@ -92,17 +94,17 @@ class NavigationManager:
                 ft.Tab(
                     text=self.locale_manager.get_string("main_ui.tab_dashboard", default="Painel"),
                     icon=ft.Icons.SPACE_DASHBOARD_ROUNDED,
-                    content=self.dashboard_view
+                    content=self.dashboard_view,
                 ),
                 ft.Tab(
                     text=self.locale_manager.get_string("main_ui.tab_planning", default="Planejamento"),
                     icon=ft.Icons.EDIT_ROAD_ROUNDED,
-                    content=self.planning_view
+                    content=self.planning_view,
                 ),
                 ft.Tab(
                     text=self.locale_manager.get_string("main_ui.tab_diagnostics", default="Diagnósticos"),
                     icon=ft.Icons.BUILD_ROUNDED,
-                    content=self.diagnostics_view
+                    content=self.diagnostics_view,
                 ),
             ],
             expand=True,
@@ -112,7 +114,9 @@ class NavigationManager:
         """Applies updated localized strings across AppBar, Page titles, Tabs, and Views."""
         self.page.title = self.locale_manager.get_string("main_ui.app_title", default="CARINA")
         self.appbar.title.value = self.locale_manager.get_string("main_ui.app_long_title", default="CARINA CORE")
-        self.appbar.actions[0].tooltip = self.locale_manager.get_string("main_ui.settings_tooltip", default="Configurações")
+        self.appbar.actions[0].tooltip = self.locale_manager.get_string(
+            "main_ui.settings_tooltip", default="Configurações"
+        )
 
         self.tabs.tabs[0].text = self.locale_manager.get_string("main_ui.tab_dashboard", default="Painel")
         self.tabs.tabs[1].text = self.locale_manager.get_string("main_ui.tab_planning", default="Planejamento")
@@ -129,9 +133,13 @@ class NavigationManager:
 
         if self.settings_dialog and hasattr(self.settings_dialog, "title"):
             if len(self.settings_dialog.title.controls) > 1:
-                self.settings_dialog.title.controls[1].value = self.locale_manager.get_string("settings_view.title", default="Configurações")
+                self.settings_dialog.title.controls[1].value = self.locale_manager.get_string(
+                    "settings_view.title", default="Configurações"
+                )
         if self.settings_dialog and hasattr(self.settings_dialog, "actions"):
             if len(self.settings_dialog.actions) > 0:
-                self.settings_dialog.actions[0].text = self.locale_manager.get_string("dialogs.close_button", default="Fechar")
+                self.settings_dialog.actions[0].text = self.locale_manager.get_string(
+                    "dialogs.close_button", default="Fechar"
+                )
 
         self.page.update()

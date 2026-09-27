@@ -18,17 +18,18 @@
 # Author: Gabriel Moraes
 # Date: October 2, 2025
 
+import configparser
 import logging
+import os
+import queue
+import sys
 import threading
 from multiprocessing import Queue
-import configparser
-import sys
-import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
@@ -38,22 +39,32 @@ if TYPE_CHECKING:
 from sds.data_processor import DataProcessor
 from sds.websocket_server import WebSocketServer
 
+
 class Orchestrator:
     """The maestro that manages the workflow of the SDS service."""
 
-    def __init__(self, sds_data_queue: Queue, settings: configparser.ConfigParser, 
-                 ui_command_queue: Queue, locale_manager: 'LocaleManagerBackend'):
+    def __init__(
+        self,
+        sds_data_queue: Queue,
+        settings: configparser.ConfigParser,
+        ui_command_queue: Queue,
+        locale_manager: "LocaleManagerBackend",
+        ui_telemetry_queue: Optional[Queue] = None,
+    ):
         """
         Inicializa o orquestrador e seus componentes especialistas.
         """
         self.data_queue = sds_data_queue
         self.locale_manager = locale_manager
+        self.ui_telemetry_queue = ui_telemetry_queue
         lm = self.locale_manager
-        
-        # --- CHANGE: Pass the translator to the experts ---
+
         self.processor = DataProcessor(settings, lm)
-        self.ws_server = WebSocketServer(ui_command_queue=ui_command_queue, locale_manager=lm)
-        
+        if self.ui_telemetry_queue is None:
+            self.ws_server = WebSocketServer(ui_command_queue=ui_command_queue, locale_manager=lm)
+        else:
+            self.ws_server = None
+
         logging.info(lm.get_string("sds_orchestrator.init.orchestrator_created"))
 
     def run(self):
@@ -62,9 +73,12 @@ class Orchestrator:
         """
         lm = self.locale_manager
         try:
-            ws_thread = threading.Thread(target=self.ws_server.start, daemon=True)
-            ws_thread.start()
-            logging.info(lm.get_string("sds_orchestrator.run.ws_thread_started"))
+            if self.ws_server:
+                ws_thread = threading.Thread(target=self.ws_server.start, daemon=True)
+                ws_thread.start()
+                logging.info(lm.get_string("sds_orchestrator.run.ws_thread_started"))
+            else:
+                logging.info("[SDS Orchestrator] Running in zero-port IPC mode (multiprocessing.Queue).")
 
             logging.info(lm.get_string("sds_orchestrator.run.main_loop_start"))
             while True:
@@ -76,14 +90,25 @@ class Orchestrator:
                 ui_data_package = self.processor.process_for_ui(raw_sim_data)
 
                 if ui_data_package:
-                    self.ws_server.broadcast(ui_data_package)
+                    if self.ui_telemetry_queue is not None:
+                        try:
+                            self.ui_telemetry_queue.put_nowait(ui_data_package)
+                        except queue.Full:
+                            # Drop oldest non-critical frame to prevent queue stall if UI is busy
+                            try:
+                                _ = self.ui_telemetry_queue.get_nowait()
+                                self.ui_telemetry_queue.put_nowait(ui_data_package)
+                            except Exception:
+                                pass
+                    elif self.ws_server:
+                        self.ws_server.broadcast(ui_data_package)
 
         except KeyboardInterrupt:
             logging.info(lm.get_string("sds_orchestrator.run.interrupt_received"))
         except Exception as e:
             logging.error(lm.get_string("sds_orchestrator.run.fatal_error", error=e), exc_info=True)
         finally:
-            if hasattr(self, 'ws_server') and self.ws_server:
+            if hasattr(self, "ws_server") and self.ws_server:
                 try:
                     self.ws_server.stop()
                 except Exception:

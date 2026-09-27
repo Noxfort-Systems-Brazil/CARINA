@@ -19,14 +19,15 @@
 # Date: August 9, 2026
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
+from blocks.report_post_processor import ReportPostProcessor
 from mfd.mfd_data_normalizer import MFDDataNormalizer
+from mfd.mfd_neural_proofreader import MFDNeuralProofreader
 from mfd.mfd_plotter import MFDPlotter
 from mfd.mfd_section_builder import MFDSectionBuilder
-from mfd.mfd_neural_proofreader import MFDNeuralProofreader
 from mfd.mfd_subprocess_fallback import MFDSubprocessFallback
-from blocks.report_post_processor import ReportPostProcessor
+
 
 class MFDReportGenerator:
     """
@@ -42,7 +43,7 @@ class MFDReportGenerator:
         db_manager=None,
         ui_language: str = None,
         lang: str = None,
-        transducer: Any = None
+        transducer: Any = None,
     ) -> Dict[str, Any]:
         """
         Orchestrates MFD optimization analysis report generation.
@@ -61,7 +62,7 @@ class MFDReportGenerator:
         if not mfd_history_data or not mfd_history_data.get("history"):
             return {
                 "status": "error",
-                "message": "Dados de simulação MFD insuficientes ou incompletos para auditoria viária."
+                "message": "Dados de simulação MFD insuficientes ou incompletos para auditoria viária.",
             }
 
         # 1. Normalize data and resolve statistics
@@ -70,11 +71,14 @@ class MFDReportGenerator:
         peak_accum = mfd_history_data.get("peak_accumulation", 0.0)
 
         from mfd.mfd_analyzer import MFDAnalyzer
+
         summary_stats = MFDAnalyzer.analyze(
-            history, peak_prod, peak_accum,
+            history,
+            peak_prod,
+            peak_accum,
             scenario_results_dir=scenario_results_dir,
             scenario_name=scenario_name,
-            db_manager=db_manager
+            db_manager=db_manager,
         )
 
         normalized_data = MFDDataNormalizer.normalize_mfd_data(mfd_history_data, summary_stats=summary_stats, lang=lang)
@@ -90,6 +94,7 @@ class MFDReportGenerator:
         if transducer is None:
             try:
                 from slm.semantic_transducer import SemanticTransducer
+
                 st = SemanticTransducer()
                 st.load_resources()
                 if getattr(st, "model", None) is not None:
@@ -101,27 +106,28 @@ class MFDReportGenerator:
                 transducer = None
 
         # 4. Build narrative sections (1 to 5) and ANEXO I audit sheets
-        narrative_text, raw_exec_summary = MFDSectionBuilder.build_narrative_sections(normalized_data, transducer=transducer, lang=lang)
+        narrative_text, raw_exec_summary = MFDSectionBuilder.build_narrative_sections(
+            normalized_data, transducer=transducer, lang=lang
+        )
         anexo_content = MFDSectionBuilder.build_anexo_fichas(normalized_data, transducer=transducer, lang=lang)
 
         # 5. Execute 2nd pass neural proofreading pass on narrative text
         revised_narrative = MFDNeuralProofreader.proofread_narrative(
-            narrative_text,
-            raw_exec_summary=raw_exec_summary,
-            transducer=transducer,
-            lang=lang
+            narrative_text, raw_exec_summary=raw_exec_summary, transducer=transducer, lang=lang
         )
 
         # 6. Assemble Final Document with SIGNATURE_BLOCK tag, pagebreak, and ANEXO I
         final_report_text = (
-            revised_narrative.strip() +
-            "\n\n[SIGNATURE_BLOCK]\n\n<pagebreak>\n\n# ANEXO I – FICHAS DE AUDITORIA DE OTIMIZAÇÃO INDIVIDUALIZADA POR CRUZAMENTO\n\n" +
-            anexo_content.strip() +
-            "\n\n---\n**Fim do Laudo Técnico Oficial de Auditoria de Otimização Semafórica MFD – Ecossistema CARINA v1.0**\n"
+            revised_narrative.strip()
+            + "\n\n[SIGNATURE_BLOCK]\n\n<pagebreak>\n\n# ANEXO I – FICHAS DE AUDITORIA DE OTIMIZAÇÃO INDIVIDUALIZADA POR CRUZAMENTO\n\n"
+            + anexo_content.strip()
+            + "\n\n---\n**Fim do Laudo Técnico Oficial de Auditoria de Otimização Semafórica MFD – Ecossistema CARINA v1.0**\n"
         )
         final_report_text = ReportPostProcessor.enforce_semantic_consistency(final_report_text)
 
-        logging.info(f"[MFD_REPORT_GENERATOR] Relatório de análise MFD compilado com sucesso ({len(final_report_text)} caracteres).")
+        logging.info(
+            f"[MFD_REPORT_GENERATOR] Relatório de análise MFD compilado com sucesso ({len(final_report_text)} caracteres)."
+        )
 
         return {
             "status": "complete",
@@ -132,7 +138,7 @@ class MFDReportGenerator:
             "docx_path": None,
             "stats": stats,
             "stages_data": stages_data,
-            "impact_stats": impact_stats
+            "impact_stats": impact_stats,
         }
 
     @staticmethod

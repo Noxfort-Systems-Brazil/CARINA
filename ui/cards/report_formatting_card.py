@@ -18,35 +18,39 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
+from typing import Any, Dict
+
 import flet as ft
-from typing import Dict, Any
+
 from ui.handlers.locale_manager import LocaleManager
-from ui.section.typography_section import TypographySection
 from ui.section.margins_section import MarginsSection
-from ui.section.units_section import UnitsSection
 from ui.section.official_info_section import OfficialInfoSection
+from ui.section.typography_section import TypographySection
+from ui.section.units_section import UnitsSection
+
 
 class ReportFormattingCard(ft.Card):
     """
     Card to customize styling, layout, and metadata for generated reports.
     Orchestrates smaller sub-widgets for typography, margins, units, and official info.
     """
+
     def __init__(self, initial_values: Dict[str, Any]):
         super().__init__()
-        
+
         self.initial_values = initial_values
         self.lm = None
-        
+
         # --- UI CONTROLS ---
         self.title_text = ft.Text(size=18, weight=ft.FontWeight.BOLD)
         self.desc_text = ft.Text(size=12, color=ft.Colors.GREY_400)
-        
+
         # Sub-widgets
         self.typography = TypographySection(initial_values)
         self.margins = MarginsSection(initial_values)
         self.units_section = UnitsSection(initial_values)
         self.official_info = OfficialInfoSection(initial_values)
-        
+
         # --- STRUCTURE ---
         self.content = ft.Container(
             padding=20,
@@ -55,20 +59,16 @@ class ReportFormattingCard(ft.Card):
                     ft.Row([ft.Icon(ft.Icons.EDIT_NOTE_ROUNDED, size=24), self.title_text]),
                     self.desc_text,
                     ft.Divider(),
-                    
                     self.typography,
                     ft.Divider(),
-                    
                     self.margins,
                     ft.Divider(),
-                    
                     self.units_section,
                     ft.Divider(),
-                    
-                    self.official_info
+                    self.official_info,
                 ],
-                spacing=15
-            )
+                spacing=15,
+            ),
         )
 
     @property
@@ -102,14 +102,19 @@ class ReportFormattingCard(ft.Card):
 
     def update_translations(self, lm: LocaleManager):
         self.lm = lm
-        self.title_text.value = lm.get_string("settings_view.formatting_card_title", default="Formatação e Layout dos Laudos")
-        self.desc_text.value = lm.get_string("settings_view.formatting_card_desc", default="Personalize as fontes, alinhamentos, margens e informações oficiais do documento exportado.")
-        
+        self.title_text.value = lm.get_string(
+            "settings_view.formatting_card_title", default="Formatação e Layout dos Laudos"
+        )
+        self.desc_text.value = lm.get_string(
+            "settings_view.formatting_card_desc",
+            default="Personalize as fontes, alinhamentos, margens e informações oficiais do documento exportado.",
+        )
+
         # Delegate translation to sub-widgets
         self.typography.update_translations(lm)
         self.margins.update_translations(lm)
         self.units_section.update_translations(lm)
         self.official_info.update_translations(lm)
-        
+
         if self.page:
             self.update()

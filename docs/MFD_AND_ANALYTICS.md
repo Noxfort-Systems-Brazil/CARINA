@@ -5,7 +5,7 @@ aliases: [MFD Engine, Network Analytics, Traffic Physics, Macroscopic Fundamenta
 
 # 📈 Macroscopic Fundamental Diagram & Network Analytics
 
-This document details the Macroscopic Fundamental Diagram subsystem located in [`src/mfd/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/mfd), the **`MFD_Worker`** process, macroscopic traffic flow physics, perimeter gating algorithms, and the incident filter cache.
+This document details the Macroscopic Fundamental Diagram subsystem located in [`src/mfd/`](../src/mfd), the **`MFD_Worker`** process, macroscopic traffic flow physics, perimeter gating algorithms, and the incident filter cache.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 📊 See [Traffic Warrants](TRAFFIC_ENGINEERING_WARRANTS.md) | 🧠 See [Neural Formulations](RESEARCH_NOTES.md)
 
@@ -46,7 +46,7 @@ Where:
 
 ## 3. Core Modules in `src/mfd/`
 
-The MFD analytical suite consists of 35 specialized modules in [`src/mfd/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/mfd):
+The MFD analytical suite consists of 35 specialized modules in [`src/mfd/`](../src/mfd):
 
 ### 3.1 MFD Worker Process (`mfd_worker.py`)
 Runs as an isolated operating system process spawned by `ProcessManager`. It listens on the `mfd_trigger` IPC queue, performs macroscopic regressions, and returns results on `mfd_results`.
@@ -74,4 +74,4 @@ When network density exceeds critical capacity ($K_{net} \ge K_{crit}$):
 
 ## 5. Incident Filter Debug Cache (`.carina_incident_filter_cache.json`)
 
-To prevent localized accidents or construction lane closures from corrupting the macroscopic MFD curve, [`src/drivers/incident_filter.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/drivers/incident_filter.py) isolates anomalous links and stores active incident states in `.carina_incident_filter_cache.json` for rapid recovery across system restarts.
+To prevent localized accidents or construction lane closures from corrupting the macroscopic MFD curve, [`src/drivers/incident_filter.py`](../src/drivers/incident_filter.py) isolates anomalous links and stores active incident states in `.carina_incident_filter_cache.json` for rapid recovery across system restarts.

@@ -20,9 +20,10 @@
 
 from sas.template_repository import TemplateRepository
 
+
 class SummaryDirectiveBuilder:
     """
-    Responsibility (SRP): Constructs consolidated summary lists and operational 
+    Responsibility (SRP): Constructs consolidated summary lists and operational
     conclusion directives Markdown blocks dynamically from JSON templates.
     Follows SOLID principles.
     """
@@ -36,7 +37,7 @@ class SummaryDirectiveBuilder:
         add_count: int,
         no_signal_count: int,
         language: str,
-        optimize_count: int = 0
+        optimize_count: int = 0,
     ) -> str:
         """
         Builds the consolidated summary section Markdown string.
@@ -59,7 +60,7 @@ class SummaryDirectiveBuilder:
 
         header_template = summary_dict.get(
             "header",
-            "Resumo Consolidado de Intervenções e Recomendação de Ações\n\n**Total de Cruzamentos Avaliados:** {total_junctions}\n"
+            "Resumo Consolidado de Intervenções e Recomendação de Ações\n\n**Total de Cruzamentos Avaliados:** {total_junctions}\n",
         )
         header_str = header_template.format(total_junctions=total_junctions)
 
@@ -91,7 +92,7 @@ class SummaryDirectiveBuilder:
         conclusion_text: str,
         has_last_report: bool,
         language: str,
-        optimize_count: int = 0
+        optimize_count: int = 0,
     ) -> str:
         """
         Builds operational directives conclusions section Markdown string.
@@ -115,7 +116,7 @@ class SummaryDirectiveBuilder:
 
         header_str = directives_dict.get(
             "header",
-            "### Diretrizes Operacionais por Categoria de Intervenção\n\nCom base no parecer do motor CARINA v1.0 (SAS Engine), recomendam-se as seguintes diretrizes:\n\n"
+            "### Diretrizes Operacionais por Categoria de Intervenção\n\nCom base no parecer do motor CARINA v1.0 (SAS Engine), recomendam-se as seguintes diretrizes:\n\n",
         )
 
         items = []

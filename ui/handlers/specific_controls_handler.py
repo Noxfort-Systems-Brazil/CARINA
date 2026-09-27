@@ -23,29 +23,31 @@ Define o SpecificControlsHandler.
 """
 
 import logging
-from typing import Callable, Dict, Any
+from typing import Any, Callable, Dict
 
 from ui.clients.control_client import ControlClient
 from ui.dialogs.confirmation_dialog_manager import ConfirmationDialogManager
 from ui.handlers.locale_manager import LocaleManager
+
 
 class SpecificControlsHandler:
     """
     O 'cérebro' não-visual que gerencia a lógica para o painel de
     controles específicos de um semáforo.
     """
+
     def __init__(
         self,
         control_client: ControlClient,
         dialog_manager: ConfirmationDialogManager,
-        locale_manager: LocaleManager, # <-- CHANGE 1: Added the parameter
+        locale_manager: LocaleManager,  # <-- CHANGE 1: Added the parameter
         security_ui=None,
         on_update_view: Callable[[], None] = None,
-        on_specific_command: Callable[[str, str], None] = None
+        on_specific_command: Callable[[str, str], None] = None,
     ):
         self.control_client = control_client
         self.dialog_manager = dialog_manager
-        self.locale_manager = locale_manager # <-- CHANGE 2: Stored
+        self.locale_manager = locale_manager  # <-- CHANGE 2: Stored
         self.security_ui = security_ui
         self.on_update_view = on_update_view
         self.on_specific_command = on_specific_command
@@ -60,8 +62,9 @@ class SpecificControlsHandler:
         return self.override_states.get(self.current_semaphore_id, "NORMAL")
 
     def execute_confirmed_action(self, action: str):
-        if not self.current_semaphore_id: return
-        
+        if not self.current_semaphore_id:
+            return
+
         def _execute():
             self.override_states[self.current_semaphore_id] = action
             self.control_client.set_semaphore_override(self.current_semaphore_id, action)
@@ -69,31 +72,32 @@ class SpecificControlsHandler:
                 self.on_specific_command(self.current_semaphore_id, action)
             if self.on_update_view:
                 self.on_update_view()
-                
+
         if action in ["ALERT", "OFF"] and self.security_ui:
             self.security_ui.request_auth(on_success=_execute)
         else:
             _execute()
 
-
-
     def request_confirmation(self, action: str):
         """Usa o locale_manager para criar e exibir um diálogo traduzido."""
-        if not self.current_semaphore_id: return
+        if not self.current_semaphore_id:
+            return
 
         action_text_map = {
-            "ALERT": self.locale_manager.get_string("dialogs.specific_action_alert").format(id=self.current_semaphore_id),
+            "ALERT": self.locale_manager.get_string("dialogs.specific_action_alert").format(
+                id=self.current_semaphore_id
+            ),
             "OFF": self.locale_manager.get_string("dialogs.specific_action_off").format(id=self.current_semaphore_id),
-            "NORMAL": self.locale_manager.get_string("dialogs.specific_action_normal").format(id=self.current_semaphore_id)
+            "NORMAL": self.locale_manager.get_string("dialogs.specific_action_normal").format(
+                id=self.current_semaphore_id
+            ),
         }
-        
+
         template = self.locale_manager.get_string("dialogs.confirm_specific_action_content")
         content_text = template.format(action_text=action_text_map.get(action, "..."))
 
         title = self.locale_manager.get_string("dialogs.confirm_action_title")
 
         self.dialog_manager.show(
-            title=title,
-            content=content_text,
-            on_confirm=lambda: self.execute_confirmed_action(action)
+            title=title, content=content_text, on_confirm=lambda: self.execute_confirmed_action(action)
         )

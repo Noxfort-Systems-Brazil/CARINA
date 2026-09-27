@@ -19,7 +19,8 @@
 # Date: August 10, 2026
 
 import logging
-from typing import Callable, Any
+from typing import Any, Callable
+
 import flet as ft
 
 
@@ -56,26 +57,35 @@ class ErrorView:
             page.theme_mode = dark_mode
 
             error_card = ft.Container(
-                content=ft.Column([
-                    ft.Icon(error_icon, color=red_color, size=64),
-                    ft.Text("Erro ao Carregar Interface da CARINA", size=22, weight=ft.FontWeight.BOLD, color=red_color),
-                    ft.Text("Ocorreu uma exceção crítica durante a montagem dos componentes da interface:", size=14, color=grey_300),
-                    ft.Container(
-                        content=ft.Text(error_msg, size=11, selectable=True, font_family="monospace", color=red_200),
-                        bgcolor=black54,
-                        padding=15,
-                        border_radius=8,
-                        height=300,
-                    ),
-                    ft.ElevatedButton(
-                        "Reiniciar Interface",
-                        icon=refresh_icon,
-                        on_click=on_restart_callback
-                    )
-                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
+                content=ft.Column(
+                    [
+                        ft.Icon(error_icon, color=red_color, size=64),
+                        ft.Text(
+                            "Erro ao Carregar Interface da CARINA", size=22, weight=ft.FontWeight.BOLD, color=red_color
+                        ),
+                        ft.Text(
+                            "Ocorreu uma exceção crítica durante a montagem dos componentes da interface:",
+                            size=14,
+                            color=grey_300,
+                        ),
+                        ft.Container(
+                            content=ft.Text(
+                                error_msg, size=11, selectable=True, font_family="monospace", color=red_200
+                            ),
+                            bgcolor=black54,
+                            padding=15,
+                            border_radius=8,
+                            height=300,
+                        ),
+                        ft.ElevatedButton("Reiniciar Interface", icon=refresh_icon, on_click=on_restart_callback),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=15,
+                ),
                 alignment=ft.alignment.center,
                 expand=True,
-                padding=30
+                padding=30,
             )
             page.add(error_card)
             page.update()

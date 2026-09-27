@@ -27,8 +27,10 @@ the 'Maturity' Enum definition in a simple, dependency-free module.
 
 from enum import Enum, auto
 
+
 class Maturity(Enum):
     """Defines an agent's maturity phases."""
+
     CHILD = auto()
     TEEN = auto()
     ADULT = auto()

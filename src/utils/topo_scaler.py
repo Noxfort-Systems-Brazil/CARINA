@@ -18,9 +18,10 @@
 # Author: Gabriel Moraes
 # Date: August 2026
 
-import math
 import logging
+import math
 from typing import Tuple
+
 
 class TopologicalScaler:
     """
@@ -85,5 +86,7 @@ class TopologicalScaler:
         """
         latent_dim = cls.calculate_latent_dim(num_nodes)
         num_heads = cls.calculate_num_heads(num_nodes)
-        logging.info(f"[TopologicalScaler] Auto-scaled for N={num_nodes} nodes -> latent_dim={latent_dim}, num_heads={num_heads}")
+        logging.info(
+            f"[TopologicalScaler] Auto-scaled for N={num_nodes} nodes -> latent_dim={latent_dim}, num_heads={num_heads}"
+        )
         return latent_dim, num_heads

@@ -20,6 +20,7 @@
 
 from typing import Any, Dict, Set
 
+
 class ReportDataNormalizer:
     """Handles data structure normalization and statistical calculation for traffic reports."""
 
@@ -124,5 +125,5 @@ class ReportDataNormalizer:
             "max_saturation_val": max_sat_val if max_sat_val >= 0 else 0.0,
             "max_saturation_junction_id": max_sat_j_id,
             "max_delay_val": max_delay_val if max_delay_val >= 0 else 0.0,
-            "max_delay_junction_id": max_delay_j_id
+            "max_delay_junction_id": max_delay_j_id,
         }

@@ -42,6 +42,7 @@ class ReportTransducerFactory:
         """
         try:
             from slm.semantic_transducer import SemanticTransducer
+
             transducer = SemanticTransducer()
             transducer.load_resources()
             logging.info("[REPORT_TRANSDUCER_FACTORY] SemanticTransducer (SLM) loaded successfully.")
@@ -50,7 +51,7 @@ class ReportTransducerFactory:
             logging.warning(
                 f"[REPORT_TRANSDUCER_FACTORY] SemanticTransducer initialization failed: {e}. "
                 "Falling back to LocalLlamaTransducer.",
-                exc_info=True
+                exc_info=True,
             )
             return LocalLlamaTransducer()
 

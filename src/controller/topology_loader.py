@@ -25,12 +25,12 @@ Handles loading and processing of SUMO network topology files for the fixed-time
 """
 
 import logging
-from typing import List, Tuple
 from dataclasses import dataclass
+from typing import List, Tuple
 
 from src.controller.common_types import StageDefinition
-from src.controller.stage_extractor import extract_green_stages
 from src.controller.stage_derivator import derive_yellow_state
+from src.controller.stage_extractor import extract_green_stages
 from src.controller.stage_validator import validate_stages
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class IntersectionData:
     """Data structure for intersection information."""
+
     tls_id: str
     phase_definitions: List[StageDefinition]
 
@@ -46,14 +47,14 @@ class IntersectionData:
 class TopologyLoader:
     """
     Handles loading and processing of SUMO network topology files.
-    
+
     This class is responsible for:
     - Parsing SUMO .net.xml files
     - Extracting traffic light programs
     - Processing phases for fixed-time control
     """
-    
-    def __init__(self, green_chars: frozenset = frozenset({'G', 'g'})):
+
+    def __init__(self, green_chars: frozenset = frozenset({"G", "g"})):
         """
         Args:
             green_chars: Set of characters considered as green signals in SUMO
@@ -63,15 +64,16 @@ class TopologyLoader:
     def load_topology(self, net_file_path: str) -> Tuple[List[IntersectionData], bool]:
         """
         Extract TLS programs from the SUMO .net.xml network file.
-        
+
         Args:
             net_file_path: Absolute path to the .net.xml file.
-            
+
         Returns:
             Tuple of (list of intersection data, success flag)
         """
         try:
             import sumolib  # type: ignore
+
             net = sumolib.net.readNet(net_file_path, withInternal=False)
         except ImportError:
             logger.error("[TopologyLoader] sumolib not available. Cannot load topology.")
@@ -114,12 +116,10 @@ class TopologyLoader:
             phase_definitions = []
             for state_str in green_stages:
                 yellow_str = derive_yellow_state(state_str)
-                all_red_str = 'r' * len(state_str)
-                phase_definitions.append(StageDefinition(
-                    state_string=state_str,
-                    yellow_string=yellow_str,
-                    all_red_string=all_red_str
-                ))
+                all_red_str = "r" * len(state_str)
+                phase_definitions.append(
+                    StageDefinition(state_string=state_str, yellow_string=yellow_str, all_red_string=all_red_str)
+                )
 
             # SAFETY VALIDATION: verify each phase's internal consistency
             if not validate_stages(tls_id, phase_definitions):
@@ -129,23 +129,17 @@ class TopologyLoader:
                 )
                 # Force permanent ALL_RED for this intersection
                 signal_len = len(green_stages[0])
-                all_red = 'r' * signal_len
-                phase_definitions = [StageDefinition(
-                    state_string=all_red,
-                    yellow_string=all_red,
-                    all_red_string=all_red
-                )]
+                all_red = "r" * signal_len
+                phase_definitions = [
+                    StageDefinition(state_string=all_red, yellow_string=all_red, all_red_string=all_red)
+                ]
 
-            intersections.append(IntersectionData(
-                tls_id=tls_id,
-                phase_definitions=phase_definitions
-            ))
+            intersections.append(IntersectionData(tls_id=tls_id, phase_definitions=phase_definitions))
             loaded_count += 1
 
             cycle_length = (2.0 + 4.0 + 15.0) * len(phase_definitions)  # Default timings
             logger.info(
-                f"[TopologyLoader] TLS '{tls_id}': {len(phase_definitions)} phases, "
-                f"cycle = {cycle_length:.0f}s"
+                f"[TopologyLoader] TLS '{tls_id}': {len(phase_definitions)} phases, " f"cycle = {cycle_length:.0f}s"
             )
 
         logger.info(

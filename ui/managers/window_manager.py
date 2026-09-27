@@ -18,11 +18,13 @@
 # Author: Gabriel Moraes
 # Date: July 19, 2026
 
-import sys
-import os
-import time
 import logging
+import os
+import sys
+import time
+
 import flet as ft
+
 
 class WindowManager:
     """
@@ -30,6 +32,7 @@ class WindowManager:
     including keyboard shortcuts (F11), window close interception (minimize to tray),
     and synchronization with the system tray daemon.
     """
+
     def __init__(self, page: ft.Page, restore_event, shutdown_event):
         self.page = page
         self.restore_event = restore_event
@@ -49,7 +52,7 @@ class WindowManager:
         self.page.on_keyboard_event = self._handle_keyboard
 
         # Intercept window close button
-        if hasattr(self.page, 'window') and self.page.window is not None:
+        if hasattr(self.page, "window") and self.page.window is not None:
             self.page.window.prevent_close = True
             self.page.window.on_event = self._window_event
         else:
@@ -64,18 +67,20 @@ class WindowManager:
 
     def _handle_keyboard(self, e: ft.KeyboardEvent):
         if e.key == "F11":
-            if hasattr(self.page, 'window') and self.page.window is not None:
+            if hasattr(self.page, "window") and self.page.window is not None:
                 self.page.window.full_screen = not self.page.window.full_screen
             else:
                 self.page.window_full_screen = not getattr(self.page, "window_full_screen", False)
             self.page.update()
 
     def _window_event(self, e):
-        if hasattr(e, 'data') and e.data == "close":
+        if hasattr(e, "data") and e.data == "close":
             if self.shutdown_event and self.shutdown_event.is_set():
                 return
-            logging.info("[WindowManager] Botão 'X' clicado pelo usuário. Minimizando janela para a bandeja em vez de fechar...")
-            if hasattr(self.page, 'window') and self.page.window is not None:
+            logging.info(
+                "[WindowManager] Botão 'X' clicado pelo usuário. Minimizando janela para a bandeja em vez de fechar..."
+            )
+            if hasattr(self.page, "window") and self.page.window is not None:
                 self.page.window.minimized = True
                 self.page.window.visible = False
             else:
@@ -91,17 +96,17 @@ class WindowManager:
             if self.restore_event and self.restore_event.is_set():
                 self.restore_event.clear()
                 self._restore_window()
-                
+
             if self.shutdown_event and self.shutdown_event.is_set():
                 self._destroy_window()
                 break
             time.sleep(0.1)
 
     def _restore_window(self):
-        if hasattr(self.page, 'window') and self.page.window is not None:
-            is_visible = getattr(self.page.window, 'visible', False)
-            is_minimized = getattr(self.page.window, 'minimized', False)
-            
+        if hasattr(self.page, "window") and self.page.window is not None:
+            is_visible = getattr(self.page.window, "visible", False)
+            is_minimized = getattr(self.page.window, "minimized", False)
+
             if is_visible and not is_minimized:
                 self.page.window.minimized = True
             else:
@@ -113,9 +118,9 @@ class WindowManager:
                 except Exception:
                     pass
         else:
-            is_visible = getattr(self.page, 'window_visible', False)
-            is_minimized = getattr(self.page, 'window_minimized', False)
-            
+            is_visible = getattr(self.page, "window_visible", False)
+            is_minimized = getattr(self.page, "window_minimized", False)
+
             if is_visible and not is_minimized:
                 self.page.window_minimized = True
             else:
@@ -129,7 +134,7 @@ class WindowManager:
         self.page.update()
 
     def _destroy_window(self):
-        if hasattr(self.page, 'window') and self.page.window is not None:
+        if hasattr(self.page, "window") and self.page.window is not None:
             self.page.window.prevent_close = False
             self.page.window.destroy()
         else:
@@ -146,6 +151,7 @@ class WindowManager:
         self._destroy_window()
         try:
             import psutil
+
             current_proc = psutil.Process(os.getpid())
             for child in current_proc.children(recursive=True):
                 try:

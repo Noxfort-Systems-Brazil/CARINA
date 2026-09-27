@@ -18,22 +18,26 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
+from typing import Any, Dict
+
 import flet as ft
-from typing import Dict, Any
+
 from ui.handlers.locale_manager import LocaleManager
+
 
 class UnitsSection(ft.Column):
     """
     Sub-widget of ReportFormattingCard managing report measurement units, such as speed.
     """
+
     def __init__(self, initial_values: Dict[str, Any]):
         super().__init__()
         self.spacing = 15
-        
+
         self.lbl_units_title = ft.Text(weight=ft.FontWeight.BOLD)
         self.lbl_speed_unit = ft.Text(size=11, weight=ft.FontWeight.W_500)
         self.lbl_decimal_separator = ft.Text(size=11, weight=ft.FontWeight.W_500)
-        
+
         self.dd_speed_unit = ft.Dropdown(
             options=[
                 ft.dropdown.Option("m/s", "m/s"),
@@ -41,7 +45,7 @@ class UnitsSection(ft.Column):
                 ft.dropdown.Option("imperial", "mph (Imperial)"),
             ],
             value=initial_values.get("xai_speed_unit", "m/s"),
-            width=200
+            width=200,
         )
 
         self.dd_decimal_separator = ft.Dropdown(
@@ -50,9 +54,9 @@ class UnitsSection(ft.Column):
                 ft.dropdown.Option(".", "Ponto Decimal (1.23)"),
             ],
             value=initial_values.get("decimal_separator", ","),
-            width=220
+            width=220,
         )
-        
+
         self.controls = [
             self.lbl_units_title,
             ft.Row(
@@ -61,8 +65,8 @@ class UnitsSection(ft.Column):
                     ft.Column([self.lbl_decimal_separator, self.dd_decimal_separator]),
                 ],
                 spacing=20,
-                alignment=ft.MainAxisAlignment.START
-            )
+                alignment=ft.MainAxisAlignment.START,
+            ),
         ]
 
     def get_values(self) -> Dict[str, Any]:
@@ -76,14 +80,25 @@ class UnitsSection(ft.Column):
         self.dd_decimal_separator.value = values.get("decimal_separator", ",")
 
     def update_translations(self, lm: LocaleManager):
-        self.lbl_units_title.value = lm.get_string("settings_view.formatting_card.units_title", default="Unidades de Medida do Relatório")
-        self.lbl_speed_unit.value = lm.get_string("settings_view.formatting_card.speed_unit_label", default="Unidade de Velocidade")
-        self.lbl_decimal_separator.value = lm.get_string("settings_view.formatting_card.decimal_separator_label", default="Separador Decimal")
-        
+        self.lbl_units_title.value = lm.get_string(
+            "settings_view.formatting_card.units_title", default="Unidades de Medida do Relatório"
+        )
+        self.lbl_speed_unit.value = lm.get_string(
+            "settings_view.formatting_card.speed_unit_label", default="Unidade de Velocidade"
+        )
+        self.lbl_decimal_separator.value = lm.get_string(
+            "settings_view.formatting_card.decimal_separator_label", default="Separador Decimal"
+        )
+
         if len(self.dd_speed_unit.options) >= 3:
-            self.dd_speed_unit.options[2].text = lm.get_string("settings_view.formatting_card.speed_unit_imperial", default="mph (Imperial)")
+            self.dd_speed_unit.options[2].text = lm.get_string(
+                "settings_view.formatting_card.speed_unit_imperial", default="mph (Imperial)"
+            )
 
         if len(self.dd_decimal_separator.options) >= 2:
-            self.dd_decimal_separator.options[0].text = lm.get_string("settings_view.formatting_card.decimal_separator_comma", default="Vírgula Decimal (1,23)")
-            self.dd_decimal_separator.options[1].text = lm.get_string("settings_view.formatting_card.decimal_separator_dot", default="Ponto Decimal (1.23)")
-
+            self.dd_decimal_separator.options[0].text = lm.get_string(
+                "settings_view.formatting_card.decimal_separator_comma", default="Vírgula Decimal (1,23)"
+            )
+            self.dd_decimal_separator.options[1].text = lm.get_string(
+                "settings_view.formatting_card.decimal_separator_dot", default="Ponto Decimal (1.23)"
+            )

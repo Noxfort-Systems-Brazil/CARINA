@@ -28,17 +28,33 @@ traffic performance metrics derived from the Macroscopic Fundamental Diagram.
 
 class MFDSnapshot:
     """Immutable record of a single MFD computation at a point in time."""
+
     __slots__ = (
-        'timestamp', 'accumulation', 'production',
-        'mean_speed', 'mean_density', 'mean_flow',
-        'efficiency', 'congestion_ratio', 'active_edges',
-        'intersections'
+        "timestamp",
+        "accumulation",
+        "production",
+        "mean_speed",
+        "mean_density",
+        "mean_flow",
+        "efficiency",
+        "congestion_ratio",
+        "active_edges",
+        "intersections",
     )
 
-    def __init__(self, timestamp: float, accumulation: float, production: float,
-                 mean_speed: float, mean_density: float, mean_flow: float,
-                 efficiency: float, congestion_ratio: float, active_edges: int,
-                 intersections: dict = None):
+    def __init__(
+        self,
+        timestamp: float,
+        accumulation: float,
+        production: float,
+        mean_speed: float,
+        mean_density: float,
+        mean_flow: float,
+        efficiency: float,
+        congestion_ratio: float,
+        active_edges: int,
+        intersections: dict = None,
+    ):
         self.timestamp = timestamp
         self.accumulation = accumulation
         self.production = production
@@ -53,20 +69,20 @@ class MFDSnapshot:
     def to_dict(self) -> dict:
         """Serializes the snapshot into a JSON-safe dictionary."""
         return {
-            'timestamp': round(self.timestamp, 2),
-            'accumulation': round(self.accumulation, 4),
-            'production': round(self.production, 4),
-            'mean_speed': round(self.mean_speed, 2),
-            'mean_density': round(self.mean_density, 4),
-            'mean_flow': round(self.mean_flow, 4),
-            'efficiency': round(self.efficiency, 4),
-            'congestion_ratio': round(self.congestion_ratio, 4),
-            'active_edges': self.active_edges,
-            'intersections': self.intersections
+            "timestamp": round(self.timestamp, 2),
+            "accumulation": round(self.accumulation, 4),
+            "production": round(self.production, 4),
+            "mean_speed": round(self.mean_speed, 2),
+            "mean_density": round(self.mean_density, 4),
+            "mean_flow": round(self.mean_flow, 4),
+            "efficiency": round(self.efficiency, 4),
+            "congestion_ratio": round(self.congestion_ratio, 4),
+            "active_edges": self.active_edges,
+            "intersections": self.intersections,
         }
 
     @staticmethod
-    def empty(sim_time: float, assume_optimal: bool = True) -> 'MFDSnapshot':
+    def empty(sim_time: float, assume_optimal: bool = True) -> "MFDSnapshot":
         """Factory method for a zeroed snapshot when no data is available."""
         return MFDSnapshot(
             timestamp=sim_time,
@@ -78,5 +94,5 @@ class MFDSnapshot:
             efficiency=1.0 if assume_optimal else 0.0,
             congestion_ratio=0.0,
             active_edges=0,
-            intersections={}
+            intersections={},
         )

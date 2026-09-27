@@ -5,18 +5,10 @@
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # File: src/blocks/markdown_to_docx.py
 # Author: Gabriel Moraes
-# Date: July 25, 2026
+# Date: September 2026
 
 import re
 from typing import Any, Dict
@@ -27,8 +19,10 @@ try:
 except ImportError:
     pass
 
+from blocks.docx_equation_builder import DocxEquationBuilder
+from blocks.docx_image_builder import DocxImageBuilder
 from blocks.docx_table_builder import render_markdown_table
-from blocks.docx_text_builder import add_formatted_text_to_paragraph, add_omml_equation_to_document
+from blocks.docx_text_builder import add_formatted_text_to_paragraph
 from blocks.math_cleaner import clean_latex_math
 
 
@@ -42,13 +36,8 @@ def render_markdown_to_docx(
 ) -> None:
     """
     Renders standard Markdown text into a python-docx Document object.
-    Orchestrates:
-    - Headers (# H1, ## H2, ### H3, #### H4)
-    - Code blocks (```)
-    - Markdown tables (| Col1 | Col2 |) via docx_table_builder
-    - Centralized equations ($$...$$) and ABNT NBR 14724 tag alignment
-    - Selective bullet and numbered lists
-    - Automatic page breaks before ANEXO I and signature placement
+    Orchestrates headers, code blocks, tables, math equations, images, and lists.
+    Adheres to SOLID Single Responsibility Principle via specialized builders.
     """
     if context is None:
         context = {}
@@ -142,52 +131,8 @@ def render_markdown_to_docx(
             render_markdown_table(doc, table_lines, font_name=font_name, font_size=default_font_size)
             continue
 
-        # 1.5. Markdown Images ![alt](src)
-        img_match = re.match(r"^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$", line_str)
-        if img_match:
-            caption_text = img_match.group(1).strip()
-            img_src = img_match.group(2).strip()
-            tmp_img_path = None
-            try:
-                import base64
-                import os
-                import tempfile
-
-                if img_src.startswith("data:image/"):
-                    b64_data = img_src.split(",", 1)[1] if "," in img_src else img_src
-                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
-                        tmp_file.write(base64.b64decode(b64_data))
-                        tmp_img_path = tmp_file.name
-                elif os.path.exists(img_src):
-                    tmp_img_path = img_src
-
-                if tmp_img_path and os.path.exists(tmp_img_path) and os.path.getsize(tmp_img_path) > 0:
-                    p_img = doc.add_paragraph()
-                    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p_img.paragraph_format.space_before = Pt(8)
-                    p_img.paragraph_format.space_after = Pt(4)
-                    run_img = p_img.add_run()
-                    run_img.add_picture(tmp_img_path, width=Inches(5.5))
-
-                    if caption_text:
-                        p_cap = doc.add_paragraph()
-                        p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        p_cap.paragraph_format.space_before = Pt(2)
-                        p_cap.paragraph_format.space_after = Pt(8)
-                        r_cap = p_cap.add_run(caption_text)
-                        r_cap.font.name = font_name
-                        r_cap.font.size = Pt(9.0)
-                        r_cap.font.italic = True
-            except Exception as e:
-                import logging
-
-                logging.warning(f"[MarkdownToDocx] Failed to render image line: {e}")
-            finally:
-                if tmp_img_path and img_src.startswith("data:image/") and os.path.exists(tmp_img_path):
-                    try:
-                        os.remove(tmp_img_path)
-                    except Exception:
-                        pass
+        # 1.5. Markdown Images ![alt](src) (Delegated to DocxImageBuilder)
+        if DocxImageBuilder.render_image(doc, line_str, font_name=font_name):
             i += 1
             continue
 
@@ -218,7 +163,6 @@ def render_markdown_to_docx(
             else:
                 last_was_page_break = False
 
-            # Headings use the configured document text font size with bold styling
             font_size = default_font_size
             if level == 1:
                 space_before = 12
@@ -238,42 +182,8 @@ def render_markdown_to_docx(
             i += 1
             continue
 
-        # 3. Centralized Equations (lines wrapped in $$) - ABNT NBR 14724 Standard
-        if line_str.startswith("$$") and line_str.endswith("$$"):
-            eq_raw = line_str[2:-2].strip()
-
-            tag_match = re.search(r"\\tag\{(\d+)\}", eq_raw) or re.search(r"\s*\((\d+)\)\s*$", eq_raw)
-            tag_str = ""
-            if tag_match:
-                tag_num = tag_match.group(1)
-                tag_str = f"({tag_num})"
-                eq_raw = re.sub(r"\\tag\{(\d+)\}", "", eq_raw)
-                eq_raw = re.sub(r"\s*\(\d+\)\s*$", "", eq_raw).strip()
-
-            # Try native Word OMML fraction rendering first
-            if not add_omml_equation_to_document(
-                doc, eq_raw, tag_str, font_name=font_name, font_size=default_font_size
-            ):
-                cleaned_eq = clean_latex_math(eq_raw)
-                p = doc.add_paragraph()
-                p.paragraph_format.space_before = Pt(8)
-                p.paragraph_format.space_after = Pt(8)
-
-                if tag_str:
-                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    add_formatted_text_to_paragraph(
-                        p, f"      **{cleaned_eq}**", font_size=default_font_size, font_name=font_name
-                    )
-                    r_tag = p.add_run(f"\t\t{tag_str}")
-                    r_tag.bold = True
-                    r_tag.font.name = font_name
-                    r_tag.font.size = Pt(default_font_size)
-                else:
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    add_formatted_text_to_paragraph(
-                        p, f"**{cleaned_eq}**", font_size=default_font_size, font_name=font_name
-                    )
-
+        # 3. Centralized Equations (Delegated to DocxEquationBuilder)
+        if DocxEquationBuilder.render_equation(doc, line_str, default_font_size=default_font_size, font_name=font_name):
             i += 1
             continue
 

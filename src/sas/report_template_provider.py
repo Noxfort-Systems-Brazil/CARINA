@@ -18,16 +18,18 @@
 # Author: Gabriel Moraes
 # Date: July 21, 2026
 
-from typing import Dict, Any
-from sas.template_repository import TemplateRepository
-from sas.recommendation_label_resolver import RecommendationLabelResolver
+from typing import Any, Dict
+
 from sas.intersection_block_formatter import IntersectionBlockFormatter
+from sas.recommendation_label_resolver import RecommendationLabelResolver
 from sas.summary_directive_builder import SummaryDirectiveBuilder
+from sas.template_repository import TemplateRepository
+
 
 class ReportTemplateProvider:
     """
-    Responsibility (Facade Pattern / SOLID): Global facade providing static report templates, 
-    bilingual formatting, and Markdown blocks by delegating to specialized sub-components 
+    Responsibility (Facade Pattern / SOLID): Global facade providing static report templates,
+    bilingual formatting, and Markdown blocks by delegating to specialized sub-components
     (TemplateRepository, RecommendationLabelResolver, IntersectionBlockFormatter, SummaryDirectiveBuilder).
     Follows SOLID design principles.
     """
@@ -50,7 +52,9 @@ class ReportTemplateProvider:
     @classmethod
     def get_auditoria_title(cls, language: str) -> str:
         """Delegates to TemplateRepository."""
-        return cls.get_template_value("auditoria_title", language, default="## 3. Detalhamento de Auditoria e Decisões por Cruzamento\n\n")
+        return cls.get_template_value(
+            "auditoria_title", language, default="## 3. Detalhamento de Auditoria e Decisões por Cruzamento\n\n"
+        )
 
     @classmethod
     def get_equations_section(cls, language: str) -> str:
@@ -59,13 +63,7 @@ class ReportTemplateProvider:
 
     @classmethod
     def get_recommendation_labels(
-        cls,
-        is_add: bool,
-        is_remove: bool,
-        is_keep: bool,
-        is_no_signal: bool,
-        language: str,
-        is_optimize: bool = False
+        cls, is_add: bool, is_remove: bool, is_keep: bool, is_no_signal: bool, language: str, is_optimize: bool = False
     ) -> str:
         """Delegates to RecommendationLabelResolver."""
         return RecommendationLabelResolver.get_recommendation_labels(
@@ -74,7 +72,7 @@ class ReportTemplateProvider:
             is_keep=is_keep,
             is_no_signal=is_no_signal,
             language=language,
-            is_optimize=is_optimize
+            is_optimize=is_optimize,
         )
 
     @classmethod
@@ -100,7 +98,7 @@ class ReportTemplateProvider:
         speed_p: float = 50.0,
         speed_s: float = 40.0,
         len_p: float = 100.0,
-        len_s: float = 100.0
+        len_s: float = 100.0,
     ) -> str:
         """Delegates to IntersectionBlockFormatter."""
         return IntersectionBlockFormatter.get_intersection_block(
@@ -119,7 +117,7 @@ class ReportTemplateProvider:
             speed_p=speed_p,
             speed_s=speed_s,
             len_p=len_p,
-            len_s=len_s
+            len_s=len_s,
         )
 
     @classmethod
@@ -141,7 +139,7 @@ class ReportTemplateProvider:
         speed_p: float = 50.0,
         speed_s: float = 40.0,
         len_p: float = 100.0,
-        len_s: float = 100.0
+        len_s: float = 100.0,
     ) -> str:
         """Alias wrapper method delegating to get_intersection_block."""
         return cls.get_intersection_block(
@@ -160,7 +158,7 @@ class ReportTemplateProvider:
             speed_p=speed_p,
             speed_s=speed_s,
             len_p=len_p,
-            len_s=len_s
+            len_s=len_s,
         )
 
     @classmethod
@@ -172,7 +170,7 @@ class ReportTemplateProvider:
         add_count: int,
         no_signal_count: int,
         language: str,
-        optimize_count: int = 0
+        optimize_count: int = 0,
     ) -> str:
         """Delegates to SummaryDirectiveBuilder."""
         return SummaryDirectiveBuilder.get_consolidated_summary(
@@ -182,7 +180,7 @@ class ReportTemplateProvider:
             add_count=add_count,
             no_signal_count=no_signal_count,
             language=language,
-            optimize_count=optimize_count
+            optimize_count=optimize_count,
         )
 
     @classmethod
@@ -194,7 +192,7 @@ class ReportTemplateProvider:
         add_count: int,
         no_signal_count: int,
         language: str = "pt_br",
-        optimize_count: int = 0
+        optimize_count: int = 0,
     ) -> str:
         """Alias wrapper method delegating to get_consolidated_summary."""
         return cls.get_consolidated_summary(
@@ -204,7 +202,7 @@ class ReportTemplateProvider:
             add_count=add_count,
             no_signal_count=no_signal_count,
             optimize_count=optimize_count,
-            language=language
+            language=language,
         )
 
     @classmethod
@@ -217,7 +215,7 @@ class ReportTemplateProvider:
         conclusion_text: str,
         has_last_report: bool,
         language: str,
-        optimize_count: int = 0
+        optimize_count: int = 0,
     ) -> str:
         """Delegates to SummaryDirectiveBuilder."""
         return SummaryDirectiveBuilder.get_conclusions_section(
@@ -228,7 +226,7 @@ class ReportTemplateProvider:
             conclusion_text=conclusion_text,
             has_last_report=has_last_report,
             language=language,
-            optimize_count=optimize_count
+            optimize_count=optimize_count,
         )
 
     @classmethod

@@ -58,6 +58,8 @@ except (ImportError, ModuleNotFoundError):
         logging.warning("SUMO_HOME não definido, a importação de TraCIException pode falhar.")
         TraCIException = Exception
 
+
+class DecisionCoordinator:
     def __init__(
         self,
         agents: Dict[str, "LocalAgent"],

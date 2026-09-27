@@ -18,8 +18,10 @@
 # Author: Gabriel Moraes
 # Date: July 03, 2026
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 from mfd.mfd_metrics_calculator import _classify_outcome, _safe_pct
+
 
 class MFDComparisonEngine:
     """Computes comparison dimensions (delta changes and outcomes) vs first and last baselines."""
@@ -55,7 +57,7 @@ class MFDComparisonEngine:
                     "previous_speed": round(prev.get("average_speed_m_s", 0.0) * speed_factor, 2),
                     "current_speed": round(curr_raw_inter["average_speed_m_s"] * speed_factor, 2),
                     "previous_queue": int(round(prev.get("average_queue_length", 0.0))),
-                    "current_queue": int(round(curr_raw_inter["average_queue_length"]))
+                    "current_queue": int(round(curr_raw_inter["average_queue_length"])),
                 }
             else:
                 intersection_comparisons_last[tl_id] = {
@@ -66,7 +68,7 @@ class MFDComparisonEngine:
                     "previous_speed": 0.0,
                     "current_speed": round(curr_raw_inter["average_speed_m_s"] * speed_factor, 2),
                     "previous_queue": 0,
-                    "current_queue": int(round(curr_raw_inter["average_queue_length"]))
+                    "current_queue": int(round(curr_raw_inter["average_queue_length"])),
                 }
 
         return {
@@ -83,7 +85,7 @@ class MFDComparisonEngine:
             "previous_efficiency": round(last_global_eff, 4),
             "current_efficiency": round(avg_eff, 4),
             "efficiency_change_pct": round(global_eff_change_last, 2),
-            "intersection_comparisons": intersection_comparisons_last
+            "intersection_comparisons": intersection_comparisons_last,
         }
 
     @staticmethod
@@ -97,9 +99,13 @@ class MFDComparisonEngine:
         first_global_eff = first_data.get("global_stats", {}).get("average_efficiency", 0.0)
 
         global_speed_change_first = _safe_pct(avg_speed, first_global_speed) if first_global_speed > 0 else 0.0
-        global_queue_change_first = _safe_pct(avg_global_queue_raw, first_global_queue) if first_global_queue > 0 else 0.0
+        global_queue_change_first = (
+            _safe_pct(avg_global_queue_raw, first_global_queue) if first_global_queue > 0 else 0.0
+        )
         global_eff_change_first = _safe_pct(avg_eff, first_global_eff) if first_global_eff > 0 else 0.0
-        global_outcome_first = _classify_outcome(global_speed_change_first) if first_global_speed > 0 else "FIRST_ANALYSIS"
+        global_outcome_first = (
+            _classify_outcome(global_speed_change_first) if first_global_speed > 0 else "FIRST_ANALYSIS"
+        )
 
         first_intersections = first_data.get("intersections_stats", {})
         intersection_comparisons_global = {}
@@ -117,7 +123,7 @@ class MFDComparisonEngine:
                     "baseline_speed": round(baseline.get("average_speed_m_s", 0.0) * speed_factor, 2),
                     "current_speed": round(curr_raw_inter["average_speed_m_s"] * speed_factor, 2),
                     "baseline_queue": int(round(baseline.get("average_queue_length", 0.0))),
-                    "current_queue": int(round(curr_raw_inter["average_queue_length"]))
+                    "current_queue": int(round(curr_raw_inter["average_queue_length"])),
                 }
             else:
                 intersection_comparisons_global[tl_id] = {
@@ -128,7 +134,7 @@ class MFDComparisonEngine:
                     "baseline_speed": 0.0,
                     "current_speed": round(curr_raw_inter["average_speed_m_s"] * speed_factor, 2),
                     "baseline_queue": 0,
-                    "current_queue": int(round(curr_raw_inter["average_queue_length"]))
+                    "current_queue": int(round(curr_raw_inter["average_queue_length"])),
                 }
 
         return {
@@ -141,5 +147,5 @@ class MFDComparisonEngine:
             "current_speed": round(avg_speed * speed_factor, 2),
             "baseline_queue": int(round(first_global_queue)),
             "current_queue": int(round(avg_global_queue_raw)),
-            "intersection_comparisons": intersection_comparisons_global
+            "intersection_comparisons": intersection_comparisons_global,
         }

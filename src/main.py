@@ -18,33 +18,30 @@
 # Author: Gabriel Moraes
 # Date: December 14, 2025
 
-import sys
-import os
-from datetime import datetime
 import logging
+import os
+import sys
 import traceback
+from datetime import datetime
 from multiprocessing import Queue
 from multiprocessing.connection import Connection
 
 # Add 'src' directory to python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from utils.paths import get_base_output_dir
-from utils.logging_setup import setup_logging
-from utils.locale_manager_backend import LocaleManagerBackend
-from utils.settings_manager import SettingsManager
 from utils.hardware_initializer import HardwareInitializer
+from utils.locale_manager_backend import LocaleManagerBackend
+from utils.logging_setup import setup_logging
+from utils.paths import get_base_output_dir
 from utils.process_monitor import ProcessMonitor
+from utils.settings_manager import SettingsManager
 
 
 def run_ai_process(
-    pipe_conn: Connection,
-    guardian_state_queue: Queue,
-    guardian_signal_queue: Queue,
-    db_data_queue: Queue
+    pipe_conn: Connection, guardian_state_queue: Queue, guardian_signal_queue: Queue, db_data_queue: Queue
 ):
     """
     Main orchestrator for the AI Process (HFT Mode).
@@ -65,16 +62,22 @@ def run_ai_process(
     def print_and_log(message: str, level: str = "info"):
         print(f"[AI Process] {message}")
         if log_configured:
-            if level == "info": logging.info(message)
-            elif level == "warning": logging.warning(message)
-            elif level == "error": logging.error(message)
-            elif level == "debug": logging.debug(message)
+            if level == "info":
+                logging.info(message)
+            elif level == "warning":
+                logging.warning(message)
+            elif level == "error":
+                logging.error(message)
+            elif level == "debug":
+                logging.debug(message)
 
     # 2. Locale Backend Initialization
     try:
         lm = LocaleManagerBackend()
-        lang_code = lm.current_lang_data.get('lang_code', lm.get_language())
-        print_and_log(lm.get_string("main_ai.locale_init", default="LocaleManager initialized. Language: {lang}", lang=lang_code))
+        lang_code = lm.current_lang_data.get("lang_code", lm.get_language())
+        print_and_log(
+            lm.get_string("main_ai.locale_init", default="LocaleManager initialized. Language: {lang}", lang=lang_code)
+        )
     except Exception as e:
         print_and_log(f"Failed to initialize LocaleManagerBackend: {e}", level="error")
 
@@ -82,7 +85,9 @@ def run_ai_process(
             def get_string(self, key, default=None, **kwargs):
                 val = default if default is not None else key
                 return val.format(**kwargs) if kwargs else val
-            def get_language(self): return "pt_br"
+
+            def get_language(self):
+                return "pt_br"
 
         lm = DummyLM()
 
@@ -93,12 +98,24 @@ def run_ai_process(
     try:
         HardwareInitializer.setup_environment(logging_func=print_and_log)
         from engine.trainer import Trainer
+
         print_and_log(lm.get_string("main_ai.components_loaded", default="AI Engine components loaded successfully."))
     except ImportError as e_import:
-        print_and_log(lm.get_string("main_ai.critical_import_error", default="CRITICAL IMPORT ERROR: {error}", error=e_import), level="error")
+        print_and_log(
+            lm.get_string("main_ai.critical_import_error", default="CRITICAL IMPORT ERROR: {error}", error=e_import),
+            level="error",
+        )
         return
     except Exception as e_gen:
-        print_and_log(lm.get_string("main_ai.critical_load_error", default="CRITICAL ERROR during loading phase: {error}\n{traceback}", error=e_gen, traceback=traceback.format_exc()), level="error")
+        print_and_log(
+            lm.get_string(
+                "main_ai.critical_load_error",
+                default="CRITICAL ERROR during loading phase: {error}\n{traceback}",
+                error=e_gen,
+                traceback=traceback.format_exc(),
+            ),
+            level="error",
+        )
         return
 
     # 4. Background Resource Monitoring Daemon
@@ -123,7 +140,7 @@ def run_ai_process(
             pipe_conn=pipe_conn,
             guardian_state_queue=guardian_state_queue,
             guardian_signal_queue=guardian_signal_queue,
-            db_data_queue=db_data_queue
+            db_data_queue=db_data_queue,
         )
 
         print_and_log(lm.get_string("main_ai.trainer_ready", default="Trainer ready. Entering event loop..."))
@@ -133,7 +150,10 @@ def run_ai_process(
     except (KeyboardInterrupt, SystemExit):
         print_and_log(lm.get_string("main_ai.trainer_finished", default="Trainer service interrupted."), level="info")
     except Exception as e_main:
-        print_and_log(lm.get_string("main_ai.fatal_error", default="FATAL ERROR in AI Process: {error}", error=e_main), level="error")
+        print_and_log(
+            lm.get_string("main_ai.fatal_error", default="FATAL ERROR in AI Process: {error}", error=e_main),
+            level="error",
+        )
         sys.exit(1)
     finally:
         print_and_log(lm.get_string("main_ai.process_exiting", default="--- AI Process Exiting ---"))

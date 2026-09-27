@@ -23,6 +23,7 @@
 MS_TO_KMH = 3.6
 MIN_SPEED_THRESHOLD = 0.1
 
+
 def compute_volume_q(density: float, speed_ms: float) -> float:
     """
     Computes volume (q) using the fundamental flow equation: q = k * v
@@ -30,6 +31,7 @@ def compute_volume_q(density: float, speed_ms: float) -> float:
     Returns: volume in veh/hour (vph).
     """
     return density * (speed_ms * MS_TO_KMH)
+
 
 def compute_delay(edge_length: float, v_real: float, v_limit: float) -> float:
     """
@@ -40,6 +42,7 @@ def compute_delay(edge_length: float, v_real: float, v_limit: float) -> float:
         return max(0.0, (edge_length / v_real) - (edge_length / v_limit))
     return 0.0
 
+
 def compute_p95(values: list) -> float:
     """
     Computes the 95th percentile of a list of values.
@@ -49,6 +52,7 @@ def compute_p95(values: list) -> float:
     sorted_vals = sorted(values)
     idx = int(len(sorted_vals) * 0.95)
     return float(sorted_vals[min(idx, len(sorted_vals) - 1)])
+
 
 def compute_saturation_ratio(volume_q: float, num_lanes: int, f_ideal: float) -> float:
     """
@@ -62,12 +66,14 @@ def compute_saturation_ratio(volume_q: float, num_lanes: int, f_ideal: float) ->
         return volume_q / capacity
     return 0.0
 
+
 def apply_saturation_coupling(base_delay: float, base_queue: float, saturation_x: float) -> tuple:
     """
     Applies traffic engineering physical coupling: Delay (D) and Queue (P95) as functions of Saturation (X).
     D = f(X) and P95 = f(X) with exponential factor increment as X approaches or exceeds 1.0.
     """
     import math
+
     if saturation_x <= 0.0:
         return max(0.0, float(base_delay)), max(0, int(round(base_queue)))
 
@@ -80,7 +86,12 @@ def apply_saturation_coupling(base_delay: float, base_queue: float, saturation_x
         delay_factor = 1.34 + 1.5 * exp_factor
         queue_factor = 1.425 + 2.0 * exp_factor
 
-    coupled_delay = max(base_delay * delay_factor, 15.0 * saturation_x * (1.0 + (saturation_x if saturation_x > 0.85 else 0.0)))
-    coupled_queue = max(base_queue * queue_factor, 5.0 * saturation_x * (1.0 + (2.0 * (saturation_x - 0.85) if saturation_x > 0.85 else 0.0)))
+    coupled_delay = max(
+        base_delay * delay_factor, 15.0 * saturation_x * (1.0 + (saturation_x if saturation_x > 0.85 else 0.0))
+    )
+    coupled_queue = max(
+        base_queue * queue_factor,
+        5.0 * saturation_x * (1.0 + (2.0 * (saturation_x - 0.85) if saturation_x > 0.85 else 0.0)),
+    )
 
     return round(coupled_delay, 2), max(1, int(round(coupled_queue)))

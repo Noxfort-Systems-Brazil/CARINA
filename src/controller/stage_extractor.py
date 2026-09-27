@@ -28,12 +28,12 @@ Utility functions for extracting green stages from SUMO traffic light programs.
 def extract_green_stages(tls_id: str, original_stages: list, green_chars: frozenset) -> list:
     """
     From the full SUMO stage list, extract all stages (no filtering).
-    
+
     Args:
         tls_id: The ID of the traffic light system
         original_stages: List of original SUMO stages
         green_chars: Set of characters considered as green signals
-        
+
     Returns:
         List of stage state strings
     """

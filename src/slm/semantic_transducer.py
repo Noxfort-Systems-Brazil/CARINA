@@ -18,12 +18,12 @@
 # Author: Gabriel Moraes
 # Date: July 29, 2026
 
-import sys
-import os
-import json
 import argparse
+import json
 import logging
-from typing import Dict, Any, List
+import os
+import sys
+from typing import Any, Dict, List
 
 # Ensure project 'src' directory is in sys.path when executed directly as a script
 _src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -32,11 +32,12 @@ if _src_dir not in sys.path:
 
 from slm.device_manager import SLMDeviceManager
 from slm.model_loader import SLMModelLoader
-from slm.prompt_builder import SLMPromptBuilder
 from slm.output_sanitizer import SLMOutputSanitizer
+from slm.prompt_builder import SLMPromptBuilder
 from slm.revision_engine import SLMRevisionEngine
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [TRANSDUCER] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [TRANSDUCER] - %(levelname)s - %(message)s")
+
 
 class SemanticTransducer:
     """
@@ -45,7 +46,14 @@ class SemanticTransducer:
     prompt building, output sanitization, and 2nd pass neural proofreading.
     """
 
-    def __init__(self, model_path: str = None, use_gpu: bool = None, offload_to_cpu: bool = True, device: str = None, gpu_layers: int = 16) -> None:
+    def __init__(
+        self,
+        model_path: str = None,
+        use_gpu: bool = None,
+        offload_to_cpu: bool = True,
+        device: str = None,
+        gpu_layers: int = 16,
+    ) -> None:
         if not model_path:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             model_path = os.path.join(base_dir, "Model_Vault", "Qwen3.5-2B-UD-Q6_K_XL.gguf")
@@ -55,6 +63,7 @@ class SemanticTransducer:
         if device is None:
             try:
                 from utils.settings_manager import SettingsManager
+
                 sm = SettingsManager()
                 st = sm.load_settings()
                 device = st.get("xai_slm_device") or st.get("report_slm_device") or "auto"
@@ -92,7 +101,7 @@ class SemanticTransducer:
             prompt_str += f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>\n"
 
         try:
-            prompt_tokens = len(self.model.tokenize(prompt_str.encode('utf-8')))
+            prompt_tokens = len(self.model.tokenize(prompt_str.encode("utf-8")))
         except Exception:
             prompt_tokens = int(len(prompt_str) / 3.5)
 
@@ -104,10 +113,7 @@ class SemanticTransducer:
         logging.info(f"[SemanticTransducer] Prompt tokens: {prompt_tokens}, Dynamic max_tokens: {max_tokens}")
 
         outputs = self.model.create_chat_completion(
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=0.0,
-            repeat_penalty=1.05
+            messages=messages, max_tokens=max_tokens, temperature=0.0, repeat_penalty=1.05
         )
 
         raw_output = outputs["choices"][0]["message"]["content"]
@@ -124,8 +130,12 @@ def main() -> None:
     parser.add_argument("--input", type=str, help="Path to input JSON file")
     parser.add_argument("--output", type=str, help="Path to output markdown file")
     parser.add_argument("--vault", type=str, help="Path to GGUF model file in Model_Vault")
-    parser.add_argument("--use_gpu", type=str, default="auto", choices=["auto", "true", "false"], help="Use GPU acceleration")
-    parser.add_argument("--device", type=str, default=None, choices=["cpu", "gpu", "mixed", "auto"], help="Execution device")
+    parser.add_argument(
+        "--use_gpu", type=str, default="auto", choices=["auto", "true", "false"], help="Use GPU acceleration"
+    )
+    parser.add_argument(
+        "--device", type=str, default=None, choices=["cpu", "gpu", "mixed", "auto"], help="Execution device"
+    )
     parser.add_argument("--gpu_layers", type=int, default=16, help="Number of GPU layers to offload")
 
     args = parser.parse_args()
@@ -146,10 +156,11 @@ def main() -> None:
         if input_path:
             if not os.path.exists(input_path):
                 raise FileNotFoundError(f"Input file not found: {input_path}")
-            with open(input_path, 'r', encoding='utf-8') as f:
+            with open(input_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
             import sys
+
             data = json.loads(sys.stdin.read())
 
         device_arg = args.device
@@ -161,37 +172,35 @@ def main() -> None:
             else:
                 device_arg = "auto"
 
-        transducer = SemanticTransducer(
-            model_path,
-            device=device_arg,
-            gpu_layers=args.gpu_layers,
-            offload_to_cpu=True
-        )
+        transducer = SemanticTransducer(model_path, device=device_arg, gpu_layers=args.gpu_layers, offload_to_cpu=True)
         transducer.load_resources()
 
         logging.info("Generating Report...")
         report = transducer.generate_report(data)
 
         if output_path:
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(report)
             logging.info(f"Report saved to: {output_path}")
         else:
             import sys
+
             sys.stdout.write(report)
 
     except Exception as e:
         logging.error(f"Transducer Failure: {e}", exc_info=True)
         try:
             if output_path:
-                with open(output_path, 'w', encoding='utf-8') as f:
+                with open(output_path, "w", encoding="utf-8") as f:
                     f.write(f"ERROR: Failed to generate report. Details: {str(e)}")
             else:
                 import sys
+
                 sys.stdout.write(f"ERROR: Failed to generate report. Details: {str(e)}")
         except:
             pass
         exit(1)
+
 
 if __name__ == "__main__":
     main()

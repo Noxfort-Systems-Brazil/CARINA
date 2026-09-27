@@ -18,9 +18,9 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-import os
 import gzip
 import logging
+import os
 import xml.etree.ElementTree as ET
 from typing import Dict, Set, Tuple
 
@@ -45,6 +45,7 @@ class MFDNetworkParser:
 
         try:
             from utils.paths import get_base_output_dir
+
             results_dir = os.path.join(get_base_output_dir(), "results")
             if os.path.exists(results_dir):
                 for root, dirs, files in os.walk(results_dir):
@@ -70,8 +71,8 @@ class MFDNetworkParser:
             return edge_lengths, edge_to_tl
 
         try:
-            opener = gzip.open if net_file.endswith('.gz') else open
-            with opener(net_file, 'rb') as f:
+            opener = gzip.open if net_file.endswith(".gz") else open
+            with opener(net_file, "rb") as f:
                 tree = ET.parse(f)
             root = tree.getroot()
 

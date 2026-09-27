@@ -109,6 +109,8 @@ class LiveCanvasMapWidget(ft.Container):
 
         self.canvas = cv.Canvas(shapes=[], width=self.viewport_manager.width, height=self.viewport_manager.height)
         self.map_stack = ft.Stack(
+            width=self.viewport_manager.width,
+            height=self.viewport_manager.height,
             scale=self.interaction_handler.scale,
             offset=self.interaction_handler.offset,
         )
@@ -121,7 +123,9 @@ class LiveCanvasMapWidget(ft.Container):
             content=self.map_stack,
             on_hover=_on_hover,
             on_pan_update=self.interaction_handler.handle_pan_update,
-            on_scroll=lambda e: self.interaction_handler.handle_zoom(e, self.last_mouse_x, self.last_mouse_y),
+            on_scroll=lambda e: self.interaction_handler.handle_zoom(
+                e, getattr(e, "local_x", self.last_mouse_x), getattr(e, "local_y", self.last_mouse_y)
+            ),
             on_double_tap=lambda e: self.interaction_handler.center_and_reset_zoom(),
             on_tap_down=self.event_router.handle_map_tap,
         )

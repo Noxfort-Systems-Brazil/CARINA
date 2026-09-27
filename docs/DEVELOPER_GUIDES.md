@@ -29,10 +29,16 @@ CARINA_DB_HOST=localhost
 CARINA_DB_PORT=5432
 CARINA_DB_NAME=carina_data
 CARINA_SNMP_COMMUNITY=public
+
+# External Monitor Telemetry (Broker MQTT ou URL HTTP/Cloud/Ngrok)
+CARINA_MQTT_HOST=127.0.0.1
+CARINA_MQTT_PORT=1883
+CARINA_MQTT_USER=
+CARINA_MQTT_PASSWORD=
 ```
 
 ### 1.2 Operational Parameters: `config/settings.ini`
-Hyperparameters, training intervals, and watchdog tolerances reside in [`config/settings.ini`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/config/settings.ini):
+Hyperparameters, training intervals, and watchdog tolerances reside in [`config/settings.ini`](../config/settings.ini):
 
 ```ini
 [AI_TRAINING]
@@ -65,16 +71,38 @@ weight_occupancy = 1.0
 weight_waiting_time = 1.5
 ```
 
+### 1.3 Interacting with Settings (`src/settings/`)
+CARINA provides a clean SOLID configuration subsystem in [`src/settings/`](../src/settings).
+
+Developers can access settings through the modular `SettingsService` or via the legacy `SettingsManager` facade:
+
+```python
+# Direct modular approach:
+from settings import SettingsService, IniFileStorage, DotenvSecretProvider
+service = SettingsService(
+    storage=IniFileStorage("config/settings.ini"),
+    env_provider=DotenvSecretProvider()
+)
+value = service.get("ai_gamma", default=0.99)
+
+# Or via backwards-compatible facade (recommended across existing code):
+from utils.settings_manager import SettingsManager
+settings_dict = SettingsManager().load_settings()
+learning_rate = float(settings_dict.get("learning_rate", 0.00025))
+```
+
+All keys are validated against [`SettingsSchema`](../src/settings/schema.py), guaranteeing automatic mapping to the correct INI section and `.env` fallback.
+
 ---
 
 ## 2. Agent Hierarchy & Extending Reinforcement Learning
 
-CARINA's neural architecture divides decision-making into four specialized roles located in [`src/agents/`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents):
+CARINA's neural architecture divides decision-making into four specialized roles located in [`src/agents/`](../src/agents):
 
-1. **`LocalAgent` ([`local_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/local_agent.py)):** Tactical PPO-TCN agent controlling local intersection phase durations.
-2. **`GuardianAgent` ([`guardian_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/guardian_agent.py)):** Neuro-symbolic D3QN safety sentinel that audits and vetoes unsafe actions.
-3. **`ConsultantAgent` ([`consultant_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/consultant_agent.py)):** High-capacity Predictive Autoencoder (PAE) projecting future traffic trends.
-4. **`StrategistAgent` ([`strategist_agent.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/agents/strategist_agent.py)):** ST-GATv2 Lite arterial graph coordinator.
+1. **`LocalAgent` ([`local_agent.py`](../src/agents/local_agent.py)):** Tactical PPO-TCN agent controlling local intersection phase durations.
+2. **`GuardianAgent` ([`guardian_agent.py`](../src/agents/guardian_agent.py)):** Neuro-symbolic D3QN safety sentinel that audits and vetoes unsafe actions.
+3. **`ConsultantAgent` ([`consultant_agent.py`](../src/agents/consultant_agent.py)):** High-capacity Predictive Autoencoder (PAE) projecting future traffic trends.
+4. **`StrategistAgent` ([`strategist_agent.py`](../src/agents/strategist_agent.py)):** ST-GATv2 Lite arterial graph coordinator.
 
 ### 2.1 Implementing a Custom Agent
 To create a new tactical agent (e.g., `CustomPPOAgent`):
@@ -103,7 +131,7 @@ class CustomPPOAgent:
         return {"loss": 0.0}
 ```
 
-2. Register your agent in [`src/core/decision_coordinator.py`](file:///home/gabriel-moraes/Documentos/CARINA_CORE/src/core/decision_coordinator.py):
+2. Register your agent in [`src/core/decision_coordinator.py`](../src/core/decision_coordinator.py):
 ```python
 from agents.custom_ppo_agent import CustomPPOAgent
 
@@ -114,15 +142,8 @@ if agent_type == "CUSTOM_PPO":
 
 ---
 
-## 3. Packaging & Distribution (`build_installer.sh`)
+## 3. Packaging & Distribution
 
-CARINA uses Docker as an isolated, sterile build environment to compile standalone `.deb` installers for Ubuntu/Debian Linux:
+Legacy PyInstaller and `.deb` packaging via `build_installer.sh` have been deprecated and removed. A new deployment and installation method is planned for future releases.
 
-```bash
-chmod +x build_installer.sh
-./build_installer.sh
-```
-
-The script packages PyInstaller binaries, systemd service units, configuration templates, and desktop icons into `./dist/carina_1.0.0_amd64.deb`.
-
-For detailed containerization and deployment instructions, see [Deployment & Packaging](DEPLOYMENT_AND_PACKAGING.md).
+For deployment and runtime instructions, see [Deployment & Packaging](DEPLOYMENT_AND_PACKAGING.md).

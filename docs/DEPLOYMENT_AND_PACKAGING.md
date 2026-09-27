@@ -3,21 +3,21 @@ tags: [deployment, packaging, docker, debian, systemd]
 aliases: [Deployment Guide, Packaging, Docker, Systemd]
 ---
 
-# 🚀 Deployment, Packaging & Enterprise Containerization
+# 🚀 Deployment & Service Configuration
 
-This document details production deployment options for CARINA, including Systemd service setup, Docker containerization, Debian `.deb` packaging, and PyInstaller freezing.
+This document details production deployment options for CARINA, including Systemd service setup and environment configuration.
 
 ⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🛠️ See [Developer Guides](DEVELOPER_GUIDES.md) | 🗄️ See [Database & Schemas](DATABASE_AND_SCHEMAS.md) | 🧪 See [Testing & Validation](TESTING.md)
 
 ---
 
-## 1. Production Docker Containerization (`Dockerfile.build`)
+## 1. Production Docker Containerization (`Dockerfile`)
 
-CARINA includes an optimized multi-stage build `Dockerfile.build` for GPU-accelerated container execution.
+CARINA includes an optimized multi-stage build `Dockerfile` for GPU-accelerated container execution.
 
 ### 1.1 Build Docker Image
 ```bash
-docker build -f Dockerfile.build -t carina-core:latest .
+docker build -t carina-core:latest .
 ```
 
 ### 1.2 Run Container with GPU Acceleration
@@ -66,13 +66,6 @@ sudo systemctl start carina
 
 ---
 
-## 3. Building Debian Installers (`build_installer.sh`)
+## 3. Packaging & Distribution
 
-To build native `.deb` installation packages for Linux distributions:
-
-```bash
-chmod +x build_installer.sh
-./build_installer.sh
-```
-
-The script packages binaries, systemd units, configuration templates, and desktop shortcuts into a production `.deb` package.
+Legacy PyInstaller and `.deb` packaging via `build_installer.sh` have been removed. A modern, containerized distribution and installation pipeline is planned for upcoming releases.

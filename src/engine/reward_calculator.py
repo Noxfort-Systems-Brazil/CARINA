@@ -18,17 +18,18 @@
 # Author: Gabriel Moraes
 # Date: October 1, 2025
 
-import logging
 import configparser
-from typing import TYPE_CHECKING, Dict, List, Any
+import logging
+from typing import TYPE_CHECKING, Any, Dict, List
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
+
 class RewardCalculator:
     """The environment 'Judge': specialist in calculating the reward from pre-collected data."""
 
-    def __init__(self, settings: configparser.ConfigParser, locale_manager: 'LocaleManagerBackend') -> None:
+    def __init__(self, settings: configparser.ConfigParser, locale_manager: "LocaleManagerBackend") -> None:
         """
         Inicializa o RewardCalculator.
         """
@@ -37,20 +38,21 @@ class RewardCalculator:
         self.last_step_total_flow = 0
 
         try:
-            reward_weights_section = settings['REWARD_WEIGHTS']
+            reward_weights_section = settings["REWARD_WEIGHTS"]
             self.reward_weights = {
-                'waiting_time': reward_weights_section.getfloat('weight_waiting_time'),
-                'flow': reward_weights_section.getfloat('weight_flow')
+                "waiting_time": reward_weights_section.getfloat("weight_waiting_time"),
+                "flow": reward_weights_section.getfloat("weight_flow"),
             }
         except (configparser.NoSectionError, KeyError):
             logging.error(lm.get_string("reward_calculator.init.config_error"))
-            self.reward_weights = {'waiting_time': -1.0, 'flow': 1.0}
+            self.reward_weights = {"waiting_time": -1.0, "flow": 1.0}
 
         logging.info(lm.get_string("reward_calculator.init.judge_created"))
         logging.info(lm.get_string("reward_calculator.init.weights_loaded", weights=self.reward_weights))
 
-
-    def calculate_rewards_from_batch(self, traffic_light_ids: List[str], current_batch: Dict[str, Any], last_batch: Dict[str, Any]) -> Dict[str, float]:
+    def calculate_rewards_from_batch(
+        self, traffic_light_ids: List[str], current_batch: Dict[str, Any], last_batch: Dict[str, Any]
+    ) -> Dict[str, float]:
         """
         Calculates the reward for each traffic light using pre-collected data packets.
         """
@@ -60,22 +62,23 @@ class RewardCalculator:
 
         total_flow_this_step = 0
 
-
-
         for tl_id in traffic_light_ids:
-            controlled_lanes = current_batch.get('tls_controlled_lanes', {}).get(tl_id, [])
-            waiting_time = sum(current_batch.get('lane_waiting_time', {}).get(lane_id, 0.0) for lane_id in controlled_lanes)
+            controlled_lanes = current_batch.get("tls_controlled_lanes", {}).get(tl_id, [])
+            waiting_time = sum(
+                current_batch.get("lane_waiting_time", {}).get(lane_id, 0.0) for lane_id in controlled_lanes
+            )
             flow_bonus = 0
             if last_batch:
                 for lane_id in controlled_lanes:
-                    vehicles_before = set(last_batch.get('lane_vehicle_ids', {}).get(lane_id, []))
-                    vehicles_after = set(current_batch.get('lane_vehicle_ids', {}).get(lane_id, []))
+                    vehicles_before = set(last_batch.get("lane_vehicle_ids", {}).get(lane_id, []))
+                    vehicles_after = set(current_batch.get("lane_vehicle_ids", {}).get(lane_id, []))
                     flow_bonus += len(vehicles_before - vehicles_after)
 
             total_flow_this_step += flow_bonus
 
-            rewards[tl_id] = (waiting_time * self.reward_weights['waiting_time']) + \
-                             (flow_bonus * self.reward_weights['flow'])
-        
+            rewards[tl_id] = (waiting_time * self.reward_weights["waiting_time"]) + (
+                flow_bonus * self.reward_weights["flow"]
+            )
+
         self.last_step_total_flow = total_flow_this_step
         return rewards

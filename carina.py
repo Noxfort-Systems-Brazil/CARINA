@@ -18,22 +18,23 @@
 # Author: Gabriel Moraes
 # Date: August 6, 2026
 
-import sys
-import os
-import signal
 import atexit
 import logging
 import multiprocessing
+import os
+import signal
+import sys
 from multiprocessing import set_start_method
 
 # 1. Environment and sys.path setup prior to any project imports
 from src.launcher.env_setup import setup_environment
+
 project_root, bundle_root, IS_FROZEN = setup_environment()
 
-from utils.paths import get_base_output_dir
-from launcher.single_instance import SingleInstanceLock
 from launcher.process_manager import ProcessManager
+from launcher.single_instance import SingleInstanceLock
 from launcher.ui_tray_manager import UITrayManager
+from utils.paths import get_base_output_dir
 
 # Global single instance lock
 single_instance_lock = SingleInstanceLock(port=42123)
@@ -44,21 +45,21 @@ def setup_launcher_logging():
     log_base_dir = get_base_output_dir()
     launcher_log_dir = os.path.join(log_base_dir, "logs", "launcher")
     os.makedirs(launcher_log_dir, exist_ok=True)
-    
+
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s [LAUNCHER] %(message)s',
+        format="%(asctime)s [LAUNCHER] %(message)s",
         handlers=[
-            logging.FileHandler(os.path.join(launcher_log_dir, "launcher.log"), mode='w'),
-            logging.StreamHandler(sys.stdout)
-        ]
+            logging.FileHandler(os.path.join(launcher_log_dir, "launcher.log"), mode="w"),
+            logging.StreamHandler(sys.stdout),
+        ],
     )
 
 
 def main():
     """Main orchestration function for CARINA."""
     # Process Group isolation on Linux so all child processes share the same PGID
-    if sys.platform != 'win32':
+    if sys.platform != "win32":
         try:
             os.setpgrp()
         except Exception:
@@ -93,17 +94,16 @@ def main():
 
     try:
         signal.signal(signal.SIGINT, signal_handler)
-        if hasattr(signal, 'SIGTERM'):
+        if hasattr(signal, "SIGTERM"):
             signal.signal(signal.SIGTERM, signal_handler)
-        if hasattr(signal, 'SIGHUP'):
+        if hasattr(signal, "SIGHUP"):
             signal.signal(signal.SIGHUP, signal_handler)
     except Exception:
         pass
 
     # Start listener to restore UI if another instance is triggered
     single_instance_lock.start_restore_listener(
-        shutdown_requested=ui_mgr.shutdown_requested,
-        restore_requested=ui_mgr.restore_requested
+        shutdown_requested=ui_mgr.shutdown_requested, restore_requested=ui_mgr.restore_requested
     )
 
     try:
@@ -124,12 +124,13 @@ def main():
         # Secondary fallback: terminate any lingering child process tree of launcher
         try:
             import psutil
+
             current_proc = psutil.Process(os.getpid())
             children = current_proc.children(recursive=True)
             for child in children:
                 try:
                     if child.is_running():
-                        cmdline = " ".join(child.cmdline()) if hasattr(child, 'cmdline') else ""
+                        cmdline = " ".join(child.cmdline()) if hasattr(child, "cmdline") else ""
                         if "resource_tracker" not in cmdline:
                             child.kill()
                 except Exception:
@@ -146,9 +147,9 @@ if __name__ == "__main__":
     # --- 1. Multiprocessing Protection (Windows/PyInstaller) ---
     multiprocessing.freeze_support()
     try:
-        if multiprocessing.get_start_method(allow_none=True) != 'spawn':
-            set_start_method('spawn', force=True)
-    except Exception as e: 
+        if multiprocessing.get_start_method(allow_none=True) != "spawn":
+            set_start_method("spawn", force=True)
+    except Exception as e:
         print(f"Error setting multiprocessing start method: {e}")
 
     # --- 2. Single Instance Lock ---

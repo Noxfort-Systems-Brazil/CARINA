@@ -18,15 +18,15 @@
 # Author: Gabriel Moraes
 # Date: August 6, 2026
 
+import configparser
+import logging
 import os
 import sys
 import time
-import logging
-import configparser
-from typing import Dict, Any
+from typing import Any, Dict
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
@@ -39,7 +39,10 @@ class MFDOrchestrator:
     Responsibility: Dedicated orchestrator for Macroscopic Fundamental Diagram (MFD)
     Optimization Analysis. Processes MFD reports via 100% in-memory IPC queue (mfd_result_queue).
     """
-    def __init__(self, scenario_results_dir: str, mfd_reconstructor = None, mfd_result_queue = None, mfd_trigger_queue = None):
+
+    def __init__(
+        self, scenario_results_dir: str, mfd_reconstructor=None, mfd_result_queue=None, mfd_trigger_queue=None
+    ):
         self.scenario_results_dir = scenario_results_dir
         self.mfd_result_queue = mfd_result_queue
         self.mfd_trigger_queue = mfd_trigger_queue
@@ -48,15 +51,17 @@ class MFDOrchestrator:
     def process_mfd_job(self, req_id: str = "mfd"):
         """Executes a single end-to-end MFD Optimization Analysis job and delivers result to in-memory IPC queue."""
         logging.info(f"[MFD_ORCHESTRATOR] Processing in-memory MFD Optimization request: {req_id}")
-        
+
         response_data = {"status": "error", "message": "Unknown error"}
-        
+
         try:
             mfd_history_data = self.mfd_reconstructor.reconstruct_from_db()
             if not mfd_history_data or not mfd_history_data.get("history"):
-                raise ValueError("Nenhum registro histórico de tráfego foi encontrado no banco de dados (tabelas synapse_fluid_dynamics / synapse_edge_phase_hourly_summary). É necessário haver amostras no banco de dados para gerar a análise.")
+                raise ValueError(
+                    "Nenhum registro histórico de tráfego foi encontrado no banco de dados (tabelas synapse_fluid_dynamics / synapse_edge_phase_hourly_summary). É necessário haver amostras no banco de dados para gerar a análise."
+                )
             response_data = self.generate_mfd_report(mfd_history_data)
-            
+
         except Exception as e:
             logging.error(f"[MFD_ORCHESTRATOR] MFD pipeline error for {req_id}: {e}", exc_info=True)
             response_data = {"status": "error", "message": str(e)}
@@ -82,7 +87,9 @@ class MFDOrchestrator:
                         if msg is None or msg == "STOP":
                             logging.info("[MFD_ORCHESTRATOR] Stop signal received. Exiting MFD Worker.")
                             break
-                        logging.info("[MFD_ORCHESTRATOR] In-memory MFD trigger packet received! Starting process_mfd_job()...")
+                        logging.info(
+                            "[MFD_ORCHESTRATOR] In-memory MFD trigger packet received! Starting process_mfd_job()..."
+                        )
                         self.process_mfd_job()
                     except Exception as trig_err:
                         logging.error(f"[MFD_ORCHESTRATOR] Error processing MFD trigger packet: {trig_err}")
@@ -93,26 +100,30 @@ class MFDOrchestrator:
             except Exception as e:
                 logging.error(f"[MFD_ORCHESTRATOR] Critical Loop Error: {e}", exc_info=True)
                 time.sleep(5)
-                
+
         logging.info("[MFD_ORCHESTRATOR] Shutdown.")
 
 
-def run_mfd_worker(settings: configparser.ConfigParser, scenario_results_dir: str, mfd_result_queue = None, mfd_trigger_queue = None):
+def run_mfd_worker(
+    settings: configparser.ConfigParser, scenario_results_dir: str, mfd_result_queue=None, mfd_trigger_queue=None
+):
     """Entry point for multiprocessing MFD Worker."""
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    src_path = os.path.join(project_root, 'src')
+    src_path = os.path.join(project_root, "src")
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
 
     from utils.logging_setup import setup_logging
     from utils.paths import get_base_output_dir
-    
+
     log_dir = os.path.join(get_base_output_dir(), "logs", "mfd_worker")
     os.makedirs(log_dir, exist_ok=True)
     setup_logging(log_dir=log_dir)
 
     try:
-        orchestrator = MFDOrchestrator(scenario_results_dir, mfd_result_queue=mfd_result_queue, mfd_trigger_queue=mfd_trigger_queue)
+        orchestrator = MFDOrchestrator(
+            scenario_results_dir, mfd_result_queue=mfd_result_queue, mfd_trigger_queue=mfd_trigger_queue
+        )
         orchestrator.run_forever()
     except (KeyboardInterrupt, SystemExit):
         pass

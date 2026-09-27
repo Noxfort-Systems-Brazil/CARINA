@@ -19,7 +19,7 @@
 # Date: August 12, 2026
 
 import logging
-from typing import TYPE_CHECKING, List, Dict, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
@@ -29,15 +29,15 @@ if TYPE_CHECKING:
 class FluidDynamicsReader:
     """
     Handles read queries, streaming batch queries, and pushdown aggregations for fluid dynamics data.
-    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/fluid_dynamics_queries.json.
+    Queries are loaded dynamically via FluidDynamicsQueryProvider from config/database/fluid_dynamics_queries.json.
     """
 
     def __init__(
         self,
-        engine: 'DatabaseEngine',
-        query_provider: 'FluidDynamicsQueryProvider',
+        engine: "DatabaseEngine",
+        query_provider: "FluidDynamicsQueryProvider",
         sample_columns: List[str],
-        aggregated_columns: List[str]
+        aggregated_columns: List[str],
     ):
         self.engine = engine
         self.query_provider = query_provider
@@ -80,7 +80,7 @@ class FluidDynamicsReader:
             return
         try:
             if self.engine.db_type == "postgres":
-                cursor = conn.cursor(name='sas_server_cursor')
+                cursor = conn.cursor(name="sas_server_cursor")
                 cursor.itersize = batch_size
             else:
                 cursor = conn.cursor()
@@ -104,14 +104,18 @@ class FluidDynamicsReader:
 
             # Fallback to consolidated summary table if no raw data returned
             if not has_data:
-                logging.info("[DB_MANAGER] synapse_fluid_dynamics empty. Falling back to synapse_edge_phase_hourly_summary for history batches.")
-                if self.engine.db_type == "postgres" and hasattr(cursor, 'close'):
+                logging.info(
+                    "[DB_MANAGER] synapse_fluid_dynamics empty. Falling back to synapse_edge_phase_hourly_summary for history batches."
+                )
+                if self.engine.db_type == "postgres" and hasattr(cursor, "close"):
                     cursor.close()
                 cursor = conn.cursor()
                 if limit_seconds is not None:
                     cutoff_dt = self.query_provider.get_cutoff_timestamp(conn, limit_seconds)
                     query = self.query_provider.get_query("fallback_history_batches")
-                    param = cutoff_dt if self.engine.db_type == "postgres" else cutoff_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    param = (
+                        cutoff_dt if self.engine.db_type == "postgres" else cutoff_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    )
                     cursor.execute(query, (param,))
                 else:
                     query = self.query_provider.get_query("fallback_history_batches", "all")
@@ -148,11 +152,15 @@ class FluidDynamicsReader:
 
             results = [dict(zip(self.aggregated_columns, row)) for row in cursor.fetchall()]
             if not results:
-                logging.info("[DB_MANAGER] synapse_fluid_dynamics empty. Falling back to synapse_edge_phase_hourly_summary for aggregated pushdown query.")
+                logging.info(
+                    "[DB_MANAGER] synapse_fluid_dynamics empty. Falling back to synapse_edge_phase_hourly_summary for aggregated pushdown query."
+                )
                 if limit_seconds is not None:
                     cutoff_dt = self.query_provider.get_cutoff_timestamp(conn, limit_seconds)
                     query = self.query_provider.get_query("fallback_aggregated")
-                    param = cutoff_dt if self.engine.db_type == "postgres" else cutoff_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    param = (
+                        cutoff_dt if self.engine.db_type == "postgres" else cutoff_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    )
                     cursor.execute(query, (param,))
                 else:
                     query = self.query_provider.get_query("fallback_aggregated", "all")

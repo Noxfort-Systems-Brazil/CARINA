@@ -20,11 +20,13 @@
 
 import logging
 
+
 class TopologyRecorderBridge:
     """
     Extracts edge topology (length, lanes, max_speed) from the SUMO net file
     and pushes it to the TrafficDataRecorder for sample enrichment.
     """
+
     def __init__(self, traffic_data_recorder, locale_manager):
         self.traffic_data_recorder = traffic_data_recorder
         self.locale_manager = locale_manager
@@ -34,17 +36,18 @@ class TopologyRecorderBridge:
             return
         try:
             from utils.network_topology_parser import NetworkTopologyParser
+
             parser = NetworkTopologyParser(self.locale_manager)
             _, junction_incoming_edges = parser.build(net_file_path)
-            
+
             # Flatten all edges into a single dict of {edge_id: {length, lanes, max_speed}}
             topology_edges = {}
             for j_id, edges in junction_incoming_edges.items():
                 for edge_id, edge_data in edges.items():
                     topology_edges[edge_id] = {
-                        'length': edge_data.get('length', 0),
-                        'lanes': edge_data.get('num_lanes', 1),
-                        'max_speed': edge_data.get('speed_limit', 13.89),
+                        "length": edge_data.get("length", 0),
+                        "lanes": edge_data.get("num_lanes", 1),
+                        "max_speed": edge_data.get("speed_limit", 13.89),
                     }
             self.traffic_data_recorder.set_topology(topology_edges)
         except Exception as e:

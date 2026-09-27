@@ -136,5 +136,10 @@ class EventRouter:
             if self.trainer.action_supervisor:
                 self.trainer.action_supervisor.apply_hardware_override(args[0], args[1])
 
+        elif module == "fenix" and func == "reconcile_stages":
+            if getattr(self.trainer, "state_reconciler", None):
+                stages = args[0] if args and isinstance(args[0], dict) else {}
+                self.trainer.state_reconciler.reconcile_with_field(stages)
+
         elif module == "system" and func == "shutdown":
             self.trainer.is_running = False

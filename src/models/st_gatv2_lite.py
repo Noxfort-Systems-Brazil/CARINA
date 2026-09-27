@@ -18,11 +18,13 @@
 # Author: Gabriel Moraes
 # Date: February 17, 2026 (Updated August 2026 for ST-GATv2 Lite)
 
+from typing import Any, Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
-from typing import Optional, Any
+
 
 class STGATv2Lite(nn.Module):
     """
@@ -30,6 +32,7 @@ class STGATv2Lite(nn.Module):
     Used by the StrategistAgent to process the road network topology and spatiotemporal dynamics,
     generating strategic guidance vectors (latents) for local agents and the consultant agent.
     """
+
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, heads: int = 4) -> None:
         """
         Initializes the ST-GATv2 Lite layers.
@@ -41,24 +44,12 @@ class STGATv2Lite(nn.Module):
             heads (int): Number of spatial attention heads.
         """
         super(STGATv2Lite, self).__init__()
-        
+
         # GATv2 Convolution Layer 1 (Input -> Hidden)
-        self.conv1 = GATv2Conv(
-            input_dim, 
-            hidden_dim, 
-            heads=heads, 
-            dropout=0.1, 
-            concat=True
-        )
-        
+        self.conv1 = GATv2Conv(input_dim, hidden_dim, heads=heads, dropout=0.1, concat=True)
+
         # GATv2 Convolution Layer 2 (Hidden -> Output)
-        self.conv2 = GATv2Conv(
-            hidden_dim * heads, 
-            output_dim, 
-            heads=1,
-            dropout=0.1, 
-            concat=False
-        )
+        self.conv2 = GATv2Conv(hidden_dim * heads, output_dim, heads=1, dropout=0.1, concat=False)
 
         # Normalization layers (LayerNorm) for training stability
         self.norm1 = nn.LayerNorm(hidden_dim * heads)
@@ -80,12 +71,13 @@ class STGATv2Lite(nn.Module):
         x = F.elu(x)
         x = self.norm1(x)
         x = F.dropout(x, p=0.1, training=self.training)
-        
+
         # 2. GATv2 Second Layer + Normalization
         x = self.conv2(x, edge_index)
         x = self.norm2(x)
-        
+
         return x
+
 
 # Alias for backward compatibility
 GATv2Lite = STGATv2Lite

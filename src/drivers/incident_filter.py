@@ -21,63 +21,46 @@
 """
 Incident Filter Intermediary Module.
 Filters duplicate hardware alert bursts before forwarding incidents to IncidentReporter,
-supporting cross-process deduplication via shared file stamp (.carina_incident_filter.stamp).
+supporting cross-process deduplication.
 """
 
-import os
-import time
-import threading
 import logging
-from datetime import datetime
-from typing import Dict, Any
+import os
+import tempfile
+import threading
+import time
+from typing import Any, Dict
+
 from src.drivers.incident_reporter import IncidentReporter
 
 logger = logging.getLogger(__name__)
 
-def _log_filter_debug(intersection_id: str, message_text: str, is_duplicate: bool, action: str):
-    """Logs incident filtering activity directly to carina_incident_filter_debug.log in project root."""
-    try:
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-        log_entry = (
-            f"==================== [INCIDENT FILTER DEBUG LOG] {timestamp} ====================\n"
-            f"Intersection ID : {intersection_id}\n"
-            f"Message Text    : {message_text}\n"
-            f"Is Duplicate    : {is_duplicate}\n"
-            f"Action Taken    : {action}\n"
-            f"===================================================================================\n\n"
-        )
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        filepath = os.path.join(project_root, "carina_incident_filter_debug.log")
-        with open(filepath, "a", encoding="utf-8") as f:
-            f.write(log_entry)
-    except Exception as err:
-        logger.error(f"Error writing incident filter debug log: {err}")
 
-# Force immediate creation of carina_incident_filter_debug.log upon module import
-try:
-    _init_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    _init_path = os.path.join(_init_root, "carina_incident_filter_debug.log")
-    with open(_init_path, "a", encoding="utf-8") as _f:
-        _f.write(f"=== [INCIDENT FILTER DEBUG LOG INITIALIZED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ===\n")
-except Exception:
+def _log_filter_debug(intersection_id: str, message_text: str, is_duplicate: bool, action: str) -> None:
+    """Disabled temporary debug logging."""
     pass
+
 
 class IncidentFilter:
     """
     Intermediary filter component for Monitor incident reporting.
-    Uses shared file stamp (.carina_incident_filter.stamp) for 100% cross-process deduplication.
+    Uses in-memory cache and OS temp file stamp for cross-process deduplication.
     """
+
+    _lock = threading.Lock()
+    _last_key: str = ""
+    _last_time: float = 0.0
 
     @staticmethod
     def process_and_report(intersection_id: str, level: str, trap_data: Dict[str, Any]) -> None:
         """
-        Processes incoming trap data using cross-process shared file stamp matching.
+        Processes incoming trap data using cross-process and in-memory deduplication.
         If ID and Message Text match the last sent message within 1.0s across any process, it is silently dropped.
         """
         try:
             resolved_id = str(trap_data.get("intersection_id", intersection_id))
             details = trap_data.get("details") or trap_data.get("message") or "Alerta ativo de hardware recebido"
-            
+
             if trap_data.get("message"):
                 msg_text = str(trap_data.get("message"))
             elif resolved_id and resolved_id != "DESCONHECIDO":
@@ -88,10 +71,13 @@ class IncidentFilter:
             current_key = f"{resolved_id}:{msg_text}"
             now = time.time()
 
-            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            stamp_file = os.path.join(project_root, ".carina_incident_filter.stamp")
+            stamp_file = os.path.join(tempfile.gettempdir(), ".carina_incident_filter.stamp")
 
             time_diff = 999.0
+            with IncidentFilter._lock:
+                if IncidentFilter._last_key == current_key:
+                    time_diff = now - IncidentFilter._last_time
+
             if os.path.exists(stamp_file):
                 try:
                     with open(stamp_file, "r", encoding="utf-8") as f:
@@ -101,17 +87,24 @@ class IncidentFilter:
                             if len(parts) == 2:
                                 last_key, last_time_str = parts[0], float(parts[1])
                                 if last_key == current_key:
-                                    time_diff = now - last_time_str
+                                    file_time_diff = now - last_time_str
+                                    time_diff = min(time_diff, file_time_diff)
                 except Exception:
-                    time_diff = 999.0
+                    pass
 
             # Cross-process comparison: if identical message arrived < 1.0s ago anywhere -> DUPLICATE!
             if time_diff < 1.0:
-                _log_filter_debug(resolved_id, msg_text, True, f"DROPPED (DUPLICATE BURST IGNORED - diff: {time_diff:.4f}s)")
+                _log_filter_debug(
+                    resolved_id, msg_text, True, f"DROPPED (DUPLICATE BURST IGNORED - diff: {time_diff:.4f}s)"
+                )
                 logger.info(f"[IncidentFilter] Ignored duplicate cross-process burst ({time_diff:.4f}s): {msg_text}")
                 return
 
-            # Write current key and timestamp to shared cross-process file stamp
+            with IncidentFilter._lock:
+                IncidentFilter._last_key = current_key
+                IncidentFilter._last_time = now
+
+            # Write current key and timestamp to shared cross-process file stamp in system temp dir
             try:
                 with open(stamp_file, "w", encoding="utf-8") as f:
                     f.write(f"{current_key}|||{now}")

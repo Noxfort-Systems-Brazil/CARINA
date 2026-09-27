@@ -19,25 +19,29 @@
 # Date: July 25, 2026
 
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 
 class TextReportFormatter:
     """Formats engineering traffic analysis into plain text (TXT) reports."""
 
     @staticmethod
     def format_txt_report(
-        results: Dict[str, Any],
-        params: Dict[str, Any],
-        scenario_name: str,
-        locale_manager: Any
+        results: Dict[str, Any], params: Dict[str, Any], scenario_name: str, locale_manager: Any
     ) -> str:
         """Generates the complete formatted report as a string."""
         lm = locale_manager
         analysis_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        add_count = len([r for r in results.values() if lm.get_string("warrant_evaluator.rec_add") in r['recommendation']])
-        remove_count = len([r for r in results.values() if lm.get_string("warrant_evaluator.rec_remove") in r['recommendation']])
-        keep_count = len([r for r in results.values() if lm.get_string("warrant_evaluator.rec_keep") in r['recommendation']])
+        add_count = len(
+            [r for r in results.values() if lm.get_string("warrant_evaluator.rec_add") in r["recommendation"]]
+        )
+        remove_count = len(
+            [r for r in results.values() if lm.get_string("warrant_evaluator.rec_remove") in r["recommendation"]]
+        )
+        keep_count = len(
+            [r for r in results.values() if lm.get_string("warrant_evaluator.rec_keep") in r["recommendation"]]
+        )
 
         p = params
         report = [
@@ -68,48 +72,52 @@ class TextReportFormatter:
             f"  - Saturação: X = q / (N × F_ideal)  [adimensional]",
             f"\n\n{lm.get_string('report_generator.detailed_rec.title1')}",
             f"{lm.get_string('report_generator.detailed_rec.title2')}",
-            f"{lm.get_string('report_generator.detailed_rec.title3')}"
+            f"{lm.get_string('report_generator.detailed_rec.title3')}",
         ]
 
         for j_id, result in sorted(results.items()):
-            w = result['warrants']
-            d = result['data']
+            w = result["warrants"]
+            d = result["data"]
 
-            satisfied_str = lm.get_string('report_generator.junction.warrant_satisfied')
-            not_satisfied_str = lm.get_string('report_generator.junction.warrant_not_satisfied')
+            satisfied_str = lm.get_string("report_generator.junction.warrant_satisfied")
+            not_satisfied_str = lm.get_string("report_generator.junction.warrant_not_satisfied")
 
-            w1_icon = '✔️' if w.get('volume') else '❌'
-            w2_icon = '✔️' if w.get('delay') else '❌'
-            w3_icon = '✔️' if w.get('queue_p95') else '❌'
-            w4_icon = '✔️' if w.get('saturation') else '❌'
+            w1_icon = "✔️" if w.get("volume") else "❌"
+            w2_icon = "✔️" if w.get("delay") else "❌"
+            w3_icon = "✔️" if w.get("queue_p95") else "❌"
+            w4_icon = "✔️" if w.get("saturation") else "❌"
 
-            report.extend([
-                f"\n----------------------------------------------------------------------",
-                f">>> {lm.get_string('report_generator.junction.title', id=j_id)}",
-                f"----------------------------------------------------------------------",
-                f"* {lm.get_string('report_generator.junction.recommendation')}:     {result.get('recommendation', 'N/A')}",
-                f"* {lm.get_string('report_generator.junction.current_status')}:         {result.get('current_status', 'N/A')}",
-                f"* {lm.get_string('report_generator.junction.justification')}:  {result.get('justification', 'N/A')}",
-                f"",
-                f"* {lm.get_string('report_generator.junction.warrants_analysis')}:",
-                f"  - [{w1_icon}] W1 - Volume (q = k×v×3.6): {satisfied_str if w.get('volume') else not_satisfied_str}",
-                f"  - [{w2_icon}] W2 - Atraso Real (D = L/v_real - L/v_lim): {satisfied_str if w.get('delay') else not_satisfied_str}",
-                f"  - [{w3_icon}] W3 - Fila P95: {satisfied_str if w.get('queue_p95') else not_satisfied_str}",
-                f"  - [{w4_icon}] W4 - Saturação (X = q/C): {satisfied_str if w.get('saturation') else not_satisfied_str}",
-                f"",
-                f"* {lm.get_string('report_generator.junction.observed_data')}:",
-                f"  - Volume Primário (q):        {d.get('vol_primary_val', 0):.1f} vph (limiar: {p.get('min_volume_primary', 'N/A')} vph)",
-                f"  - Volume Secundário (q):      {d.get('vol_secondary_val', 0):.1f} vph (limiar: {p.get('min_volume_secondary', 'N/A')} vph)",
-                f"  - Atraso Real (D):            {d.get('avg_delay', 0):.2f} s (limiar: {p.get('unacceptable_delay', 'N/A')} s)",
-                f"  - Fila P95:                   {d.get('queue_p95', 0)} veículos (limiar: {p.get('max_queue_p95', 'N/A')})",
-                f"  - Grau de Saturação (X):      {d.get('saturation_ratio', 0):.4f} (limiar: {p.get('saturation_critical', 'N/A')})",
-            ])
+            report.extend(
+                [
+                    f"\n----------------------------------------------------------------------",
+                    f">>> {lm.get_string('report_generator.junction.title', id=j_id)}",
+                    f"----------------------------------------------------------------------",
+                    f"* {lm.get_string('report_generator.junction.recommendation')}:     {result.get('recommendation', 'N/A')}",
+                    f"* {lm.get_string('report_generator.junction.current_status')}:         {result.get('current_status', 'N/A')}",
+                    f"* {lm.get_string('report_generator.junction.justification')}:  {result.get('justification', 'N/A')}",
+                    f"",
+                    f"* {lm.get_string('report_generator.junction.warrants_analysis')}:",
+                    f"  - [{w1_icon}] W1 - Volume (q = k×v×3.6): {satisfied_str if w.get('volume') else not_satisfied_str}",
+                    f"  - [{w2_icon}] W2 - Atraso Real (D = L/v_real - L/v_lim): {satisfied_str if w.get('delay') else not_satisfied_str}",
+                    f"  - [{w3_icon}] W3 - Fila P95: {satisfied_str if w.get('queue_p95') else not_satisfied_str}",
+                    f"  - [{w4_icon}] W4 - Saturação (X = q/C): {satisfied_str if w.get('saturation') else not_satisfied_str}",
+                    f"",
+                    f"* {lm.get_string('report_generator.junction.observed_data')}:",
+                    f"  - Volume Primário (q):        {d.get('vol_primary_val', 0):.1f} vph (limiar: {p.get('min_volume_primary', 'N/A')} vph)",
+                    f"  - Volume Secundário (q):      {d.get('vol_secondary_val', 0):.1f} vph (limiar: {p.get('min_volume_secondary', 'N/A')} vph)",
+                    f"  - Atraso Real (D):            {d.get('avg_delay', 0):.2f} s (limiar: {p.get('unacceptable_delay', 'N/A')} s)",
+                    f"  - Fila P95:                   {d.get('queue_p95', 0)} veículos (limiar: {p.get('max_queue_p95', 'N/A')})",
+                    f"  - Grau de Saturação (X):      {d.get('saturation_ratio', 0):.4f} (limiar: {p.get('saturation_critical', 'N/A')})",
+                ]
+            )
 
-        report.extend([
-            f"\n\n{lm.get_string('report_generator.footer.title1')}",
-            f"{lm.get_string('report_generator.footer.title2')}",
-            f"{lm.get_string('report_generator.footer.title3')}",
-            lm.get_string('report_generator.footer.generated_by')
-        ])
+        report.extend(
+            [
+                f"\n\n{lm.get_string('report_generator.footer.title1')}",
+                f"{lm.get_string('report_generator.footer.title2')}",
+                f"{lm.get_string('report_generator.footer.title3')}",
+                lm.get_string("report_generator.footer.generated_by"),
+            ]
+        )
 
         return "\n".join(report)

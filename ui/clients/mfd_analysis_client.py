@@ -18,11 +18,12 @@
 # Author: Gabriel Moraes
 # Date: 2026
 
-import os
 import logging
+import os
 import threading
 import time
 from typing import Callable, Optional
+
 
 class MfdAnalysisClient:
     """
@@ -30,7 +31,14 @@ class MfdAnalysisClient:
     guaranteeing 100% in-memory IPC communication without creating cache or request files on disk,
     mirroring the exact architecture of InfrastructureClient (SAS Engine).
     """
-    def __init__(self, on_analysis_complete_callback: Callable[[dict], None], results_dir: Optional[str] = None, mfd_result_queue=None, mfd_trigger_queue=None):
+
+    def __init__(
+        self,
+        on_analysis_complete_callback: Callable[[dict], None],
+        results_dir: Optional[str] = None,
+        mfd_result_queue=None,
+        mfd_trigger_queue=None,
+    ):
         self.on_analysis_complete = on_analysis_complete_callback
         self.results_dir = results_dir
         self.mfd_result_queue = mfd_result_queue
@@ -46,23 +54,22 @@ class MfdAnalysisClient:
         if trig_queue is None:
             try:
                 import ui.main_ui as ui_module
-                trig_queue = getattr(ui_module, 'mfd_trigger_queue', None)
+
+                trig_queue = getattr(ui_module, "mfd_trigger_queue", None)
             except Exception:
                 pass
 
         if trig_queue is not None:
             try:
                 trig_queue.put(("trigger_mfd", {}))
-                logging.info("[MfdAnalysisClient] Pacote de disparo MFD enviado com sucesso para mfd_trigger_queue em memória.")
+                logging.info(
+                    "[MfdAnalysisClient] Pacote de disparo MFD enviado com sucesso para mfd_trigger_queue em memória."
+                )
             except Exception as ex:
                 logging.error(f"[MfdAnalysisClient] Erro ao enviar disparo para mfd_trigger_queue: {ex}")
 
         trigger_time = time.time()
-        thread = threading.Thread(
-            target=self._fetch_thread_target,
-            args=(trigger_time,),
-            daemon=True
-        )
+        thread = threading.Thread(target=self._fetch_thread_target, args=(trigger_time,), daemon=True)
         thread.start()
 
     def _fetch_thread_target(self, trigger_time: float = None):
@@ -75,7 +82,8 @@ class MfdAnalysisClient:
         if queue is None:
             try:
                 import ui.main_ui as ui_module
-                queue = getattr(ui_module, 'mfd_result_queue', None)
+
+                queue = getattr(ui_module, "mfd_result_queue", None)
             except Exception as ex:
                 logging.error(f"[MfdAnalysisClient] Error resolving mfd_result_queue dynamically: {ex}")
 
@@ -83,13 +91,15 @@ class MfdAnalysisClient:
             logging.error("[MfdAnalysisClient] mfd_result_queue is NULL. Cannot receive in-memory IPC results.")
             result = {
                 "status": "error",
-                "message": "Fila IPC de resultados MFD (mfd_result_queue) não foi conectada pela interface."
+                "message": "Fila IPC de resultados MFD (mfd_result_queue) não foi conectada pela interface.",
             }
             if self.on_analysis_complete:
                 self.on_analysis_complete(result)
             return
 
-        logging.info("[MfdAnalysisClient] Starting asynchronous in-memory IPC queue poll for MFD report (no timeout)...")
+        logging.info(
+            "[MfdAnalysisClient] Starting asynchronous in-memory IPC queue poll for MFD report (no timeout)..."
+        )
 
         # Drain all stale messages from queue before polling for new job result
         try:
@@ -101,7 +111,9 @@ class MfdAnalysisClient:
         try:
             ipc_result = queue.get(block=True)
             if isinstance(ipc_result, dict):
-                logging.info(f"[MfdAnalysisClient] Success: New MFD report received via in-memory IPC queue (status={ipc_result.get('status')}).")
+                logging.info(
+                    f"[MfdAnalysisClient] Success: New MFD report received via in-memory IPC queue (status={ipc_result.get('status')})."
+                )
                 result = ipc_result
             else:
                 result = {"status": "error", "message": "Formato inválido retornado da fila IPC de resultados MFD."}

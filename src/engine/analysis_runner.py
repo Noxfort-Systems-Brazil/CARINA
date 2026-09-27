@@ -23,24 +23,26 @@ Defines the AnalysisRunner, a specialist class responsible for
 executing the system's analysis phase.
 """
 import logging
-import sys
 import os
-from typing import List, Dict, Any
+import sys
+from typing import Any, Dict, List
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from engine.episode_runner import EpisodeRunner
 from core.childhood_analyzer import ChildhoodAnalyzer
+from engine.episode_runner import EpisodeRunner
+
 
 class AnalysisRunner:
     """
     Orchestrates the execution of analysis episodes to establish
     the baseline and traffic profiles, using the EpisodeRunner.
     """
+
     def __init__(self, episode_runner: EpisodeRunner, analyzer: ChildhoodAnalyzer):
         """
         Inicializa o Executor de Análise.
@@ -57,24 +59,24 @@ class AnalysisRunner:
         lm = self.locale_manager
         # The log has been generalized as mode is no longer an important distinction here.
         logging.info("[ANALYSIS_RUNNER] A iniciar fase de análise inicial...")
-        
+
         all_episode_metrics: List[Dict[str, Any]] = []
-        
+
         for i in range(self.analyzer.analysis_episodes):
             logging.info(f"   L- A executar episódio de análise {i+1}/{self.analyzer.analysis_episodes}...")
-            
+
             # --- MAIN CHANGE HERE ---
             # The call to 'run' now no longer needs the 'mode' parameter.
             # The episode performed will be a full training episode.
             episode_metrics = self.episode_runner.run(episode_count=(i + 1))
             # --- END OF CHANGE ---
-            
+
             if episode_metrics:
                 all_episode_metrics.append(episode_metrics)
-        
+
         # The results of these first training episodes are used to define the baseline.
         profiles, baseline = self.analyzer.run_analysis(all_episode_metrics)
-        
+
         self.analyzer.save_to_cache(profiles, baseline)
-        
+
         return profiles, baseline

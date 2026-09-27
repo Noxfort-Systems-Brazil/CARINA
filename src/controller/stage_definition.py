@@ -31,13 +31,14 @@ from dataclasses import dataclass
 class StageDefinition:
     """
     A single signal stage extracted from the SUMO TLS program.
-    
+
     Attributes:
         state_string: Raw SUMO state (e.g., "GGrrrrGGrrrr") defining which
                       signal links are green/red in this stage.
         yellow_string: Derived state where all G/g are replaced with 'y'.
         all_red_string: All characters set to 'r' for clearance interval.
     """
+
     state_string: str
     yellow_string: str
     all_red_string: str

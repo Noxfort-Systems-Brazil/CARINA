@@ -18,17 +18,19 @@
 # Author: Gabriel Moraes
 # Date: 2026-06-09
 
-import os
 import logging
+import os
 import threading
 import time
 from typing import Callable
 
+
 class InfrastructureClient:
     """
-    Escuta a fila de resultados IPC da análise de infraestrutura em uma thread separada, 
+    Escuta a fila de resultados IPC da análise de infraestrutura em uma thread separada,
     garantindo comunicação 100% em memória sem criar arquivos de cache ou status no disco.
     """
+
     def __init__(self, on_complete_callback: Callable[[dict], None], sas_result_queue=None):
         self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         self.on_complete = on_complete_callback
@@ -46,21 +48,26 @@ class InfrastructureClient:
         if queue is None:
             try:
                 import ui.main_ui as ui_module
-                queue = getattr(ui_module, 'sas_result_queue', None)
+
+                queue = getattr(ui_module, "sas_result_queue", None)
             except Exception as ex:
                 logging.error(f"[InfrastructureClient] Error resolving sas_result_queue dynamically: {ex}")
 
         if queue is None:
-            logging.error("[InfrastructureClient] sas_result_queue está NULO. Não é possível receber resultados IPC do backend.")
+            logging.error(
+                "[InfrastructureClient] sas_result_queue está NULO. Não é possível receber resultados IPC do backend."
+            )
             result = {
                 "status": "error",
-                "message": "Fila IPC de resultados (sas_result_queue) não foi conectada pela interface."
+                "message": "Fila IPC de resultados (sas_result_queue) não foi conectada pela interface.",
             }
             if self.on_complete:
                 self.on_complete(result)
             return
 
-        logging.info(f"[InfrastructureClient] Iniciando busca assíncrona por resposta da análise SAS (sem limite de tempo)...")
+        logging.info(
+            f"[InfrastructureClient] Iniciando busca assíncrona por resposta da análise SAS (sem limite de tempo)..."
+        )
 
         # Drain any old/stale messages sitting in the IPC queue before waiting for fresh analysis.
         try:
@@ -69,11 +76,15 @@ class InfrastructureClient:
                 if isinstance(item, dict):
                     item_time = item.get("timestamp", time.time())
                     if item_time >= min_valid_timestamp:
-                        logging.info(f"[InfrastructureClient] Mensagem válida capturada na fase de drain (timestamp={item_time}).")
+                        logging.info(
+                            f"[InfrastructureClient] Mensagem válida capturada na fase de drain (timestamp={item_time})."
+                        )
                         result = item
                         break
                     else:
-                        logging.info(f"[InfrastructureClient] Mensagem antiga descartada na limpeza (timestamp={item_time} < min_valid={min_valid_timestamp}).")
+                        logging.info(
+                            f"[InfrastructureClient] Mensagem antiga descartada na limpeza (timestamp={item_time} < min_valid={min_valid_timestamp})."
+                        )
         except Exception:
             pass
 
@@ -89,11 +100,15 @@ class InfrastructureClient:
                 if ipc_result and isinstance(ipc_result, dict):
                     msg_time = ipc_result.get("timestamp", time.time())
                     if msg_time >= min_valid_timestamp:
-                        logging.info(f"[InfrastructureClient] Sucesso: Novo relatório de análise recebido da fila IPC (status={ipc_result.get('status')}).")
+                        logging.info(
+                            f"[InfrastructureClient] Sucesso: Novo relatório de análise recebido da fila IPC (status={ipc_result.get('status')})."
+                        )
                         result = ipc_result
                         break
                     else:
-                        logging.warning(f"[InfrastructureClient] Ignorando resultado IPC com timestamp antigo: {msg_time} < {min_valid_timestamp}")
+                        logging.warning(
+                            f"[InfrastructureClient] Ignorando resultado IPC com timestamp antigo: {msg_time} < {min_valid_timestamp}"
+                        )
             except Exception:
                 pass
 
@@ -102,11 +117,8 @@ class InfrastructureClient:
                 break
 
         if not result and trigger_time is None:
-            result = {
-                "status": "error",
-                "message": "Nenhuma análise recebida da Engine."
-            }
-        
+            result = {"status": "error", "message": "Nenhuma análise recebida da Engine."}
+
         if result and self.on_complete:
             self.on_complete(result)
 

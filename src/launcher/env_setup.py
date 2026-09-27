@@ -18,15 +18,16 @@
 # Author: Gabriel Moraes
 # Date: August 6, 2026
 
-import sys
 import os
+import sys
+
 
 def setup_environment():
     """
     Configures sys.path directories and required environment variables for CARINA.
     Returns a tuple of (project_root, bundle_root, IS_FROZEN).
     """
-    IS_FROZEN = getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+    IS_FROZEN = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
 
     if IS_FROZEN:
         project_root = os.path.dirname(sys.executable)
@@ -39,9 +40,9 @@ def setup_environment():
 
     # Add critical paths to sys.path (src, proto, ui)
     paths_to_add = [
-        os.path.join(bundle_root, 'src'),
-        os.path.join(bundle_root, 'proto'),
-        os.path.join(bundle_root, 'ui')
+        os.path.join(bundle_root, "src"),
+        os.path.join(bundle_root, "proto"),
+        os.path.join(bundle_root, "ui"),
     ]
 
     for p in paths_to_add:
@@ -49,13 +50,13 @@ def setup_environment():
             sys.path.insert(0, p)
 
     # Environment settings & thread limiting
-    os.environ['OMP_NUM_THREADS'] = '1'
-    os.environ['MKL_NUM_THREADS'] = '1'
-    os.environ['OPENBLAS_NUM_THREADS'] = '1'
-    os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-    if sys.platform == 'win32':
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+    if sys.platform == "win32":
         try:
-            os.system('chcp 65001 > nul')
+            os.system("chcp 65001 > nul")
         except Exception:
             pass
 

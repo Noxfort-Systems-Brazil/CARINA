@@ -18,17 +18,19 @@
 # Author: Gabriel Moraes
 # Date: August 12, 2026
 
-import os
 import json
 import logging
-from typing import Dict, Any
+import os
+from typing import Any, Dict
+
 
 class TemplateRepository:
     """
-    Responsibility (SRP & DIP): Handles file I/O operations for reading report templates 
-    from config/report_templates.json and managing memory caching.
+    Responsibility (SRP & DIP): Handles file I/O operations for reading report templates
+    from config/templates/sas/ and managing memory caching.
     Follows SOLID principles.
     """
+
     _templates_cache: Dict[str, Any] = None
 
     @classmethod
@@ -42,24 +44,32 @@ class TemplateRepository:
             return cls._templates_cache
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        config_dir = os.path.join(base_dir, "config")
 
         modular_files = [
             "sas_report_sections.json",
             "sas_intersection_templates.json",
             "sas_recommendation_labels.json",
             "sas_summary_directives.json",
-            "report_templates.json"  # Optional legacy fallback
+            "report_templates.json",  # Optional legacy fallback
         ]
 
         merged_cache = {}
         loaded_count = 0
 
         for filename in modular_files:
-            json_path = os.path.join(config_dir, filename)
-            if os.path.exists(json_path):
+            candidates = [
+                os.path.join(base_dir, "config", "templates", "sas", filename),
+                os.path.join(base_dir, "config", filename),
+            ]
+            json_path = None
+            for p in candidates:
+                if os.path.exists(p):
+                    json_path = p
+                    break
+
+            if json_path:
                 try:
-                    with open(json_path, 'r', encoding='utf-8') as f:
+                    with open(json_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
                         merged_cache.update(data)
                         loaded_count += 1
@@ -115,4 +125,6 @@ class TemplateRepository:
         :return: Cluster prefix string
         """
         translations = cls.get_layout_translations(language)
-        return translations.get("cluster_prefix", "Agrupamento" if (language or "pt_br").lower() == "pt_br" else "Cluster")
+        return translations.get(
+            "cluster_prefix", "Agrupamento" if (language or "pt_br").lower() == "pt_br" else "Cluster"
+        )

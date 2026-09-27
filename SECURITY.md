@@ -6,14 +6,16 @@ Currently, CARINA is in active development. Only the latest `main` branch is off
 
 | Version | Supported          |
 | ------- | ------------------ |
+| v1.2.x  | :white_check_mark: |
+| v1.1.x  | :white_check_mark: |
 | v1.0.x  | :white_check_mark: |
 | < 1.0   | :x:                |
 
 ## Reporting a Vulnerability
 
-**CRITICAL:** CARINA is designed to control physical urban traffic infrastructure. Vulnerabilities in the Guardian safety layer or the Synapse HFT protocol can lead to physical damage, gridlock, or loss of life. 
+**CRITICAL:** CARINA is designed to control physical urban traffic infrastructure. Vulnerabilities in the Guardian safety layer or the Synapse HFT protocol can lead to physical damage, gridlock, or loss of life.
 
-**DO NOT** disclose vulnerabilities publicly on GitHub Issues. 
+**DO NOT** disclose vulnerabilities publicly on GitHub Issues.
 
 If you discover a vulnerability, please report it immediately by emailing:
 **security@noxfort.com** *(Placeholder for Noxfort Systems Security Team)*.

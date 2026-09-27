@@ -126,7 +126,7 @@ def test_planning_controller_export_report(mock_export):
 
 def test_planning_map_renderer_draws_orange_nodes_for_traffic_lights_and_junctions():
     renderer = PlanningMapRenderer(base_width=1200, base_height=800)
-    assert renderer.hit_radius == 35.0
+    assert renderer.hit_radius == 14.0
     assert renderer.junction_color == ft.Colors.ORANGE_600
 
     topology = {

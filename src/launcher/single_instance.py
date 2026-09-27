@@ -18,18 +18,20 @@
 # Author: Gabriel Moraes
 # Date: August 6, 2026
 
+import logging
 import socket
 import sys
-import time
-import logging
 import threading
+import time
+
 
 class SingleInstanceLock:
     """
     Manages single-instance lock via TCP Socket (127.0.0.1:42123).
     Allows triggering a UI restore on an active instance when launching a second one.
     """
-    def __init__(self, port: int = 42123, host: str = '127.0.0.1'):
+
+    def __init__(self, port: int = 42123, host: str = "127.0.0.1"):
         self.host = host
         self.port = port
         self.server_socket = None
@@ -62,6 +64,7 @@ class SingleInstanceLock:
         """
         Launches a background thread listening for UI restore requests from secondary instances.
         """
+
         def listener_loop():
             while not shutdown_requested.is_set():
                 try:
@@ -80,11 +83,7 @@ class SingleInstanceLock:
                         logging.error(f"[SingleInstance] Error in single instance listener: {e}")
                     time.sleep(0.5)
 
-        self.listener_thread = threading.Thread(
-            target=listener_loop,
-            name="SingleInstanceListenerThread",
-            daemon=True
-        )
+        self.listener_thread = threading.Thread(target=listener_loop, name="SingleInstanceListenerThread", daemon=True)
         self.listener_thread.start()
 
     def release(self):

@@ -18,10 +18,10 @@
 # Author: Gabriel Moraes
 # Date: October 4, 2025
 
-import subprocess
-import os
 import logging
+import os
 import shutil
+import subprocess
 import sys
 from typing import TYPE_CHECKING
 
@@ -29,8 +29,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .locale_manager_backend import LocaleManagerBackend
 
+
 # --- CHANGE 2: Modify function signature ---
-def generate_map_data_files(net_file_path: str, output_dir: str, lm: 'LocaleManagerBackend') -> str | None:
+def generate_map_data_files(net_file_path: str, output_dir: str, lm: "LocaleManagerBackend") -> str | None:
     """
     Executes netconvert to generate the plain XML data files.
     """
@@ -41,7 +42,7 @@ def generate_map_data_files(net_file_path: str, output_dir: str, lm: 'LocaleMana
 
     netconvert_exe = "netconvert.exe" if sys.platform == "win32" else "netconvert"
     sumo_home = os.environ.get("SUMO_HOME")
-    
+
     netconvert_path = shutil.which(netconvert_exe)
     if not netconvert_path and sumo_home:
         path_try = os.path.join(sumo_home, "bin", netconvert_exe)
@@ -55,22 +56,24 @@ def generate_map_data_files(net_file_path: str, output_dir: str, lm: 'LocaleMana
 
     map_output_dir = os.path.join(output_dir, "maps")
     os.makedirs(map_output_dir, exist_ok=True)
-    
+
     scenario_name = os.path.basename(output_dir)
     output_prefix_path = os.path.join(map_output_dir, f"{scenario_name}_map")
-    
+
     command = [
         netconvert_path,
-        "--sumo-net-file", net_file_path,
-        "--plain-output-prefix", output_prefix_path,
+        "--sumo-net-file",
+        net_file_path,
+        "--plain-output-prefix",
+        output_prefix_path,
         "--junctions.join",
     ]
 
     # --- CHANGE 5 ---
     logging.info(lm.get_string("map_generator.run.generating_files"))
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True, encoding='utf-8')
-        
+        result = subprocess.run(command, capture_output=True, text=True, check=True, encoding="utf-8")
+
         if os.path.exists(output_prefix_path + ".nod.xml"):
             # --- CHANGE 6 ---
             logging.info(lm.get_string("map_generator.run.success", prefix=output_prefix_path))

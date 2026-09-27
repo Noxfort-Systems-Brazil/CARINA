@@ -18,17 +18,18 @@
 # Author: Gabriel Moraes
 # Date: December 15, 2025
 
-import sys
 import os
+import sys
 from typing import TYPE_CHECKING, Any, Optional
 
 # Add 'src' directory to path to allow absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from core.enums import Maturity
+
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
@@ -36,47 +37,48 @@ if TYPE_CHECKING:
 class ActionAuthorizer:
     """The "Gatekeeper" of the Flight School, specialist in authorizing actions."""
 
-    def __init__(self, settings: Any, locale_manager: 'LocaleManagerBackend', traffic_profiles: Optional[dict] = None):
+    def __init__(self, settings: Any, locale_manager: "LocaleManagerBackend", traffic_profiles: Optional[dict] = None):
         """
         Initializes the authorizer.
         Now accepts 'settings' for compatibility with Trainer HFT.
         """
         self.locale_manager = locale_manager
-        
+
         if traffic_profiles:
             self.traffic_profiles = traffic_profiles
         else:
             # HFT Fallback: If no profile is provided, assumes 'low' traffic
             # for the entire period, allowing TEEN agents to act.
             # Structure: {day_index: {hour_str: level_trafego}}
-            self.traffic_profiles = {
-                day: {str(hour): "low" for hour in range(24)}
-                for day in range(7)
-            }
+            self.traffic_profiles = {day: {str(hour): "low" for hour in range(24)} for day in range(7)}
 
     def is_action_authorized(self, agent_id: str, maturity: Maturity, sim_time: float) -> tuple[bool, str]:
         """
         Checks if an agent is authorized to act based on its maturity and time.
         """
         lm = self.locale_manager
-        
-        if maturity == Maturity.CHILD: 
+
+        if maturity == Maturity.CHILD:
             return False, lm.get_string("action_authorizer.reason.child", fallback="Nível Criança: Apenas observação.")
-        
-        if maturity == Maturity.ADULT: 
+
+        if maturity == Maturity.ADULT:
             return True, lm.get_string("action_authorizer.reason.adult", fallback="Nível Adulto: Autorizado.")
-        
+
         if maturity == Maturity.TEEN:
             # Calculates day and time based on simulation time (assumes T=0 is Mon 00:00)
             day_index = int(sim_time // 86400) % 7
             hour_of_day = str(int((sim_time % 86400) // 3600))
-            
+
             profile_for_day = self.traffic_profiles.get(day_index, {})
             traffic_level = profile_for_day.get(hour_of_day, "low")
-            
-            if traffic_level == "peak": 
-                return False, lm.get_string("action_authorizer.reason.teen_peak", fallback="Nível Adolescente: Proibido em horário de pico.")
-            
-            return True, lm.get_string("action_authorizer.reason.teen_offpeak", fallback="Nível Adolescente: Autorizado fora de pico.")
-            
+
+            if traffic_level == "peak":
+                return False, lm.get_string(
+                    "action_authorizer.reason.teen_peak", fallback="Nível Adolescente: Proibido em horário de pico."
+                )
+
+            return True, lm.get_string(
+                "action_authorizer.reason.teen_offpeak", fallback="Nível Adolescente: Autorizado fora de pico."
+            )
+
         return False, lm.get_string("action_authorizer.reason.unknown", fallback="Maturidade desconhecida.")

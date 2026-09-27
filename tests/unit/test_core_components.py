@@ -18,9 +18,11 @@
 # Author: Gabriel Moraes
 # Date: 2026-04-16
 
-import pytest
 import os
 import sys
+
+import pytest
+
 
 def test_enums_maturity():
     """
@@ -28,10 +30,12 @@ def test_enums_maturity():
     """
     try:
         from src.core.enums import Maturity
-        assert Maturity.CHILD.name == 'CHILD'
-        assert Maturity.ADULT.name == 'ADULT'
+
+        assert Maturity.CHILD.name == "CHILD"
+        assert Maturity.ADULT.name == "ADULT"
     except ImportError as e:
         pytest.fail(f"Failed to load core enums: {e}")
+
 
 def test_ai_process_function_exists():
     """
@@ -40,9 +44,11 @@ def test_ai_process_function_exists():
     """
     try:
         from src.main import run_ai_process
+
         assert callable(run_ai_process), "run_ai_process must be callable"
     except ImportError as e:
         pytest.fail(f"Failed to load main.py: {e}")
+
 
 @pytest.mark.unit
 def test_locale_backend():
@@ -51,6 +57,7 @@ def test_locale_backend():
     """
     try:
         from src.utils.locale_manager_backend import LocaleManagerBackend
+
         lm = LocaleManagerBackend()
         # The default should be pt_BR or en_US, testing if it's not empty
         assert lm.current_lang_data is not None
