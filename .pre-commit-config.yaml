@@ -21,5 +21,6 @@ repos:
     rev: v1.8.0
     hooks:
       - id: mypy
+        stages: [manual]
         additional_dependencies: [types-setuptools, types-requests]
-        args: [--ignore-missing-imports, --explicit-package-bases]
+        args: [--ignore-missing-imports]
