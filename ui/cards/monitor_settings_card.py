@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -25,7 +25,7 @@ usado para configurar a integração com o sistema externo "Monitor" via MQTT.
 
 import json
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import flet as ft
 import paho.mqtt.client as mqtt
@@ -38,21 +38,26 @@ class MonitorSettingsCard(ft.Card):
     Um Card que encapsula as configurações de integração com o Monitor Externo.
     """
 
-    def __init__(self, initial_values: Dict[str, Any], on_toggle_connection=None):
+    def __init__(
+        self,
+        initial_values: Dict[str, Any],
+        on_toggle_connection=None,
+        locale_manager: Optional[LocaleManager] = None,
+    ):
         """
         Inicializa o Card com os valores fornecidos.
         """
         super().__init__()
 
         self.on_toggle_connection = on_toggle_connection
+        self.lm = locale_manager
 
         # --- Controls ---
-        self.title_text = ft.Text("External Monitor Integration", size=18, weight=ft.FontWeight.BOLD)
+        self.title_text = ft.Text(size=18, weight=ft.FontWeight.BOLD)
 
         self.is_connected = str(initial_values.get("monitor_enabled", "False")).lower() == "true"
 
         self.tf_host = ft.TextField(
-            label="Monitor Host / URL (Ngrok, Cloud, IP ou Broker MQTT)",
             value=initial_values.get("monitor_mqtt_host", "localhost"),
             expand=True,
             disabled=self.is_connected,
@@ -60,11 +65,11 @@ class MonitorSettingsCard(ft.Card):
 
         # Action Buttons
         self.btn_connect = ft.ElevatedButton(
-            text="Connect", icon=ft.Icons.LOGIN_ROUNDED, on_click=self._handle_connect, visible=not self.is_connected
+            icon=ft.Icons.LOGIN_ROUNDED, on_click=self._handle_connect, visible=not self.is_connected
         )
 
         self.btn_disconnect = ft.OutlinedButton(
-            text="Disconnect", icon=ft.Icons.LOGOUT_ROUNDED, on_click=self._handle_disconnect, visible=self.is_connected
+            icon=ft.Icons.LOGOUT_ROUNDED, on_click=self._handle_disconnect, visible=self.is_connected
         )
 
         # Status Display
@@ -74,8 +79,6 @@ class MonitorSettingsCard(ft.Card):
             size=16,
         )
         self.status_text = ft.Text(
-            "CONNECTED" if self.is_connected else "DISCONNECTED",
-            color=ft.colors.GREEN_500 if self.is_connected else ft.colors.RED_500,
             weight=ft.FontWeight.W_500,
         )
         self.status_display = ft.Row([self.status_icon, self.status_text], alignment=ft.MainAxisAlignment.START)
@@ -96,6 +99,16 @@ class MonitorSettingsCard(ft.Card):
                 ]
             ),
         )
+
+        if self.lm:
+            self.update_translations(self.lm)
+        else:
+            try:
+                from ui.handlers.locale_manager import LocaleManager
+
+                self.update_translations(LocaleManager())
+            except Exception:
+                pass
 
     def _update_ui_state(self):
         self.tf_host.disabled = self.is_connected

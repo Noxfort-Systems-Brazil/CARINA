@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -41,12 +41,17 @@ class AuditLogWidget(ft.Container):
             weight=ft.FontWeight.BOLD,
         )
 
+        self.col_date_text = ft.Text(self.locale_manager.get_string("audit.date_time", "Data/Hora"))
+        self.col_user_text = ft.Text(self.locale_manager.get_string("audit.user", "Usuário"))
+        self.col_action_text = ft.Text(self.locale_manager.get_string("audit.action", "Ação"))
+        self.col_details_text = ft.Text(self.locale_manager.get_string("audit.details", "Detalhes"))
+
         self.table = ft.DataTable(
             columns=[
-                ft.DataColumn(ft.Text(self.locale_manager.get_string("audit.date_time", "Data/Hora"))),
-                ft.DataColumn(ft.Text(self.locale_manager.get_string("audit.user", "Usuário"))),
-                ft.DataColumn(ft.Text(self.locale_manager.get_string("audit.action", "Ação"))),
-                ft.DataColumn(ft.Text(self.locale_manager.get_string("audit.details", "Detalhes"))),
+                ft.DataColumn(self.col_date_text),
+                ft.DataColumn(self.col_user_text),
+                ft.DataColumn(self.col_action_text),
+                ft.DataColumn(self.col_details_text),
             ],
             rows=[],
             heading_row_color=ft.Colors.BLACK26,
@@ -119,3 +124,14 @@ class AuditLogWidget(ft.Container):
 
         except Exception as ex:
             logging.error(f"[AuditLogWidget] Erro ao carregar logs: {ex}")
+
+    def update_translations(self, lm: LocaleManager):
+        self.locale_manager = lm
+        self.title.value = self.locale_manager.get_string("audit.title", "Registro de Auditoria (Audit Logs)")
+        self.refresh_btn.text = self.locale_manager.get_string("audit.refresh", "Atualizar")
+        self.col_date_text.value = self.locale_manager.get_string("audit.date_time", "Data/Hora")
+        self.col_user_text.value = self.locale_manager.get_string("audit.user", "Usuário")
+        self.col_action_text.value = self.locale_manager.get_string("audit.action", "Ação")
+        self.col_details_text.value = self.locale_manager.get_string("audit.details", "Detalhes")
+        if self.page:
+            self.update()

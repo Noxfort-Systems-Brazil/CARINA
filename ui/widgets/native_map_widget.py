@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -104,8 +104,13 @@ class NativeMapWidget(ft.Container):
             spacing=10,
         )
 
+        self.loading_text = ft.Text(
+            self.locale_manager.get_string("native_map.loading", default="Carregando mapa de planejamento...")
+            if self.locale_manager
+            else "Carregando mapa de planejamento..."
+        )
         self.loading_indicator = ft.Column(
-            [ft.ProgressRing(), ft.Text("A carregar mapa de planeamento...")],
+            [ft.ProgressRing(), self.loading_text],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=20,
@@ -159,6 +164,7 @@ class NativeMapWidget(ft.Container):
         """Atualiza os textos deste widget e de seus filhos."""
         self.error_title.value = lm.get_string("planning_view.map_error_title")
         self.error_subtitle.value = lm.get_string("planning_view.map_error_subtitle")
+        self.loading_text.value = lm.get_string("native_map.loading", default="Carregando mapa de planejamento...")
         self.legend_widget.update_translations(lm)
         if self.page:
             self.update()

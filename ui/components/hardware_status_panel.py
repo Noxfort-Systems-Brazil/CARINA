@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -26,26 +26,35 @@ class HardwareStatusPanel(ft.Container):
     def __init__(self, locale_manager: LocaleManager):
         super().__init__()
         self.locale_manager = locale_manager
+        not_connected = self.locale_manager.get_string("dashboard_view.not_connected", default="Desconectado")
 
-        self.hardware_brand_label = ft.Text("Marca:", size=11, color=ft.Colors.WHITE54)
-        self.hardware_brand_text = ft.Text(
-            "Desconectado",
-            weight=ft.FontWeight.BOLD,
-            size=12,
-            color=ft.Colors.CYAN_200,
-            overflow=ft.TextOverflow.ELLIPSIS,
-            max_lines=1,
-            tooltip="Desconectado",
+        self.hardware_brand_label = ft.Text(
+            self.locale_manager.get_string("dashboard_view.hardware_brand_label", default="Marca:"),
+            size=11,
+            color=ft.Colors.WHITE54,
         )
-        self.hardware_model_label = ft.Text("Modelo:", size=11, color=ft.Colors.WHITE54)
-        self.hardware_model_text = ft.Text(
-            "Desconectado",
+        self.hardware_brand_text = ft.Text(
+            not_connected,
             weight=ft.FontWeight.BOLD,
             size=12,
             color=ft.Colors.CYAN_200,
             overflow=ft.TextOverflow.ELLIPSIS,
             max_lines=1,
-            tooltip="Desconectado",
+            tooltip=not_connected,
+        )
+        self.hardware_model_label = ft.Text(
+            self.locale_manager.get_string("dashboard_view.hardware_model_label", default="Modelo:"),
+            size=11,
+            color=ft.Colors.WHITE54,
+        )
+        self.hardware_model_text = ft.Text(
+            not_connected,
+            weight=ft.FontWeight.BOLD,
+            size=12,
+            color=ft.Colors.CYAN_200,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            max_lines=1,
+            tooltip=not_connected,
         )
 
         self.content = ft.Row(

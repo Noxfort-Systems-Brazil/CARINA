@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -40,7 +40,9 @@ class SemaphoreInfoDisplayWidget(ft.Column):
             expand=True,
             on_submit=self._on_submit,
             on_blur=self._on_submit,
-            tooltip="Pressione Enter para salvar",
+            tooltip=self.locale_manager.get_string(
+                "semaphore_info.save_tooltip", default="Pressione Enter para salvar"
+            ),
         )
         self.maturity_phase_label = ft.Text(size=12, color=ft.Colors.WHITE54)
         self.maturity_phase_text = ft.Text("---", weight=ft.FontWeight.BOLD, size=16)
@@ -82,6 +84,9 @@ class SemaphoreInfoDisplayWidget(ft.Column):
         self.locale_manager = lm
         self.semaphore_id_text_template = lm.get_string("dashboard_view.semaphore_controls_title_prefix")
         self.semaphore_id_text.label = self.semaphore_id_text_template
+        self.semaphore_id_text.tooltip = lm.get_string(
+            "semaphore_info.save_tooltip", default="Pressione Enter para salvar"
+        )
         self.maturity_phase_label.value = lm.get_string("dashboard_view.maturity_phase_label")
 
         self.hardware_panel.update_translations(lm)
@@ -136,6 +141,9 @@ class SemaphoreInfoDisplayWidget(ft.Column):
         if self._current_semaphore_id:
             self.alias_manager.set_alias(self._current_semaphore_id, self.semaphore_id_text.value)
             if self.page:
-                self.page.snack_bar = ft.SnackBar(ft.Text("Nome do semáforo salvo com sucesso!"), bgcolor="green700")
+                msg = self.locale_manager.get_string(
+                    "semaphore_info.msg_saved", default="Nome do semáforo salvo com sucesso!"
+                )
+                self.page.snack_bar = ft.SnackBar(ft.Text(msg), bgcolor="green700")
                 self.page.snack_bar.open = True
                 self.page.update()

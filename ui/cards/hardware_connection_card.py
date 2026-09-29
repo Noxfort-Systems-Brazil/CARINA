@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -33,7 +33,13 @@ logger = logging.getLogger(__name__)
 
 
 class HardwareConnectionCard(ft.Card):
-    def __init__(self, on_import_click=None, on_export_click=None, on_toggle_connection=None):
+    def __init__(
+        self,
+        on_import_click=None,
+        on_export_click=None,
+        on_toggle_connection=None,
+        locale_manager=None,
+    ):
         super().__init__()
         self.elevation = 2
         self.expand = True
@@ -43,23 +49,21 @@ class HardwareConnectionCard(ft.Card):
         self.on_export_click = on_export_click
         self.on_toggle_connection = on_toggle_connection
 
-        self.lm = None
+        self.lm = locale_manager
         self.last_agents_list = []
 
         # Dictionary to keep track of the IP text fields for each intersection row
         self.ip_fields: Dict[str, ft.TextField] = {}
 
         # Translatable explicit widgets
-        self.col_id_text = ft.Text("Intersection ID", weight=ft.FontWeight.BOLD)
-        self.col_ip_text = ft.Text("IP Address", weight=ft.FontWeight.BOLD)
-        self.col_status_text = ft.Text("Status", weight=ft.FontWeight.BOLD)
-        self.col_action_text = ft.Text("Action", weight=ft.FontWeight.BOLD)
+        self.col_id_text = ft.Text(weight=ft.FontWeight.BOLD)
+        self.col_ip_text = ft.Text(weight=ft.FontWeight.BOLD)
+        self.col_status_text = ft.Text(weight=ft.FontWeight.BOLD)
+        self.col_action_text = ft.Text(weight=ft.FontWeight.BOLD)
 
-        self.title_text = ft.Text("Hardware Connections", size=20, weight=ft.FontWeight.BOLD)
-        self.btn_export = ft.ElevatedButton(
-            text="Export Template", icon=ft.icons.DOWNLOAD, on_click=self._handle_export
-        )
-        self.btn_import = ft.ElevatedButton(text="Import Config", icon=ft.icons.UPLOAD, on_click=self._handle_import)
+        self.title_text = ft.Text(size=20, weight=ft.FontWeight.BOLD)
+        self.btn_export = ft.ElevatedButton(icon=ft.icons.DOWNLOAD, on_click=self._handle_export)
+        self.btn_import = ft.ElevatedButton(icon=ft.icons.UPLOAD, on_click=self._handle_import)
 
         # UI Components - Enhanced DataTable Styling
         self.table = ft.DataTable(
@@ -78,6 +82,16 @@ class HardwareConnectionCard(ft.Card):
         )
 
         self._build_layout()
+
+        if self.lm:
+            self.update_translations(self.lm)
+        else:
+            try:
+                from ui.handlers.locale_manager import LocaleManager
+
+                self.update_translations(LocaleManager())
+            except Exception:
+                pass
 
     def _build_layout(self):
         """Constructs the internal Flet layout for the card with responsive scrolling."""

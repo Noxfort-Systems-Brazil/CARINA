@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -36,11 +36,12 @@ class PlanningCommandBarWidget(ft.Container):
             bgcolor=ft.Colors.WHITE10,
         )
 
-        self.analyze_button = ft.ElevatedButton("Carregar Análise", disabled=True, on_click=on_analyze_click)
+        self.locale_manager = locale_manager
+        self.analyze_button = ft.ElevatedButton("", disabled=True, on_click=on_analyze_click)
         self.save_report_button = ft.ElevatedButton(
-            "Gerar Relatório", icon=ft.Icons.SAVE_ALT_ROUNDED, on_click=on_save_report_click, disabled=True
+            "", icon=ft.Icons.SAVE_ALT_ROUNDED, on_click=on_save_report_click, disabled=True
         )
-        self.status_text = ft.Text("Aguardando carregamento da topologia do mapa...", italic=True)
+        self.status_text = ft.Text("", italic=True)
 
         self.content = ft.Row(
             controls=[
@@ -56,6 +57,11 @@ class PlanningCommandBarWidget(ft.Container):
 
         if locale_manager:
             self.update_translations(locale_manager)
+        else:
+            try:
+                self.update_translations(LocaleManager())
+            except Exception:
+                pass
 
     def set_status(self, text: str, italic: bool = False, color=None):
         self.status_text.value = text
@@ -65,8 +71,19 @@ class PlanningCommandBarWidget(ft.Container):
     def update_translations(self, lm: LocaleManager, is_analyzing: bool = False):
         if not lm:
             return
-        self.analyze_button.text = lm.get_string("planning_view.analyze_button")
-        self.analyze_button.tooltip = lm.get_string("planning_view.analyze_tooltip")
-        self.save_report_button.text = lm.get_string("planning_view.generate_report_button")
+        self.locale_manager = lm
+        self.analyze_button.text = lm.get_string("planning_view.analyze_button", "Analisar Infraestrutura")
+        self.analyze_button.tooltip = lm.get_string(
+            "planning_view.analyze_tooltip", "Carrega o último relatório de infraestrutura gerado pelo sistema"
+        )
+        self.save_report_button.text = lm.get_string("planning_view.generate_report_button", "Salvar Relatório (.docx)")
         if not is_analyzing and not self.analyze_button.disabled:
-            self.status_text.value = lm.get_string("planning_view.status_ready")
+            self.status_text.value = lm.get_string(
+                "planning_view.status_ready", "Pronto para carregar a última análise."
+            )
+        elif not self.status_text.value or self.analyze_button.disabled:
+            self.status_text.value = lm.get_string(
+                "planning_view.status_loading", "Aguardando carregamento da topologia do mapa..."
+            )
+        if self.page:
+            self.update()

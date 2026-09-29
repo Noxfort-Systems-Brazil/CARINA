@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -21,28 +21,31 @@ from ui.handlers.locale_manager import LocaleManager
 class DatabaseSettingsCard(ft.Card):
     """Card UI for Database Settings (SQLite vs PostgreSQL), delegating connection testing."""
 
-    def __init__(self, initial_values: Dict[str, Any], on_toggle_connection: Optional[Callable[[bool], None]] = None):
+    def __init__(
+        self,
+        initial_values: Dict[str, Any],
+        on_toggle_connection: Optional[Callable[[bool], None]] = None,
+        locale_manager: Optional[LocaleManager] = None,
+    ):
         super().__init__(elevation=2)
         self.initial_values = initial_values
         self.on_toggle_connection = on_toggle_connection
-        self.lm = None
+        self.lm = locale_manager
         self.is_connected = str(initial_values.get("db_connected", "False")).lower() == "true"
 
         # UI Elements
-        self.title_text = ft.Text("Configurações de Banco de Dados", size=18, weight=ft.FontWeight.BOLD)
+        self.title_text = ft.Text(size=18, weight=ft.FontWeight.BOLD)
         self.subtitle_text = ft.Text(
-            "O PostgreSQL é recomendado para alta carga e Machine Learning distribuído.",
             italic=True,
             size=12,
             color=ft.Colors.GREY_500,
         )
 
         self.db_type_dropdown = ft.Dropdown(
-            label="Tipo de Banco de Dados",
             value=str(initial_values.get("db_type", "sqlite")),
             options=[
-                ft.dropdown.Option("sqlite", "SQLite (Local)"),
-                ft.dropdown.Option("postgres", "PostgreSQL (Remoto/Avançado)"),
+                ft.dropdown.Option("sqlite"),
+                ft.dropdown.Option("postgres"),
             ],
             on_change=self._on_db_type_change,
             width=300,
@@ -51,16 +54,15 @@ class DatabaseSettingsCard(ft.Card):
 
         # PostgreSQL Fields
         self.host_field = ft.TextField(
-            label="Host", value=str(initial_values.get("db_host", "localhost")), width=200, disabled=self.is_connected
+            value=str(initial_values.get("db_host", "localhost")), width=200, disabled=self.is_connected
         )
         self.port_field = ft.TextField(
-            label="Porta", value=str(initial_values.get("db_port", "5432")), width=100, disabled=self.is_connected
+            value=str(initial_values.get("db_port", "5432")), width=100, disabled=self.is_connected
         )
         self.user_field = ft.TextField(
-            label="Usuário", value=str(initial_values.get("db_user", "postgres")), width=200, disabled=self.is_connected
+            value=str(initial_values.get("db_user", "postgres")), width=200, disabled=self.is_connected
         )
         self.password_field = ft.TextField(
-            label="Senha",
             value=str(initial_values.get("db_password", "")),
             password=True,
             can_reveal_password=True,
@@ -68,7 +70,6 @@ class DatabaseSettingsCard(ft.Card):
             disabled=self.is_connected,
         )
         self.dbname_field = ft.TextField(
-            label="Nome do Banco (DB Name)",
             value=str(initial_values.get("db_name", "carina_data")),
             width=300,
             disabled=self.is_connected,
@@ -85,13 +86,11 @@ class DatabaseSettingsCard(ft.Card):
 
         # Action Buttons
         self.btn_connect = ft.ElevatedButton(
-            text="Conectar / Testar",
             icon=ft.Icons.LOGIN_ROUNDED,
             on_click=self._on_connect_click,
             visible=not self.is_connected,
         )
         self.btn_disconnect = ft.OutlinedButton(
-            text="Desconectar",
             icon=ft.Icons.LOGOUT_ROUNDED,
             on_click=self._on_disconnect_click,
             visible=self.is_connected,
@@ -99,7 +98,7 @@ class DatabaseSettingsCard(ft.Card):
 
         # Status Display
         self.status_icon = ft.Icon(name=ft.Icons.CIRCLE, color=ft.Colors.GREY_500, size=16)
-        self.status_text = ft.Text("NÃO TESTADO", color=ft.Colors.GREY_500, weight=ft.FontWeight.W_500)
+        self.status_text = ft.Text(color=ft.Colors.GREY_500, weight=ft.FontWeight.W_500)
         self.progress_ring = ft.ProgressRing(width=16, height=16, stroke_width=2, visible=False)
         self.status_display = ft.Row(
             [self.progress_ring, self.status_icon, self.status_text], alignment=ft.MainAxisAlignment.START, spacing=5
@@ -122,6 +121,14 @@ class DatabaseSettingsCard(ft.Card):
                 ]
             ),
         )
+
+        if self.lm:
+            self.update_translations(self.lm)
+        else:
+            try:
+                self.update_translations(LocaleManager())
+            except Exception:
+                pass
 
         if self.is_connected:
             self._trigger_silent_auto_test()

@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -73,7 +73,6 @@ class OfficialInfoSection(ft.Column):
 
         ord_enabled_init = bool(initial_values.get("report_ordinance_enabled", False))
         self.chk_ordinance = ft.Checkbox(
-            label="Incluir Portaria no Bloco de Assinatura",
             value=ord_enabled_init,
             on_change=self._on_ordinance_chk_change,
         )

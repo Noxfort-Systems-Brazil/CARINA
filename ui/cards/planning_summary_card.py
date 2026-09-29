@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -23,6 +23,7 @@ from typing import Callable, Optional
 import flet as ft
 
 from ui.formatting.planning_panel_presenter import PlanningStatsDTO
+from ui.handlers.locale_manager import LocaleManager
 
 
 class PlanningSummaryCard(ft.Container):
@@ -31,10 +32,13 @@ class PlanningSummaryCard(ft.Container):
     Single Responsibility: Render network-wide analytics summary and handle filter selection UI.
     """
 
-    def __init__(self, on_filter_change: Optional[Callable[[str], None]] = None):
+    def __init__(
+        self, on_filter_change: Optional[Callable[[str], None]] = None, locale_manager: Optional[LocaleManager] = None
+    ):
         super().__init__(bgcolor=ft.Colors.BLUE_GREY_800, border_radius=8, padding=12)
 
         self.on_filter_change = on_filter_change
+        self.lm = locale_manager
         self.active_filter: str = "ALL"
 
         self.stat_total_count = ft.Text("0", weight=ft.FontWeight.BOLD, size=18, color=ft.Colors.WHITE)
@@ -44,16 +48,48 @@ class PlanningSummaryCard(ft.Container):
         self.stat_no_signal_count = ft.Text("0", weight=ft.FontWeight.BOLD, size=14, color=ft.Colors.ORANGE_400)
 
         self.btn_filter_all = ft.OutlinedButton(
-            "Todos", on_click=lambda e: self._set_filter("ALL"), style=self._get_filter_style("ALL")
+            self._get_str("planning_summary.filter_all", "Todos"),
+            on_click=lambda e: self._set_filter("ALL"),
+            style=self._get_filter_style("ALL"),
         )
         self.btn_filter_add = ft.OutlinedButton(
-            "Por", on_click=lambda e: self._set_filter("ADD"), style=self._get_filter_style("ADD")
+            self._get_str("planning_summary.filter_add", "Por"),
+            on_click=lambda e: self._set_filter("ADD"),
+            style=self._get_filter_style("ADD"),
         )
         self.btn_filter_remove = ft.OutlinedButton(
-            "Tirar", on_click=lambda e: self._set_filter("REMOVE"), style=self._get_filter_style("REMOVE")
+            self._get_str("planning_summary.filter_remove", "Tirar"),
+            on_click=lambda e: self._set_filter("REMOVE"),
+            style=self._get_filter_style("REMOVE"),
         )
         self.btn_filter_keep = ft.OutlinedButton(
-            "Manter", on_click=lambda e: self._set_filter("KEEP"), style=self._get_filter_style("KEEP")
+            self._get_str("planning_summary.filter_keep", "Manter"),
+            on_click=lambda e: self._set_filter("KEEP"),
+            style=self._get_filter_style("KEEP"),
+        )
+
+        self.lbl_title = ft.Text(
+            self._get_str("planning_summary.network_summary", "Resumo da Malha Viária"),
+            weight=ft.FontWeight.BOLD,
+            size=13,
+            color=ft.Colors.CYAN_200,
+        )
+        self.lbl_total = ft.Text(
+            self._get_str("planning_summary.total_analyzed", "Total Analisado:"), size=12, color=ft.Colors.WHITE70
+        )
+        self.lbl_add = ft.Text(self._get_str("planning_summary.add", "Adicionar:"), size=11, color=ft.Colors.WHITE70)
+        self.lbl_remove = ft.Text(
+            self._get_str("planning_summary.remove", "Remover:"), size=11, color=ft.Colors.WHITE70
+        )
+        self.lbl_keep = ft.Text(self._get_str("planning_summary.keep", "Manter:"), size=11, color=ft.Colors.WHITE70)
+        self.lbl_uncontrolled = ft.Text(
+            self._get_str("planning_summary.uncontrolled", "Não Sinalizado:"), size=11, color=ft.Colors.WHITE70
+        )
+        self.lbl_filter = ft.Text(
+            self._get_str("planning_summary.filter_title", "Filtrar Recomendações:"),
+            size=11,
+            color=ft.Colors.WHITE60,
+            italic=True,
         )
 
         self.content = ft.Column(
@@ -61,13 +97,13 @@ class PlanningSummaryCard(ft.Container):
                 ft.Row(
                     controls=[
                         ft.Icon(ft.Icons.ANALYTICS_ROUNDED, color=ft.Colors.CYAN_400, size=20),
-                        ft.Text("Resumo da Malha Viária", weight=ft.FontWeight.BOLD, size=13, color=ft.Colors.CYAN_200),
+                        self.lbl_title,
                     ],
                     alignment=ft.MainAxisAlignment.START,
                 ),
                 ft.Divider(height=1, color=ft.Colors.WHITE10),
                 ft.Row(
-                    controls=[ft.Text("Total Analisado:", size=12, color=ft.Colors.WHITE70), self.stat_total_count],
+                    controls=[self.lbl_total, self.stat_total_count],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Row(
@@ -75,7 +111,7 @@ class PlanningSummaryCard(ft.Container):
                         ft.Row(
                             [
                                 ft.Icon(ft.Icons.ADD_CIRCLE, color=ft.Colors.GREEN_400, size=14),
-                                ft.Text("Adicionar:", size=11, color=ft.Colors.WHITE70),
+                                self.lbl_add,
                             ]
                         ),
                         self.stat_add_count,
@@ -87,7 +123,7 @@ class PlanningSummaryCard(ft.Container):
                         ft.Row(
                             [
                                 ft.Icon(ft.Icons.REMOVE_CIRCLE, color=ft.Colors.RED_400, size=14),
-                                ft.Text("Remover:", size=11, color=ft.Colors.WHITE70),
+                                self.lbl_remove,
                             ]
                         ),
                         self.stat_remove_count,
@@ -99,7 +135,7 @@ class PlanningSummaryCard(ft.Container):
                         ft.Row(
                             [
                                 ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.BLUE_400, size=14),
-                                ft.Text("Manter:", size=11, color=ft.Colors.WHITE70),
+                                self.lbl_keep,
                             ]
                         ),
                         self.stat_keep_count,
@@ -111,7 +147,7 @@ class PlanningSummaryCard(ft.Container):
                         ft.Row(
                             [
                                 ft.Icon(ft.Icons.WARNING_ROUNDED, color=ft.Colors.ORANGE_400, size=14),
-                                ft.Text("Não Sinalizado:", size=11, color=ft.Colors.WHITE70),
+                                self.lbl_uncontrolled,
                             ]
                         ),
                         self.stat_no_signal_count,
@@ -119,7 +155,7 @@ class PlanningSummaryCard(ft.Container):
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Container(height=5),
-                ft.Text("Filtrar Recomendações:", size=11, color=ft.Colors.WHITE60, italic=True),
+                self.lbl_filter,
                 ft.Row(
                     controls=[self.btn_filter_all, self.btn_filter_add, self.btn_filter_remove, self.btn_filter_keep],
                     spacing=4,
@@ -128,6 +164,29 @@ class PlanningSummaryCard(ft.Container):
             ],
             spacing=6,
         )
+
+    def _get_str(self, key: str, default: str) -> str:
+        if self.lm:
+            return self.lm.get_string(key, default=default)
+        return default
+
+    def update_translations(self, lm: LocaleManager) -> None:
+        self.lm = lm
+        self.lbl_title.value = self._get_str("planning_summary.network_summary", "Resumo da Malha Viária")
+        self.lbl_total.value = self._get_str("planning_summary.total_analyzed", "Total Analisado:")
+        self.lbl_add.value = self._get_str("planning_summary.add", "Adicionar:")
+        self.lbl_remove.value = self._get_str("planning_summary.remove", "Remover:")
+        self.lbl_keep.value = self._get_str("planning_summary.keep", "Manter:")
+        self.lbl_uncontrolled.value = self._get_str("planning_summary.uncontrolled", "Não Sinalizado:")
+        self.lbl_filter.value = self._get_str("planning_summary.filter_title", "Filtrar Recomendações:")
+
+        self.btn_filter_all.text = self._get_str("planning_summary.filter_all", "Todos")
+        self.btn_filter_add.text = self._get_str("planning_summary.filter_add", "Por")
+        self.btn_filter_remove.text = self._get_str("planning_summary.filter_remove", "Tirar")
+        self.btn_filter_keep.text = self._get_str("planning_summary.filter_keep", "Manter")
+
+        if self.page:
+            self.update()
 
     def _get_filter_style(self, filter_key: str) -> ft.ButtonStyle:
         is_active = self.active_filter == filter_key

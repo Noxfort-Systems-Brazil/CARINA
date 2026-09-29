@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -32,9 +32,9 @@ class PlanningLegendWidget(ft.Container):
         super().__init__(padding=ft.padding.symmetric(vertical=5))
 
         self.legend_title = ft.Text(weight=ft.FontWeight.BOLD)
-        self.legend_tl_keep = ft.Text("Manter")
-        self.legend_tl_remove = ft.Text("Tirar")
-        self.legend_tl_add = ft.Text("Por")
+        self.legend_tl_keep = ft.Text()
+        self.legend_tl_remove = ft.Text()
+        self.legend_tl_add = ft.Text()
         self.legend_junction = ft.Text()
         self.legend_street = ft.Text()
 
@@ -57,6 +57,11 @@ class PlanningLegendWidget(ft.Container):
 
         if locale_manager:
             self.update_translations(locale_manager)
+        else:
+            try:
+                self.update_translations(LocaleManager())
+            except Exception:
+                pass
 
     def update_translations(self, lm: LocaleManager):
         if not lm:
@@ -67,3 +72,5 @@ class PlanningLegendWidget(ft.Container):
         self.legend_tl_add.value = lm.get_string("planning_view.legend_tl_add", "Por")
         self.legend_junction.value = lm.get_string("planning_view.legend_junction", "Cruzamento")
         self.legend_street.value = lm.get_string("planning_view.legend_street", "Vias")
+        if self.page:
+            self.update()

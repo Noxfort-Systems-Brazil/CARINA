@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -185,8 +185,9 @@ class SettingsView(ft.Container):
             self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
 
         info_title = self.locale_manager.get_string("settings_view.title")
-        info_content = (
-            "As configurações foram salvas. Por favor, reinicie a aplicação para que todas as alterações tenham efeito."
+        info_content = self.locale_manager.get_string(
+            "settings_view.settings_saved_restart",
+            default="As configurações foram salvas. Por favor, reinicie a aplicação para que todas as alterações tenham efeito.",
         )
 
         self.dialog_manager.show_info(title=info_title, content=info_content)
@@ -207,6 +208,10 @@ class SettingsView(ft.Container):
             return
         default_settings = self.handler.get_default_settings()
         self._load_initial_settings(default_settings)
-        self.page.snack_bar = ft.SnackBar(content=ft.Text("Configurações restauradas para os valores padrão!"))
+        msg = self.locale_manager.get_string(
+            "settings_view.settings_restored_default",
+            default="Configurações restauradas para os valores padrão!",
+        )
+        self.page.snack_bar = ft.SnackBar(content=ft.Text(msg))
         self.page.snack_bar.open = True
         self.page.update()

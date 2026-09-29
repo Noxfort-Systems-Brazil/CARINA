@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -70,13 +70,16 @@ def build_settings_view(locale_manager, settings_client):
     reward_weights_card = RewardWeightsCard(initial_settings)
 
     monitor_card = MonitorSettingsCard(
-        initial_values=initial_settings, on_toggle_connection=monitor_handler.on_monitor_toggle
+        initial_values=initial_settings,
+        on_toggle_connection=monitor_handler.on_monitor_toggle,
+        locale_manager=locale_manager,
     )
 
     hardware_card = HardwareConnectionCard(
         on_import_click=hardware_handler.on_import_click,
         on_export_click=hardware_handler.on_export_click,
         on_toggle_connection=hardware_handler.on_toggle_connection,
+        locale_manager=locale_manager,
     )
 
     account_card = AccountSettingsCard(
@@ -87,7 +90,9 @@ def build_settings_view(locale_manager, settings_client):
     )
 
     db_card = DatabaseSettingsCard(
-        initial_values=initial_settings, on_toggle_connection=None  # Wired up via lambda below
+        initial_values=initial_settings,
+        on_toggle_connection=None,  # Wired up via lambda below
+        locale_manager=locale_manager,
     )
 
     warning_text = ft.Text(size=12, expand=True, italic=True)

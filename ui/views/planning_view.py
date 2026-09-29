@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -162,7 +162,14 @@ class PlanningView(ft.Container):
         if self.planning_control_panel:
             self.planning_control_panel.show_node_details(node_id)
         if self.page:
-            self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Semáforo/Nó selecionado: {node_id}"))
+            msg = (
+                self.locale_manager.get_string(
+                    "planning_view.node_selected", default="Semáforo/Nó selecionado: {id}", id=node_id
+                )
+                if self.locale_manager
+                else f"Semáforo/Nó selecionado: {node_id}"
+            )
+            self.page.snack_bar = ft.SnackBar(content=ft.Text(msg))
             self.page.snack_bar.open = True
             self.page.update()
 
@@ -173,7 +180,14 @@ class PlanningView(ft.Container):
             self.planning_control_panel.show_edge_details(edge_id, edge_data)
         if self.page:
             edge_name = edge_data.get("name", edge_id) if isinstance(edge_data, dict) else edge_id
-            self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Via/Rua selecionada: {edge_name}"))
+            msg = (
+                self.locale_manager.get_string(
+                    "planning_view.street_selected", default="Via/Rua selecionada: {name}", name=edge_name
+                )
+                if self.locale_manager
+                else f"Via/Rua selecionada: {edge_name}"
+            )
+            self.page.snack_bar = ft.SnackBar(content=ft.Text(msg))
             self.page.snack_bar.open = True
             self.page.update()
 
@@ -214,8 +228,11 @@ class PlanningView(ft.Container):
         self.update()
 
     def update_translations(self, lm: LocaleManager) -> None:
+        self.locale_manager = lm
         self.legend_widget.update_translations(lm)
         self.command_bar_widget.update_translations(lm, is_analyzing=self.is_analyzing)
+        if self.planning_control_panel:
+            self.planning_control_panel.update_translations(lm)
 
     def _load_analysis_click(self, e: Any) -> None:
         if self.map_widget:

@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -53,12 +53,26 @@ class PlanningControlPanelWidget(ft.Container):
         self.selected_node_id: Optional[str] = None
 
         # --- Header ---
-        self.header_title = ft.Text("Planejamento Tático", weight=ft.FontWeight.BOLD, size=16, color=ft.Colors.WHITE)
-        self.header_subtitle = ft.Text("Diagnóstico & Recomendador IA", size=11, color=ft.Colors.WHITE70, italic=True)
+        self.header_title = ft.Text(
+            self._get_str("planning_control.header_title", "Planejamento Tático"),
+            weight=ft.FontWeight.BOLD,
+            size=16,
+            color=ft.Colors.WHITE,
+        )
+        self.header_subtitle = ft.Text(
+            self._get_str("planning_control.header_subtitle", "Diagnóstico & Recomendador IA"),
+            size=11,
+            color=ft.Colors.WHITE70,
+            italic=True,
+        )
 
         # --- Sub-Cards Composition ---
-        self.summary_card = PlanningSummaryCard(on_filter_change=self.on_filter_change)
-        self.details_card = PlanningNodeDetailsCard(on_close=self._handle_close_click)
+        self.summary_card = PlanningSummaryCard(
+            on_filter_change=self.on_filter_change, locale_manager=self.locale_manager
+        )
+        self.details_card = PlanningNodeDetailsCard(
+            on_close=self._handle_close_click, locale_manager=self.locale_manager
+        )
         self.topology = None
 
         self.content = ft.Column(
@@ -77,6 +91,20 @@ class PlanningControlPanelWidget(ft.Container):
             spacing=12,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
+
+    def _get_str(self, key: str, default: str) -> str:
+        if self.locale_manager:
+            return self.locale_manager.get_string(key, default=default)
+        return default
+
+    def update_translations(self, lm: LocaleManager) -> None:
+        self.locale_manager = lm
+        self.header_title.value = self._get_str("planning_control.header_title", "Planejamento Tático")
+        self.header_subtitle.value = self._get_str("planning_control.header_subtitle", "Diagnóstico & Recomendador IA")
+        self.summary_card.update_translations(lm)
+        self.details_card.update_translations(lm)
+        if self.page:
+            self.update()
 
     def set_topology(self, topology: Dict[str, Any]):
         """Sets the network topology reference for physical engineering calculations."""

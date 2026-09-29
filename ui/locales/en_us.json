@@ -57,7 +57,16 @@
         "map_error_subtitle": "Please ensure the CARINA backend process is running...",
         "legend_existing": "Existing / Maintain Traffic Light",
         "legend_add": "Add Traffic Light",
-        "legend_remove": "Remove Traffic Light"
+        "legend_remove": "Remove Traffic Light",
+        "legend_title": "Legend:",
+        "legend_tl_keep": "Keep",
+        "legend_tl_remove": "Remove",
+        "legend_tl_add": "Add",
+        "legend_junction": "Junction",
+        "legend_street": "Streets",
+        "status_processing": "Processing planning analysis...",
+        "node_selected": "Selected traffic light/node: {id}",
+        "street_selected": "Selected street: {name}"
     },
     "diagnostics_view": {
         "nav_mfd": "MFD Optimization Analysis",
@@ -79,7 +88,8 @@
         "xai_button": "Start Decision Analysis",
         "xai_status_ready": "Select an agent and start the analysis.",
         "xai_status_loading": "Request sent. Awaiting backend to process the analysis...",
-        "xai_error_no_agent": "Please select an agent."
+        "xai_error_no_agent": "Please select an agent.",
+        "nav_audit": "Audit Logs"
     },
     "system_status_view": {
         "hardware_title": "Hardware",
@@ -148,7 +158,10 @@
             "slm_device": "Execution Device",
             "slm_gpu_layers": "GPU Offload Layers",
             "gpu_layers_required": "GPU layers are required in mixed mode",
-            "gpu_layers_invalid": "Must be an integer greater than 0"
+            "gpu_layers_invalid": "Must be an integer greater than 0",
+            "chk_ordinance": "Include Ordinance in Signature Block",
+            "ordinance_number": "Ordinance Number/Year (e.g. 123/2026)",
+            "city_uf": "City and State / Region"
         },
         "traffic_rules_card": {
             "title": "Traffic Rules",
@@ -251,7 +264,12 @@
             "export_success": "CSV template exported successfully to: {path}",
             "export_error": "Error exporting CSV template.",
             "import_success": "Import complete: {success} out of {total} traffic lights connected successfully."
-        }
+        },
+        "system_info_title": "System Information",
+        "version_label": "Version",
+        "codename_label": "Codename",
+        "settings_saved_restart": "Settings have been saved. Please restart the application for all changes to take effect.",
+        "settings_restored_default": "Settings restored to default values!"
     },
     "dialogs": {
         "confirm_button": "Yes, Confirm",
@@ -328,7 +346,8 @@
         "unlock_system": "UNLOCK SYSTEM",
         "auth_superuser": "AUTHENTICATE AS SUPER USER",
         "err_fill_fields": "Fill in both fields.",
-        "err_superuser_only": "Only Super Users can unlock the system."
+        "err_superuser_only": "Only Super Users can unlock the system.",
+        "invalid_credentials": "Invalid credentials"
     },
     "accounts": {
         "title": "Account Management",
@@ -379,6 +398,62 @@
         "planning_chart_caption": "Figure 1: Map showing spatial recommendations (Green: Maintain, Red: Remove, Yellow: Optimize).",
         "planning_content_title": "3. Technical Planning Description and Justifications",
         "planning_content_fallback": "No analytical planning report available.",
-        "planning_conformity_text": "This document was consolidated by the CARINA SAS analytical engine based on technical warrants (MUTCD / CONTRAN). It attests to traffic engineering recommendations for the network."
+        "planning_conformity_text": "This document was consolidated by the CARINA SAS analytical engine based on technical warrants (MUTCD / CONTRAN). It attests to traffic engineering recommendations for the network.",
+        "planning_ementa_text": "Subject: Operational Capacity Analysis, Technical Warrant Evaluation (CONTRAN/MUTCD), and Traffic Light Recommendations for Urban Road Network.",
+        "mfd_ementa_text": "Subject: Technical Assessment of Macroscopic Performance, Macroscopic Fundamental Diagram (MFD), and Network Flow Optimization.",
+        "xai_ementa_text": "Subject: Technical Assessment of Algorithmic Explainability and Neural Sensor Attribution (XAI)."
+    },
+    "planning_control": {
+        "header_title": "Tactical Planning",
+        "header_subtitle": "AI Diagnostics & Recommender"
+    },
+    "planning_details": {
+        "node_label": "Node:",
+        "no_selection": "NO SELECTION",
+        "close_tooltip": "Close details",
+        "click_to_inspect": "Click on a traffic light or junction on the map to inspect the AI recommendation and engineering assessment.",
+        "metrics_title": "Intersection Metrics:",
+        "saturation_rate": "Saturation Ratio:",
+        "avg_delay": "Average Delay (s):",
+        "estimated_flow": "Estimated Flow (vph):",
+        "contran_warrant": "CONTRAN/MUTCD Warrant:",
+        "technical_opinion": "SAS Technical Opinion:"
+    },
+    "planning_summary": {
+        "network_summary": "Road Network Summary",
+        "total_analyzed": "Total Analyzed:",
+        "add": "Add:",
+        "remove": "Remove:",
+        "keep": "Keep:",
+        "uncontrolled": "Unsignalized:",
+        "filter_title": "Filter Recommendations:",
+        "filter_all": "All",
+        "filter_add": "Add",
+        "filter_remove": "Remove",
+        "filter_keep": "Keep"
+    },
+    "error_view": {
+        "title": "CARINA - Initialization Error",
+        "card_title": "Error Loading CARINA Interface",
+        "description": "A critical exception occurred while assembling interface components:",
+        "btn_restart": "Restart Interface"
+    },
+    "street_info": {
+        "save_tooltip": "Press Enter to save",
+        "btn_deactivate": "Block Flow",
+        "btn_reactivate": "Unblock Flow",
+        "msg_saved": "Street name saved successfully!"
+    },
+    "lane_states": {
+        "no_data": "No lane data available.",
+        "rename_tooltip": "Click to rename",
+        "msg_saved": "Lane name saved successfully!"
+    },
+    "semaphore_info": {
+        "save_tooltip": "Press Enter to save",
+        "msg_saved": "Traffic light name saved successfully!"
+    },
+    "native_map": {
+        "loading": "Loading planning map..."
     }
 }

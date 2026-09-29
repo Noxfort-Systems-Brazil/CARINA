@@ -49,7 +49,16 @@
         "map_error_subtitle": "Por favor, verifique que el proceso backend de CARINA se está ejecutando...",
         "legend_existing": "Semáforo Existente / Mantener",
         "legend_add": "Añadir Semáforo",
-        "legend_remove": "Quitar Semáforo"
+        "legend_remove": "Quitar Semáforo",
+        "legend_title": "Leyenda:",
+        "legend_tl_keep": "Mantener",
+        "legend_tl_remove": "Quitar",
+        "legend_tl_add": "Añadir",
+        "legend_junction": "Cruce",
+        "legend_street": "Vías",
+        "status_processing": "Procesando análisis de planificación...",
+        "node_selected": "Semáforo/Nodo seleccionado: {id}",
+        "street_selected": "Vía/Calle seleccionada: {name}"
     },
     "diagnostics_view": {
         "nav_logs": "Registro en Tiempo Real",
@@ -70,7 +79,8 @@
         "xai_button": "Iniciar Análisis de Decisión",
         "xai_status_ready": "Seleccione un agente e inicie el análisis.",
         "xai_status_loading": "Solicitud enviada. Esperando que el backend procese el análisis...",
-        "xai_error_no_agent": "Por favor, seleccione un agente."
+        "xai_error_no_agent": "Por favor, seleccione un agente.",
+        "nav_audit": "Auditoría (Audit Logs)"
     },
     "system_status_view": {
         "hardware_title": "Hardware",
@@ -190,6 +200,16 @@
             "status_connected": "Connected",
             "btn_connect": "Conectar (en)",
             "btn_disconnect": "Disconnect"
+        },
+        "system_info_title": "Información del Sistema",
+        "version_label": "Versión",
+        "codename_label": "Nombre en clave",
+        "settings_saved_restart": "Las configuraciones se han guardado. Por favor, reinicie la aplicación para que todos los cambios surtan efecto.",
+        "settings_restored_default": "¡Configuraciones restauradas a los valores por defecto!",
+        "formatting_card": {
+            "chk_ordinance": "Incluir Ordenanza en Bloque de Firma",
+            "ordinance_number": "Número/Año de la Ordenanza (ej: 123/2026)",
+            "city_uf": "Municipio y Estado / Provincia"
         }
     },
     "dialogs": {
@@ -244,7 +264,8 @@
         "unlock_system": "DESBLOQUEAR SISTEMA",
         "auth_superuser": "AUTENTICAR COMO SÚPER USUARIO",
         "err_fill_fields": "Llene ambos campos.",
-        "err_superuser_only": "Solo los Súper Usuarios pueden desbloquear el sistema."
+        "err_superuser_only": "Solo los Súper Usuarios pueden desbloquear el sistema.",
+        "invalid_credentials": "Credenciales inválidas"
     },
     "accounts": {
         "title": "Gestión de Cuentas",
@@ -276,6 +297,62 @@
         "mfd_metadata_title": "1. Detalles del Análisis de Rendimiento MFD",
         "mfd_label_scenario": "Escenario de Simulación:",
         "mfd_label_engine": "Motor Analítico MFD:",
-        "mfd_label_control": "Sistema de Control:"
+        "mfd_label_control": "Sistema de Control:",
+        "planning_ementa_text": "Asunto: Análisis de Capacidad Operativa, Evaluación de Criterios Técnicos (CONTRAN/MUTCD) y Recomendación Semafórica para la Red Vial Urbana.",
+        "mfd_ementa_text": "Asunto: Dictamen Técnico de Desempeño Macroscópico, Diagrama Fundamental Macroscópico (MFD) y Optimización del Flujo de Red.",
+        "xai_ementa_text": "Asunto: Dictamen Técnico de Explicabilidad Algorítmica y Atribución de Sensores Neuronales (XAI)."
+    },
+    "planning_control": {
+        "header_title": "Planificación Táctica",
+        "header_subtitle": "Diagnóstico y Recomendador IA"
+    },
+    "planning_details": {
+        "node_label": "Nodo:",
+        "no_selection": "SIN SELECCIÓN",
+        "close_tooltip": "Cerrar detalles",
+        "click_to_inspect": "Haga clic en un semáforo o cruce en el mapa para inspeccionar la recomendación de la IA y el informe de ingeniería.",
+        "metrics_title": "Métricas de la Intersección:",
+        "saturation_rate": "Tasa de Saturación:",
+        "avg_delay": "Retraso Medio (s):",
+        "estimated_flow": "Flujo Estimado (v/h):",
+        "contran_warrant": "Criterio CONTRAN/MUTCD:",
+        "technical_opinion": "Dictamen Técnico SAS:"
+    },
+    "planning_summary": {
+        "network_summary": "Resumen de la Red Vial",
+        "total_analyzed": "Total Analizado:",
+        "add": "Añadir:",
+        "remove": "Quitar:",
+        "keep": "Mantener:",
+        "uncontrolled": "No Semaforizado:",
+        "filter_title": "Filtrar Recomendaciones:",
+        "filter_all": "Todos",
+        "filter_add": "Añadir",
+        "filter_remove": "Quitar",
+        "filter_keep": "Mantener"
+    },
+    "error_view": {
+        "title": "CARINA - Error de Inicialización",
+        "card_title": "Error al Cargar la Interfaz de CARINA",
+        "description": "Ocurrió una excepción crítica durante el montaje de los componentes de la interfaz:",
+        "btn_restart": "Reiniciar Interfaz"
+    },
+    "street_info": {
+        "save_tooltip": "Presione Enter para guardar",
+        "btn_deactivate": "Bloquear Flujo",
+        "btn_reactivate": "Reactivar Flujo",
+        "msg_saved": "¡Nombre de la calle guardado con éxito!"
+    },
+    "lane_states": {
+        "no_data": "No hay datos de vía disponibles.",
+        "rename_tooltip": "Haga clic para renombrar",
+        "msg_saved": "¡Nombre de la vía guardado con éxito!"
+    },
+    "semaphore_info": {
+        "save_tooltip": "Presione Enter para guardar",
+        "msg_saved": "¡Nombre del semáforo guardado con éxito!"
+    },
+    "native_map": {
+        "loading": "Cargando mapa de planificación..."
     }
 }

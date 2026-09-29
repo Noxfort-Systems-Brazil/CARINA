@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -66,7 +66,7 @@ class StreetInfoWidget(ft.Card):
             expand=True,
             on_submit=self._on_submit,
             on_blur=self._on_submit,
-            tooltip="Pressione Enter para salvar",
+            tooltip=self.locale_manager.get_string("street_info.save_tooltip", default="Pressione Enter para salvar"),
         )
         self.congestion_label = ft.Text()
         self.flow_label = ft.Text()
@@ -80,10 +80,16 @@ class StreetInfoWidget(ft.Card):
         self.vehicles_text = ft.Text("--")
 
         self.block_button = ft.ElevatedButton(
-            text="Desativar Fluxo",
+            text=self.locale_manager.get_string("street_info.btn_deactivate", default="Desativar Fluxo"),
             icon=ft.Icons.BLOCK_ROUNDED,
             on_click=self._handle_block_request,
             style=ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor=ft.Colors.RED_700),
+        )
+
+        self.close_button = ft.IconButton(
+            icon=ft.Icons.CLOSE_ROUNDED,
+            on_click=self.hide,
+            tooltip=self.locale_manager.get_string("dashboard_view.close_panel_tooltip", default="Fechar painel"),
         )
 
         self.content = ft.Container(
@@ -100,11 +106,7 @@ class StreetInfoWidget(ft.Card):
                     ft.Row([self.vehicles_label, self.vehicles_text]),
                     ft.Divider(height=10),
                     self.block_button,
-                    ft.IconButton(
-                        icon=ft.Icons.CLOSE_ROUNDED,
-                        on_click=self.hide,
-                        tooltip="Fechar painel",  # This tooltip will be translated in the parent
-                    ),
+                    self.close_button,
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -119,13 +121,19 @@ class StreetInfoWidget(ft.Card):
     # --- CHANGE 3: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
         """Atualiza todos os textos deste widget com base no LocaleManager."""
+        self.locale_manager = lm
         self.street_id_text_template = lm.get_string("dashboard_view.street_info_title_prefix")
         self.street_id_text.label = self.street_id_text_template
+        self.street_id_text.tooltip = lm.get_string("street_info.save_tooltip", default="Pressione Enter para salvar")
         self.congestion_label.value = lm.get_string("dashboard_view.street_congestion")
         self.flow_label.value = lm.get_string("dashboard_view.street_flow")
         self.speed_label.value = lm.get_string("dashboard_view.street_speed")
         self.vehicles_label.value = lm.get_string("dashboard_view.street_vehicles")
-        # The close button tooltip is translated by its parent widget (SpecificControlsWidget)
+        self.close_button.tooltip = lm.get_string("dashboard_view.close_panel_tooltip", default="Fechar painel")
+        if self._is_blocked:
+            self.block_button.text = lm.get_string("street_info.btn_reactivate", default="Reativar Fluxo")
+        else:
+            self.block_button.text = lm.get_string("street_info.btn_deactivate", default="Desativar Fluxo")
 
     def update_and_show(self, street_id: str, street_data: Dict):
         """
@@ -160,7 +168,8 @@ class StreetInfoWidget(ft.Card):
         if self._current_street_id:
             self.alias_manager.set_alias(self._current_street_id, self.street_id_text.value)
             if self.page:
-                self.page.snack_bar = ft.SnackBar(ft.Text("Nome da rua salvo com sucesso!"), bgcolor="green700")
+                msg = self.locale_manager.get_string("street_info.msg_saved", default="Nome da rua salvo com sucesso!")
+                self.page.snack_bar = ft.SnackBar(ft.Text(msg), bgcolor="green700")
                 self.page.snack_bar.open = True
                 self.page.update()
 
@@ -175,11 +184,15 @@ class StreetInfoWidget(ft.Card):
         new_state = "BLOCKED" if self._is_blocked else "NORMAL"
 
         if self._is_blocked:
-            self.block_button.text = "Reativar Fluxo"
+            self.block_button.text = self.locale_manager.get_string(
+                "street_info.btn_reactivate", default="Reativar Fluxo"
+            )
             self.block_button.icon = ft.Icons.CHECK_CIRCLE_ROUNDED
             self.block_button.style = ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor=ft.Colors.GREEN_700)
         else:
-            self.block_button.text = "Desativar Fluxo"
+            self.block_button.text = self.locale_manager.get_string(
+                "street_info.btn_deactivate", default="Desativar Fluxo"
+            )
             self.block_button.icon = ft.Icons.BLOCK_ROUNDED
             self.block_button.style = ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor=ft.Colors.RED_700)
 

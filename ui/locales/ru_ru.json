@@ -49,7 +49,16 @@
         "map_error_subtitle": "Пожалуйста, убедитесь, что фоновый процесс CARINA запущен...",
         "legend_existing": "Существующий / Сохранить Светофор",
         "legend_add": "Добавить Светофор",
-        "legend_remove": "Удалить Светофор"
+        "legend_remove": "Удалить Светофор",
+        "legend_title": "Легенда:",
+        "legend_tl_keep": "Сохранить",
+        "legend_tl_remove": "Удалить",
+        "legend_tl_add": "Добавить",
+        "legend_junction": "Перекресток",
+        "legend_street": "Улицы",
+        "status_processing": "Обработка анализа планирования...",
+        "node_selected": "Выбранный светофор/узел: {id}",
+        "street_selected": "Выбранная улица: {name}"
     },
     "diagnostics_view": {
         "nav_logs": "Журнал в Реальном Времени",
@@ -70,7 +79,8 @@
         "xai_button": "Начать Анализ Решений",
         "xai_status_ready": "Выберите агента и начните анализ.",
         "xai_status_loading": "Запрос отправлен. Ожидание обработки анализа бэкендом...",
-        "xai_error_no_agent": "Пожалуйста, выберите агента."
+        "xai_error_no_agent": "Пожалуйста, выберите агента.",
+        "nav_audit": "Журнал аудита"
     },
     "system_status_view": {
         "hardware_title": "Оборудование",
@@ -190,6 +200,16 @@
             "status_connected": "Connected",
             "btn_connect": "Conectar (en)",
             "btn_disconnect": "Disconnect"
+        },
+        "system_info_title": "Информация о системе",
+        "version_label": "Версия",
+        "codename_label": "Кодовое имя",
+        "settings_saved_restart": "Настройки сохранены. Пожалуйста, перезапустите приложение, чтобы все изменения вступили в силу.",
+        "settings_restored_default": "Настройки сброшены до значений по умолчанию!",
+        "formatting_card": {
+            "chk_ordinance": "Включить постановление в блок подписи",
+            "ordinance_number": "Номер/Год постановления (напр: 123/2026)",
+            "city_uf": "Город и регион"
         }
     },
     "dialogs": {
@@ -244,7 +264,8 @@
         "unlock_system": "РАЗБЛОКИРОВАТЬ СИСТЕМУ",
         "auth_superuser": "АУТЕНТИФИЦИРОВАТЬСЯ КАК СУПЕРПОЛЬЗОВАТЬ",
         "err_fill_fields": "Заполните оба поля.",
-        "err_superuser_only": "Только суперпользователи могут разблокировать систему."
+        "err_superuser_only": "Только суперпользователи могут разблокировать систему.",
+        "invalid_credentials": "Неверные учетные данные"
     },
     "accounts": {
         "title": "Управление аккаунтами",
@@ -276,6 +297,62 @@
         "mfd_metadata_title": "1. Сведения об анализе MFD",
         "mfd_label_scenario": "Сценарий симуляции:",
         "mfd_label_engine": "Аналитический движок MFD:",
-        "mfd_label_control": "Система управления:"
+        "mfd_label_control": "Система управления:",
+        "planning_ementa_text": "Тема: Анализ пропускной способности, оценка технических критериев (CONTRAN/MUTCD) и рекомендации по светофорному регулированию городской дорожной сети.",
+        "mfd_ementa_text": "Тема: Техническое заключение о макроскопической производительности, макроскопическая фундаментальная диаграмма (MFD) и оптимизация сетевого потока.",
+        "xai_ementa_text": "Тема: Техническое заключение об алгоритмической объяснимости и атрибуции нейронных датчиков (XAI)."
+    },
+    "planning_control": {
+        "header_title": "Тактическое планирование",
+        "header_subtitle": "ИИ-диагностика и рекомендации"
+    },
+    "planning_details": {
+        "node_label": "Узел:",
+        "no_selection": "НЕТ ВЫБОРА",
+        "close_tooltip": "Закрыть детали",
+        "click_to_inspect": "Нажмите на светофор или перекресток на карте, чтобы просмотреть рекомендации ИИ и инженерное заключение.",
+        "metrics_title": "Метрики перекрестка:",
+        "saturation_rate": "Коэффициент насыщения:",
+        "avg_delay": "Средняя задержка (с):",
+        "estimated_flow": "Расчетный поток (авт/ч):",
+        "contran_warrant": "Критерий CONTRAN/MUTCD:",
+        "technical_opinion": "Техническое заключение SAS:"
+    },
+    "planning_summary": {
+        "network_summary": "Сводка дорожной сети",
+        "total_analyzed": "Всего проанализировано:",
+        "add": "Добавить:",
+        "remove": "Удалить:",
+        "keep": "Сохранить:",
+        "uncontrolled": "Без светофора:",
+        "filter_title": "Фильтровать рекомендации:",
+        "filter_all": "Все",
+        "filter_add": "Добавить",
+        "filter_remove": "Удалить",
+        "filter_keep": "Сохранить"
+    },
+    "error_view": {
+        "title": "CARINA - Ошибка инициализации",
+        "card_title": "Ошибка загрузки интерфейса CARINA",
+        "description": "Произошла критическая ошибка при сборке компонентов интерфейса:",
+        "btn_restart": "Перезапустить интерфейс"
+    },
+    "street_info": {
+        "save_tooltip": "Нажмите Enter для сохранения",
+        "btn_deactivate": "Блокировать поток",
+        "btn_reactivate": "Разблокировать поток",
+        "msg_saved": "Название улицы успешно сохранено!"
+    },
+    "lane_states": {
+        "no_data": "Нет данных о полосах движения.",
+        "rename_tooltip": "Нажмите, чтобы переименовать",
+        "msg_saved": "Название полосы успешно сохранено!"
+    },
+    "semaphore_info": {
+        "save_tooltip": "Нажмите Enter для сохранения",
+        "msg_saved": "Название светофора успешно сохранено!"
+    },
+    "native_map": {
+        "loading": "Загрузка карты планирования..."
     }
 }

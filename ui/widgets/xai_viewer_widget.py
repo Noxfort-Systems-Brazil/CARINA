@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -57,7 +57,7 @@ class XaiViewerWidget(ft.Column):
 
         # UI Components
         self.agent_dropdown = ft.Dropdown(
-            label="Select Agent",
+            label=self.locale_manager.get_string("xai_viewer.agent_select_label", default="Select Agent"),
             width=360,
             options=[],
             on_change=self._on_agent_selected,
@@ -65,7 +65,10 @@ class XaiViewerWidget(ft.Column):
         )
 
         self.analyze_btn = ft.ElevatedButton(
-            text="Request XAI Analysis", icon=ft.Icons.ANALYTICS_ROUNDED, on_click=self._on_analyze_click, disabled=True
+            text=self.locale_manager.get_string("xai_viewer.analyze_btn", default="Run XAI Analysis"),
+            icon=ft.Icons.ANALYTICS_ROUNDED,
+            on_click=self._on_analyze_click,
+            disabled=True,
         )
 
         self.export_btn = ft.ElevatedButton(

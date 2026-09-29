@@ -57,7 +57,16 @@
         "map_error_subtitle": "Verifique se o processo do CARINA (back-end) está em execução...",
         "legend_existing": "Semáforo Existente / Manter",
         "legend_add": "Adicionar Semáforo",
-        "legend_remove": "Remover Semáforo"
+        "legend_remove": "Remover Semáforo",
+        "legend_title": "Legenda:",
+        "legend_tl_keep": "Manter",
+        "legend_tl_remove": "Tirar",
+        "legend_tl_add": "Por",
+        "legend_junction": "Cruzamento",
+        "legend_street": "Vias",
+        "status_processing": "Processando análise de planejamento...",
+        "node_selected": "Semáforo/Nó selecionado: {id}",
+        "street_selected": "Via/Rua selecionada: {name}"
     },
     "diagnostics_view": {
         "nav_mfd": "Análise de Otimização MFD",
@@ -79,7 +88,8 @@
         "xai_button": "Iniciar Análise de Decisão",
         "xai_status_ready": "Selecione um agente e inicie a análise.",
         "xai_status_loading": "Pedido enviado. Aguardando o back-end processar a análise...",
-        "xai_error_no_agent": "Por favor, selecione um agente."
+        "xai_error_no_agent": "Por favor, selecione um agente.",
+        "nav_audit": "Auditoria (Audit Logs)"
     },
     "system_status_view": {
         "hardware_title": "Hardware",
@@ -148,7 +158,10 @@
             "slm_device": "Dispositivo de Execução (Device)",
             "slm_gpu_layers": "Camadas offload para GPU",
             "gpu_layers_required": "O número de camadas para GPU é obrigatório no modo misto",
-            "gpu_layers_invalid": "Deve ser um número inteiro maior que 0"
+            "gpu_layers_invalid": "Deve ser um número inteiro maior que 0",
+            "chk_ordinance": "Incluir Portaria no Bloco de Assinatura",
+            "ordinance_number": "Número/Ano da Portaria (ex: 123/2026)",
+            "city_uf": "Município e Estado (UF)"
         },
         "traffic_rules_card": {
             "title": "Regras de Trânsito",
@@ -251,7 +264,12 @@
             "export_success": "Modelo CSV exportado com sucesso para: {path}",
             "export_error": "Erro ao exportar modelo CSV.",
             "import_success": "Importação concluída: {success} de {total} semáforos conectados com sucesso."
-        }
+        },
+        "system_info_title": "Informações do Sistema",
+        "version_label": "Versão",
+        "codename_label": "Codinome",
+        "settings_saved_restart": "As configurações foram salvas. Por favor, reinicie a aplicação para que todas as alterações tenham efeito.",
+        "settings_restored_default": "Configurações restauradas para os valores padrão!"
     },
     "dialogs": {
         "confirm_button": "Sim, Confirmar",
@@ -328,7 +346,8 @@
         "unlock_system": "DESBLOQUEAR SISTEMA",
         "auth_superuser": "AUTENTICAR COMO SUPER USUÁRIO",
         "err_fill_fields": "Preencha ambos os campos.",
-        "err_superuser_only": "Apenas Super Usuários podem desbloquear o sistema."
+        "err_superuser_only": "Apenas Super Usuários podem desbloquear o sistema.",
+        "invalid_credentials": "Credenciais inválidas"
     },
     "accounts": {
         "title": "Gerenciamento de Contas",
@@ -379,6 +398,62 @@
         "planning_chart_caption": "Figura 1 – Mapa com Recomendações Espaciais da Malha Viária.",
         "planning_content_title": "",
         "planning_content_fallback": "Nenhum laudo analítico de planejamento disponível.",
-        "planning_conformity_text": "Este documento foi consolidado pelo motor analítico CARINA SAS com base nos warrants técnicos (MUTCD / CONTRAN). Ele atesta as recomendações de engenharia de tráfego para a malha."
+        "planning_conformity_text": "Este documento foi consolidado pelo motor analítico CARINA SAS com base nos warrants técnicos (MUTCD / CONTRAN). Ele atesta as recomendações de engenharia de tráfego para a malha.",
+        "planning_ementa_text": "Assunto: Análise da Capacidade Operacional, Avaliação de Warrants Técnicos (CONTRAN/MUTCD) e Recomendação Semafórica para a Malha Viária Urbana.",
+        "mfd_ementa_text": "Assunto: Laudo Técnico de Desempenho Macroscópico, Diagrama Fundamental Macroscópico (MFD) e Otimização do Fluxo de Rede.",
+        "xai_ementa_text": "Assunto: Laudo Técnico de Explicabilidade Algorítmica e Atribuição de Sensores Neurais (XAI)."
+    },
+    "planning_control": {
+        "header_title": "Planejamento Tático",
+        "header_subtitle": "Diagnóstico & Recomendador IA"
+    },
+    "planning_details": {
+        "node_label": "Nó:",
+        "no_selection": "SEM SELEÇÃO",
+        "close_tooltip": "Fechar detalhes",
+        "click_to_inspect": "Clique em um semáforo ou cruzamento no mapa para inspecionar a recomendação da IA e o laudo de engenharia.",
+        "metrics_title": "Métricas da Interseção:",
+        "saturation_rate": "Taxa de Saturação:",
+        "avg_delay": "Atraso Médio (s):",
+        "estimated_flow": "Fluxo Estimado (v/h):",
+        "contran_warrant": "Warrant CONTRAN/MUTCD:",
+        "technical_opinion": "Parecer Técnico SAS:"
+    },
+    "planning_summary": {
+        "network_summary": "Resumo da Malha Viária",
+        "total_analyzed": "Total Analisado:",
+        "add": "Adicionar:",
+        "remove": "Remover:",
+        "keep": "Manter:",
+        "uncontrolled": "Não Sinalizado:",
+        "filter_title": "Filtrar Recomendações:",
+        "filter_all": "Todos",
+        "filter_add": "Por",
+        "filter_remove": "Tirar",
+        "filter_keep": "Manter"
+    },
+    "error_view": {
+        "title": "CARINA - Erro de Inicialização",
+        "card_title": "Erro ao Carregar Interface da CARINA",
+        "description": "Ocorreu uma exceção crítica durante a montagem dos componentes da interface:",
+        "btn_restart": "Reiniciar Interface"
+    },
+    "street_info": {
+        "save_tooltip": "Pressione Enter para salvar",
+        "btn_deactivate": "Desativar Fluxo",
+        "btn_reactivate": "Reativar Fluxo",
+        "msg_saved": "Nome da rua salvo com sucesso!"
+    },
+    "lane_states": {
+        "no_data": "Nenhum dado de via disponível.",
+        "rename_tooltip": "Clique para renomear",
+        "msg_saved": "Nome da via salvo com sucesso!"
+    },
+    "semaphore_info": {
+        "save_tooltip": "Pressione Enter para salvar",
+        "msg_saved": "Nome do semáforo salvo com sucesso!"
+    },
+    "native_map": {
+        "loading": "Carregando mapa de planejamento..."
     }
 }

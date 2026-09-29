@@ -49,7 +49,16 @@
         "map_error_subtitle": "请确保CARINA后端进程正在运行...",
         "legend_existing": "现有/保留交通灯",
         "legend_add": "添加交通灯",
-        "legend_remove": "移除交通灯"
+        "legend_remove": "移除交通灯",
+        "legend_title": "图例：",
+        "legend_tl_keep": "保留",
+        "legend_tl_remove": "移除",
+        "legend_tl_add": "添加",
+        "legend_junction": "交叉路口",
+        "legend_street": "道路",
+        "status_processing": "正在处理规划分析...",
+        "node_selected": "已选交通灯/节点：{id}",
+        "street_selected": "已选道路：{name}"
     },
     "diagnostics_view": {
         "nav_logs": "实时日志",
@@ -70,7 +79,8 @@
         "xai_button": "开始决策分析",
         "xai_status_ready": "选择一个代理并开始分析。",
         "xai_status_loading": "请求已发送。等待后端处理分析...",
-        "xai_error_no_agent": "请选择一个代理。"
+        "xai_error_no_agent": "请选择一个代理。",
+        "nav_audit": "审计日志"
     },
     "system_status_view": {
         "hardware_title": "硬件",
@@ -190,6 +200,16 @@
             "status_connected": "Connected",
             "btn_connect": "Conectar (en)",
             "btn_disconnect": "Disconnect"
+        },
+        "system_info_title": "系统信息",
+        "version_label": "版本",
+        "codename_label": "代号",
+        "settings_saved_restart": "设置已保存。请重新启动应用程序以使所有更改生效。",
+        "settings_restored_default": "设置已恢复为默认值！",
+        "formatting_card": {
+            "chk_ordinance": "在签名栏中包含法令",
+            "ordinance_number": "法令编号/年份 (例如: 123/2026)",
+            "city_uf": "城市与州/省"
         }
     },
     "dialogs": {
@@ -244,7 +264,8 @@
         "unlock_system": "解锁系统",
         "auth_superuser": "作为超级用户验证",
         "err_fill_fields": "填写两个字段。",
-        "err_superuser_only": "只有超级用户才能解锁系统。"
+        "err_superuser_only": "只有超级用户才能解锁系统。",
+        "invalid_credentials": "凭据无效"
     },
     "accounts": {
         "title": "账户管理",
@@ -276,6 +297,62 @@
         "mfd_metadata_title": "1. MFD 性能分析详情",
         "mfd_label_scenario": "仿真场景:",
         "mfd_label_engine": "MFD 分析引擎:",
-        "mfd_label_control": "控制系统:"
+        "mfd_label_control": "控制系统:",
+        "planning_ementa_text": "主题：城市道路网络通行能力分析、技术标准评估 (CONTRAN/MUTCD) 及交通信号灯建议。",
+        "mfd_ementa_text": "主题：宏观性能技术评估、宏观基本图 (MFD) 与网络流量优化。",
+        "xai_ementa_text": "主题：算法可解释性与神经传感器归因技术评估 (XAI)。"
+    },
+    "planning_control": {
+        "header_title": "战术规划",
+        "header_subtitle": "AI诊断与推荐器"
+    },
+    "planning_details": {
+        "node_label": "节点：",
+        "no_selection": "未选择",
+        "close_tooltip": "关闭详情",
+        "click_to_inspect": "点击地图上的交通灯或交叉口以查看AI推荐和工程评估。",
+        "metrics_title": "路口指标：",
+        "saturation_rate": "饱和率：",
+        "avg_delay": "平均延迟 (秒)：",
+        "estimated_flow": "预计流量 (辆/小时)：",
+        "contran_warrant": "CONTRAN/MUTCD 标准：",
+        "technical_opinion": "SAS 技术意见："
+    },
+    "planning_summary": {
+        "network_summary": "路网汇总",
+        "total_analyzed": "分析总数：",
+        "add": "添加：",
+        "remove": "移除：",
+        "keep": "保留：",
+        "uncontrolled": "无信号灯：",
+        "filter_title": "筛选建议：",
+        "filter_all": "全部",
+        "filter_add": "添加",
+        "filter_remove": "移除",
+        "filter_keep": "保留"
+    },
+    "error_view": {
+        "title": "CARINA - 初始化错误",
+        "card_title": "加载 CARINA 界面出错",
+        "description": "组装界面组件时发生严重异常：",
+        "btn_restart": "重启界面"
+    },
+    "street_info": {
+        "save_tooltip": "按 Enter 保存",
+        "btn_deactivate": "关闭车流",
+        "btn_reactivate": "恢复车流",
+        "msg_saved": "道路名称保存成功！"
+    },
+    "lane_states": {
+        "no_data": "没有可用的车道数据。",
+        "rename_tooltip": "点击重命名",
+        "msg_saved": "车道名称保存成功！"
+    },
+    "semaphore_info": {
+        "save_tooltip": "按 Enter 保存",
+        "msg_saved": "交通灯名称保存成功！"
+    },
+    "native_map": {
+        "loading": "正在加载规划地图..."
     }
 }

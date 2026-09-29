@@ -1,5 +1,5 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Gabriel Moraes - Noxfort Systems
+# Copyright (C) 2026 Noxfort Systems
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -59,6 +59,15 @@ class LaneStatesPanel(ft.Column):
     def update_translations(self, lm: LocaleManager) -> None:
         self.locale_manager = lm
         self.lane_states_title.value = lm.get_string("dashboard_view.lane_states_title")
+        for control in self.lane_states_column.controls:
+            if isinstance(control, ft.Text):
+                control.value = lm.get_string("lane_states.no_data", default="Nenhum dado de via disponível.")
+            elif isinstance(control, ft.Row):
+                for c in control.controls:
+                    if isinstance(c, ft.TextField):
+                        c.tooltip = lm.get_string("lane_states.rename_tooltip", default="Clique para renomear")
+        if self.page:
+            self.update()
 
     def update_lanes(self, semaphore_id: str, lanes_state: Dict[str, Any]) -> None:
         """Updates lamp indicators and lane rows based on incoming signal states."""
@@ -69,7 +78,13 @@ class LaneStatesPanel(ft.Column):
 
         if not lanes_state:
             if not self.lane_states_column.controls:
-                self.lane_states_column.controls.append(ft.Text("Nenhum dado de via disponível.", italic=True, size=12))
+                self.lane_states_column.controls.append(
+                    ft.Text(
+                        self.locale_manager.get_string("lane_states.no_data", default="Nenhum dado de via disponível."),
+                        italic=True,
+                        size=12,
+                    )
+                )
             return
 
         if len(self.lane_states_column.controls) == 1 and isinstance(self.lane_states_column.controls[0], ft.Text):
@@ -98,7 +113,9 @@ class LaneStatesPanel(ft.Column):
                     border_radius=4,
                     on_blur=lambda e, lid=str(lane_id): self._on_lane_alias_submit(e, lid),
                     on_submit=lambda e, lid=str(lane_id): self._on_lane_alias_submit(e, lid),
-                    tooltip="Clique para renomear",
+                    tooltip=self.locale_manager.get_string(
+                        "lane_states.rename_tooltip", default="Clique para renomear"
+                    ),
                 )
                 color_box = ft.Container(width=14, height=14, bgcolor=color, border_radius=7)
                 self._lane_controls_map[lane_id] = color_box
@@ -118,6 +135,7 @@ class LaneStatesPanel(ft.Column):
             self.alias_manager.set_alias(lane_id, "")
 
         if self.page:
-            self.page.snack_bar = ft.SnackBar(ft.Text("Nome da via salvo com sucesso!"), bgcolor="green700")
+            msg = self.locale_manager.get_string("lane_states.msg_saved", default="Nome da via salvo com sucesso!")
+            self.page.snack_bar = ft.SnackBar(ft.Text(msg), bgcolor="green700")
             self.page.snack_bar.open = True
             self.page.update()
