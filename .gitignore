@@ -117,3 +117,6 @@ Model_Vault/
 *.onnx
 *.pt
 *.pth
+
+# Local templates / files
+cabecalho.txt
