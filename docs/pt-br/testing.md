@@ -2,7 +2,7 @@
 
 O CARINA comanda infraestrutura viária e semafórica crítica para a segurança pública. Confiabilidade absoluta, testes unitários determinísticos, mocks de controladores e validação contínua dos vetos de segurança são obrigatórios antes de qualquer alteração entrar em produção.
 
-⬅️ [Central de Documentação](../README.md) | 🏛️ [Arquitetura](architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
+⬅️ [Central de Documentação](README.md) | 🏛️ [Arquitetura](architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
 
 ---
 
@@ -39,10 +39,19 @@ A suíte de testes em `tests/` totaliza **401 testes automatizados** e cobre exa
 - **Segurança e Contas:** `test_security_modular.py`, `test_security_manager.py`.
 - **Explicabilidade e Laudos:** `test_captum_analyzer.py`, `test_xai_report_builder.py`, `test_multi_agent_modular_builder.py`.
 - **Física de Tráfego:** `test_mfd_processor.py`, `test_mfd_report_generator.py`, `test_sas_report_generator.py`.
-- **Interface e Mapa:** `test_planning_view.py`, `test_planning_architecture.py`, `test_live_canvas_map_widget.py`, `test_map_click_precision.py`.
+- **Interface e Mapa:** `test_planning_view.py`, `test_planning_architecture.py`, `test_live_canvas_map_widget.py`, `test_map_interaction_precision.py`, `test_map_event_router_precision.py`, `test_interactive_map_precision.py`, `test_planning_map_sync.py`.
 - **Testes de Integração (`tests/integration/`):**
   - `test_system_integration.py` (ciclo completo gRPC de telemetria até atuação).
   - `test_gateway_ipc_pipeline.py` (pipeline IPC anônimo via pipes NDJSON com o Gateway Go).
   - `test_hft_performance_sla.py` (validação de latência de sub-milissegundo no loop HFT).
   - `test_postgres_migrations.py` (migrações de esquema Alembic no PostgreSQL).
   - `test_watchdog_resilience.py` (tolerância a falhas e recuperação por timeout do Watchdog).
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

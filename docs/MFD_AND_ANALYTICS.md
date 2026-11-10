@@ -75,3 +75,12 @@ When network density exceeds critical capacity ($K_{net} \ge K_{crit}$):
 ## 5. Incident Filter Debug Cache (`.carina_incident_filter_cache.json`)
 
 To prevent localized accidents or construction lane closures from corrupting the macroscopic MFD curve, [`src/drivers/incident_filter.py`](../src/drivers/incident_filter.py) isolates anomalous links and stores active incident states in `.carina_incident_filter_cache.json` for rapid recovery across system restarts.
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

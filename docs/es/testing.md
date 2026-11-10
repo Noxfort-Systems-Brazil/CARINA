@@ -2,7 +2,7 @@
 
 Este documento especifica los procedimientos de prueba, cobertura de código y validación determinista de seguridad en CARINA.
 
-⬅️ [Centro de Documentación](../README.md) | 🛡️ [Seguridad y Watchdog](safety_and_watchdog.md)
+⬅️ [Centro de Documentación](README.md) | 🛡️ [Seguridad y Watchdog](safety_and_watchdog.md)
 
 ---
 

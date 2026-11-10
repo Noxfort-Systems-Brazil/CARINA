@@ -2,7 +2,7 @@
 
 Este documento detalha a camada de persistência do CARINA, a arquitetura de pooling de conexões, a ingestão assíncrona não-bloqueante de telemetria (`StepDecisionWorker`), os segredos 12-Factor App e os esquemas relacionais no PostgreSQL e SQLite.
 
-⬅️ [Central de Documentação](../README.md) | 🏛️ [Arquitetura](architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
+⬅️ [Central de Documentação](README.md) | 🏛️ [Arquitetura](architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
 
 ---
 
@@ -45,3 +45,12 @@ Armazena endereços IP, portas, protocolos (`NTCIP_1202`, `UTMC`, `SNMP`) e stat
 
 ### 2.4 Tabela: `users` (Camada de Segurança)
 Gerenciada por `src/utils/security/user_repository.py` com hashes bcrypt salgados e proteção de lockout por tentativas falhas.
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

@@ -2,7 +2,7 @@
 
 Este documento especifica la arquitectura interna del ecosistema CARINA: los 8 microservicios concurrentes en procesos del sistema operativo, la topología de red neuronal profunda, el `TopologicalScaler`, el `ConsultantAgent`, la dualidad de atención cruzada (`CrossAttentionFusion`), los controladores de hardware físico y el motor asíncrono de almacenamiento delta en PostgreSQL.
 
-⬅️ [Centro de Documentación](../README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🛡️ [Seguridad y Watchdog](safety_and_watchdog.md) | 🧪 [Pruebas](testing.md)
+⬅️ [Centro de Documentación](README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🛡️ [Seguridad y Watchdog](safety_and_watchdog.md) | 🧪 [Pruebas](testing.md)
 
 ---
 

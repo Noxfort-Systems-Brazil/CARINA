@@ -2,7 +2,7 @@
 
 Este documento especifica la capa de integración física con controladores de semáforos del sistema CARINA. Detalla la arquitectura del **Gateway Go compilado** (`bin/carina-go`), la comunicación mediante pipes NDJSON, los estándares **NTCIP 1202** y **UTMC / UTMC2**, y los mecanismos de fail-safe determinista.
 
-⬅️ [Centro de Documentación](../README.md) | 🏛️ [Arquitectura](architecture.md) | 🛡️ [Seguridad y Watchdog](safety_and_watchdog.md)
+⬅️ [Centro de Documentación](README.md) | 🏛️ [Arquitectura](architecture.md) | 🛡️ [Seguridad y Watchdog](safety_and_watchdog.md)
 
 ---
 

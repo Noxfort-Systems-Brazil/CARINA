@@ -74,3 +74,12 @@ weight_queue_length = 2.0
 gaussian_kernel_radius = 24
 color_ramp = viridis  # Supported: viridis, plasma, turbo, traffic_light
 ```
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

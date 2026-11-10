@@ -2,7 +2,7 @@
 
 Este documento detalha o Firewall Neuro-Simbólico de Segurança em dois estágios do CARINA (`GuardianAgent` e `SafetyAuditor`), os mecanismos de fail-safe de hardware, o processo em tempo real `Watchdog` e o subsistema de auto-cura `F.E.N.I.X.`.
 
-⬅️ [Central de Documentação](../README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🧪 [Testes e Validação](testing.md)
+⬅️ [Central de Documentação](README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🧪 [Testes e Validação](testing.md)
 
 ---
 
@@ -98,3 +98,12 @@ O subsistema **F.E.N.I.X.** (Fault-tolerant Engine for Networked Intelligent eXe
 
 ### 5.2 Handover Limpo em Fronteira de Estágio (`StateReconciler`)
 Ao ressuscitar, injetar ações no meio de um estágio semafórico ativo causaria perigo de colisão ou quebra de entreverdes. O `StateReconciler` sincroniza com o estágio atual e só desbloqueia a atuação no momento exato em que o controlador físico avança para o próximo estágio natural.
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

@@ -3,7 +3,15 @@ tags: [home, index, carina, hub]
 aliases: [Documentation Index, Overview, Portal]
 ---
 
-# 🚗 CARINA Documentation Hub
+<div align="center">
+
+<img src="assets/carina-logo.png" alt="CARINA CORE Logo" width="120" />
+
+# CARINA Documentation Hub
+### Technical Master Portal & Architecture Index
+*Noxfort Systems — A State Of Art Company*
+
+</div>
 
 Welcome to the technical documentation library for **CARINA** (Controlled Artificial Road-traffic Intelligence Network Architecture) — an enterprise deep reinforcement learning ecosystem for urban traffic light networks.
 
@@ -16,7 +24,7 @@ Designed to operate seamlessly on **GitHub** and as an **[Obsidian](https://obsi
 | Subsystem / Dimension | Focus Area | Direct Link |
 | :--- | :--- | :---: |
 | 📚 **Master Map of Content** | Primary Obsidian Hub & Codebase Directory Map | [Explore Hub](CARINA_MOC.md) |
-| 🏛️ **System Architecture** | 8 Concurrent OS Processes, ST-GATv2 Lite & Consultant PAE | [View Blueprint](../ARCHITECTURE.md) |
+| 🏛️ **System Architecture** | 8 Concurrent OS Processes, ST-GATv2 Lite & Consultant PAE | [View Blueprint](ARCHITECTURE.md) |
 | ⚡ **Synapse HFT API** | Sub-millisecond gRPC Telemetry & Protobuf IPC Specifications | [View API Reference](API_REFERENCE.md) |
 | 🧠 **Neural Formulations** | PPO-TCN, Dilated Convolutions, Cross-Attention & DA SILVA | [View Research](RESEARCH_NOTES.md) |
 | 🚦 **Hardware Drivers** | Physical Intersection Control (NTCIP 1202, UTMC2, SNMP) | [View Drivers](HARDWARE_DRIVERS.md) |
@@ -57,3 +65,12 @@ Designed to operate seamlessly on **GitHub** and as an **[Obsidian](https://obsi
 │(500ms Fallbk)│          │ (D3QN Veto)  │
 └──────────────┘          └──────────────┘
 ```
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Controlled Artificial Road-traffic Intelligence Network Architecture • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

@@ -92,3 +92,12 @@ vram_allocation_gb = 3.5
 temperature = 0.15
 context_window = 3072
 ```
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

@@ -2,7 +2,7 @@
 
 本规范详细说明 CARINA 的双阶段神经符号安全防火墙、毫秒级看门狗及 F.E.N.I.X. 进程自愈子系统。
 
-⬅️ [文档中心](../README.md) | 🚦 [硬件驱动](hardware_drivers.md) | 🧪 [测试规范](testing.md)
+⬅️ [文档中心](README.md) | 🚦 [硬件驱动](hardware_drivers.md) | 🧪 [测试规范](testing.md)
 
 ---
 

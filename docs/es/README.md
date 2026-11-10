@@ -13,7 +13,7 @@
 
 ---
 
-🌐 **Traducciones / Idiomas:** **[🇺🇸 English](../en/README.md)** • **[🇧🇷 Português](../pt-br/README.md)** • **[🇪🇸 Español](README.md)** • **[🇫🇷 Français](../fr/README.md)** • **[🇷🇺 Русский](../ru/README.md)** • **[🇨🇳 简体中文](../zh/README.md)** • **[📚 Centro de Documentación](../README.md)**
+🌐 **Traducciones / Idiomas:** **[🇺🇸 English](../en/README.md)** • **[🇧🇷 Português](../pt-br/README.md)** • **[🇪🇸 Español](README.md)** • **[🇫🇷 Français](../fr/README.md)** • **[🇷🇺 Русский](../ru/README.md)** • **[🇨🇳 简体中文](../zh/README.md)** • **[📚 Centro de Documentación](../index.md)**
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## Bienvenido a la Documentación Técnica Oficial
 
-Este directorio contiene la suite completa de documentación técnica en **Español** para **CARINA** (Cognitive Autonomous Real-time Intersection Network Architecture) — un ecosistema empresarial de Aprendizaje por Refuerzo Profundo distribuido para el control semafórico adaptativo en tiempo real.
+Este directorio contiene la suite completa de documentación técnica en **Español** para **CARINA** (Controlled Artificial Road-traffic Intelligence Network Architecture) — un ecosistema empresarial de Aprendizaje por Refuerzo Profundo distribuido para el control semafórico adaptativo en tiempo real.
 
 ## Directorio de Guías Técnicas
 

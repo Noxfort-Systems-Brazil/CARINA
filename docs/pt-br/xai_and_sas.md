@@ -2,7 +2,7 @@
 
 Este documento especifica o pipeline de explicabilidade forense do CARINA localizado em `src/xai/` e `src/sas/`. Ele detalha o uso do **Google Captum Integrated Gradients**, as 5 equações neurais formais, as tabelas de auditoria de vetos do Guardian e a geração de laudos periciais em Microsoft Word (`.docx`) em estrita conformidade com a norma brasileira **ABNT NBR 14724**.
 
-⬅️ [Central de Documentação](../README.md) | 🏛️ [Arquitetura](architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
+⬅️ [Central de Documentação](README.md) | 🏛️ [Arquitetura](architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
 
 ---
 
@@ -38,3 +38,12 @@ O relatório consulta a tabela PostgreSQL `step_decisions` para consolidar o his
 - Ações aprovadas pela barreira de segurança.
 - Vetos de segurança disparados (tempo de verde mínimo, entreverdes de amarelo, risco de spillback).
 - Taxa de conformidade do sistema (tipicamente $> 98\%$).
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

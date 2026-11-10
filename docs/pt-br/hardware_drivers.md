@@ -2,7 +2,7 @@
 
 Este documento especifica a camada de integração física com controladores de tráfego do CARINA localizada em `src/drivers/`, `src/controller/` e no gateway compilado em `src_go/`. Ele detalha os protocolos **NTCIP 1202**, **UTMC / UTMC2**, **SNMP v2c/v3**, o gerenciamento de conexões, a aquisição de telemetria e o fail-safe determinístico.
 
-⬅️ [Central de Documentação](../README.md) | 🏛️ [Arquitetura](../pt-br/architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
+⬅️ [Central de Documentação](README.md) | 🏛️ [Arquitetura](architecture.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
 
 ---
 
@@ -96,3 +96,12 @@ Controla a máquina de estados semafórica: `DISCONNECTED`, `CONNECTING`, `ONLIN
 ### 4.3 Reporte e Filtro de Incidentes (`src/drivers/`)
 - `IncidentReporter`: Dispara alertas padronizados para o painel de operações e transporte polimórfico (`MonitorClient`).
 - `IncidentFilter`: Cache com timestamp em `.carina_incident_filter_cache.json` para evitar tempestades de alarmes repetidos.
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

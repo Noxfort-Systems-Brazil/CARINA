@@ -2,7 +2,7 @@
 
 本文件阐述 CARINA 的非阻塞异步持久化层、PostgreSQL 增量压缩机制以及遵循 12-Factor App 的安全凭证管理。
 
-⬅️ [文档中心](../README.md) | 🏛️ [系统架构](architecture.md)
+⬅️ [文档中心](README.md) | 🏛️ [系统架构](architecture.md)
 
 ---
 

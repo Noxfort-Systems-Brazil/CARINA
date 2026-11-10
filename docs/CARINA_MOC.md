@@ -3,7 +3,15 @@ tags: [moc, hub, docs, obsidian, carina, index]
 aliases: [CARINA MOC, Master Documentation Hub, Documentation Index, Knowledge Vault]
 ---
 
-# 📚 CARINA Technical Master Documentation Hub
+<div align="center">
+
+<img src="assets/carina-logo.png" alt="CARINA CORE Logo" width="120" />
+
+# CARINA Technical Master Documentation Hub
+### Central Index & Multi-Agent Architecture Knowledge Vault
+*Noxfort Systems — A State Of Art Company*
+
+</div>
 
 Welcome to the **CARINA** (Controlled Artificial Road-traffic Intelligence Network Architecture) technical documentation library. Designed as a massively concurrent, high-frequency Deep Reinforcement Learning ecosystem for real-time traffic light control, CARINA bridges high-level neuro-symbolic AI, real-time gRPC hardware actuation, and multi-process OS isolation.
 
@@ -101,13 +109,13 @@ CARINA_CORE/
 ## 📖 System Dimensions & Knowledge Vault Navigation
 
 ### 1. Core Infrastructure & Hardware Drivers
-- **[Architecture Deep-Dive](../ARCHITECTURE.md)**: Exhaustive technical blueprint detailing all 8 concurrent OS microservices, process isolation via `multiprocessing`, IPC Pipe/Queue channels, and the execution loop.
+- **[Architecture Deep-Dive](ARCHITECTURE.md)**: Exhaustive technical blueprint detailing all 8 concurrent OS microservices, process isolation via `multiprocessing`, IPC Pipe/Queue channels, and the execution loop.
 - **[Hardware Drivers & Physical Controllers](HARDWARE_DRIVERS.md)**: Specifications for compiled Go Hardware Gateway (`carina-go`), NDJSON standard pipes IPC, NTCIP 1202 (ASC), UTMC / UTMC2 UK standard, SNMP v2c/v3 client, connection pooling, and deterministic hardware fail-safe reversion.
 - **[API Reference & HFT Protocol](API_REFERENCE.md)**: Complete specifications for the `Synapse HFT` gRPC interface, external Monitor telemetry (MQTT/HTTP), Prometheus metric endpoints (port 8001), and IPC queue schemas.
 - **[Database Architecture & Schemas](DATABASE_AND_SCHEMAS.md)**: Specifications for `DatabaseWorker`, `StepDecisionWorker`, connection pooling, 12-Factor `.env` setup, and PostgreSQL delta storage (97.9% reduction).
 - **[Security & Authentication](SECURITY_AND_AUTH.md)**: User account management, salted `bcrypt` hashing, brute-force lockdown defense, and role-based access control.
-- **[Modular Settings Architecture](../ARCHITECTURE.md#4-modular-settings-architecture-srcsettings)**: SOLID configuration subsystem decoupling schemas, INI persistence, and 12-Factor `.env` secrets.
-- **[Polymorphic Monitoring & Transports](../ARCHITECTURE.md#5-polymorphic-monitoring--transport-architecture-srctransports)**: Telemetry and incident streaming over MQTT brokers and HTTP/HTTPS REST/Ngrok cloud endpoints.
+- **[Modular Settings Architecture](ARCHITECTURE.md#4-modular-settings-architecture-srcsettings)**: SOLID configuration subsystem decoupling schemas, INI persistence, and 12-Factor `.env` secrets.
+- **[Polymorphic Monitoring & Transports](ARCHITECTURE.md#5-polymorphic-monitoring--transport-architecture-srctransports)**: Telemetry and incident streaming over MQTT brokers and HTTP/HTTPS REST/Ngrok cloud endpoints.
 
 ### 2. Artificial Intelligence & Neuro-Symbolic Safety
 - **[Neural Research & Formulations](RESEARCH_NOTES.md)**: Deep mathematical formulations for PPO-TCN, Predictive Autoencoder (PAE) latent projection $Z$, Dueling DQN-TCN value/advantage streams, ST-GATv2 Lite Graph Attention, and the DA SILVA maturation curriculum.
@@ -130,3 +138,12 @@ CARINA_CORE/
 ---
 
 > 💡 **Obsidian Knowledge Graph:** This documentation suite maintains full native support for [Obsidian](https://obsidian.md/). Open the `CARINA_CORE` repository folder as an Obsidian Vault to navigate the interactive technical graph and backlinks.
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Controlled Artificial Road-traffic Intelligence Network Architecture • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

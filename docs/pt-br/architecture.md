@@ -2,7 +2,7 @@
 
 Este documento especifica a arquitetura interna do ecossistema CARINA. Ele detalha os 8 microsserviços concorrentes em processos do sistema operacional, a topologia de rede neural profunda, o `TopologicalScaler`, o `ConsultantAgent`, a dualidade de atenção cruzada (`CrossAttentionFusion`), os drivers de controladores físicos e o motor assíncrono de persistência com compressão delta no PostgreSQL.
 
-⬅️ [Central de Documentação](../README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md) | 🧪 [Testes e Validação](testing.md)
+⬅️ [Central de Documentação](README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md) | 🧪 [Testes e Validação](testing.md)
 
 ---
 
@@ -129,3 +129,12 @@ O CARINA integra o subsistema **F.E.N.I.X.** para garantir resiliência 24/7 con
 - **`WindowedCrashRecoveryPolicy`:** Política de backoff exponencial e limite de reinícios por janela de tempo.
 - **`SubprocessRunner`:** Controle determinístico do ciclo de vida dos processos-filhos (SIGTERM com fallback SIGKILL).
 - **`StateReconciler`:** Sincronização em modo `FROZEN_SYNC` que só devolve a atuação de IA em fronteiras limpas de estágio, garantindo transição 100% segura sem saltos de fase.
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

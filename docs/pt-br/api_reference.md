@@ -2,7 +2,7 @@
 
 Este documento serve como a especificação autoritativa das interfaces do CARINA, abrangendo o **Protocolo Synapse HFT via gRPC**, os canais de **Comunicação Inter-Processos (IPC)** e as métricas do exportador Prometheus.
 
-⬅️ [Central de Documentação](../README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
+⬅️ [Central de Documentação](README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🛡️ [Segurança e Watchdog](safety_and_watchdog.md)
 
 ---
 
@@ -57,3 +57,12 @@ O CARINA gerencia 10 canais IPC delimitados criados por `ProcessManager`:
 O CARINA transmite estados vitais e alertas para plataformas externas de gestão de tráfego via `MonitorClient`:
 - **Corretor MQTT:** Tópicos `noxfort/telemetry/` e `noxfort/incidents/` (QoS 0/1).
 - **HTTP / HTTPS REST:** Envio automático via requisições `POST` JSON com sessões persistentes e backoff exponencial (suporte nativo a URLs de túneis Cloud e Ngrok).
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

@@ -2,7 +2,7 @@
 
 本文件规定了 CARINA 的高频 gRPC 通信接口及多进程共享内存通道。
 
-⬅️ [文档中心](../README.md) | 🏛️ [系统架构](architecture.md)
+⬅️ [文档中心](README.md) | 🏛️ [系统架构](architecture.md)
 
 ---
 

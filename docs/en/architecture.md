@@ -260,3 +260,12 @@ CARINA incorporates **F.E.N.I.X.** (Fault-tolerant Engine for Networked Intellig
 - **`WindowedCrashRecoveryPolicy` (`src/fenix/recovery_policy.py`):** Computes exponential backoffs and enforces restart rate limits to prevent cascading restart storms.
 - **`SubprocessRunner` (`src/fenix/process_runner.py`):** Low-level subprocess management ensuring deterministic process isolation and clean SIGTERM/SIGKILL termination.
 - **`StateReconciler` (`src/fenix/state_reconciler.py`):** Ensures the resurrected AI engine operates in `FROZEN_SYNC` mode and only assumes actuation control at clean phase boundaries when physical controllers transition stages naturally.
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

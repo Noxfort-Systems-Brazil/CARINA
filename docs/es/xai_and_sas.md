@@ -2,7 +2,7 @@
 
 Este documento detalla el motor de explicabilidad matemática de CARINA: el uso de Google Captum Integrated Gradients, las 5 ecuaciones matemáticas formales y la generación automatizada de informes periciales en formato Word (`.docx`).
 
-⬅️ [Centro de Documentación](../README.md) | 🏛️ [Arquitectura](architecture.md)
+⬅️ [Centro de Documentación](README.md) | 🏛️ [Arquitectura](architecture.md)
 
 ---
 

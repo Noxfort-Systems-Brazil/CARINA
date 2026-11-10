@@ -111,3 +111,12 @@ $$\mathcal{H}(\pi_\theta(\cdot | s_t)) = -\sum_{a \in \mathcal{A}} \pi_\theta(a 
 1. **CHILD Stage (Shadow Mode):** $\mathcal{H} > 0.40$. Actions are shadowed; baseline controller operates hardware.
 2. **TEEN Stage (Restricted Autonomy):** $0.15 < \mathcal{H} \le 0.40$. Agent operates hardware during low-risk hours (01:00 AM - 04:00 AM).
 3. **ADULT Stage (Full Autonomy):** $\mathcal{H} \le 0.15$ and Mean Reward $\mu_{reward} > \mu_{baseline} + 2\sigma$. Full 24/7 autonomous actuation granted.
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

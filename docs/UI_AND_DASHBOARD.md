@@ -90,3 +90,12 @@ CARINA runs seamlessly as a background system daemon with a native desktop tray 
   1. The duplicate process attempts to bind TCP port `42123`.
   2. Upon failure, it transmits a `RESTORE` command signal over the local TCP socket to the primary instance.
   3. The primary instance brings the Flet window to the foreground, and the duplicate process terminates cleanly.
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

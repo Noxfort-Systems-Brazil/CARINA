@@ -61,7 +61,7 @@ All sensitive credentials must be set in [`.env`](../.env.example) and must neve
 
 ```bash
 # --- Execution Mode ---
-# 'development': allows default demo credentials (admin:admin).
+# 'development': allows default GitHub demo credentials (admin / Admin@Carina2026!).
 # 'production': STRICTLY BLOCKS default credentials; requires hashed secrets.
 CARINA_ENV=production
 
@@ -96,3 +96,12 @@ CARINA_MQTT_PASSWORD=
 2. **Restrict IPC & gRPC Bindings:** In production, bind gRPC (`50051`) and WebSocket (`8080`) interfaces to private local VLANs or `127.0.0.1` unless behind a TLS-terminating reverse proxy.
 3. **Database Least-Privilege:** Grant the application database user only `SELECT`, `INSERT`, and `UPDATE` on operational schemas.
 4. **Physical Controller Fail-Safe:** Ensure all physical controllers have active internal time-of-day flash modes configured if communication drops.
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

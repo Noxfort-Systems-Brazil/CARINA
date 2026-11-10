@@ -158,3 +158,12 @@ CREATE TABLE IF NOT EXISTS users (
 | **`synapse_fluid_dynamics`** | $\approx 14.00\text{ GB / day}$ | **$\approx 0.15\text{ GB / day}$** | **$-98.9\%$** |
 | **`hardware_controller_connections`** | $\approx 0.20\text{ GB / day}$ | **$\approx 0.01\text{ GB / day}$** | **$-95.0\%$** |
 | **TOTAL SYSTEM DATABASE** | **$\approx 18.15\text{ GB / day}$** | **$\approx 0.38\text{ GB / day}$** | **$-97.9\%$!** |
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

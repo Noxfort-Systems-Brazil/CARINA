@@ -83,7 +83,10 @@ tests/
 │   ├── test_planning_export_handler.py # Signal timing plan CSV export handlers
 │   ├── test_planning_panel_presenter.py # Planning panel UI presenter
 │   ├── test_live_canvas_map_widget.py # Flet custom canvas drawing roads and signals
-│   ├── test_map_click_precision.py # High-precision canvas click coordinate mapping
+│   ├── test_map_interaction_precision.py # Zoom math, coordinate drift & street hit caching
+│   ├── test_map_event_router_precision.py # Semaphore vs street click disambiguation
+│   ├── test_interactive_map_precision.py # InteractiveMap tap precision and layer hit
+│   ├── test_planning_map_sync.py   # PlanningMapRenderer hit radius & canvas sync
 │   ├── test_live_data_provider_ipc.py # LiveDataProvider in-memory IPC queue streaming
 │   ├── test_watchdog.py            # Watchdog heartbeat logic and process timers
 │   ├── test_consolidation_purge.py # Fluid dynamics delta storage consolidation
@@ -145,3 +148,12 @@ def test_ntcip_driver_status_query(mock_snmp_client):
     assert "greens" in status
     assert "reds" in status
 ```
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

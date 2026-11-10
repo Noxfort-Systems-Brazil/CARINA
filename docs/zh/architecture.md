@@ -2,7 +2,7 @@
 
 本规范详细阐述 CARINA 生态系统的底层工程架构：8个操作系统并发微服务进程的解耦设计、深度神经网络拓扑结构、ST-GATv2 Lite 时空图注意力网络、全局顾问 PAE 预测自编码器以及 PostgreSQL 异步增量压缩引擎。
 
-⬅️ [文档中心](../README.md) | 🚦 [硬件驱动](hardware_drivers.md) | 🛡️ [安全机制](safety_and_watchdog.md)
+⬅️ [文档中心](README.md) | 🚦 [硬件驱动](hardware_drivers.md) | 🛡️ [安全机制](safety_and_watchdog.md)
 
 ---
 

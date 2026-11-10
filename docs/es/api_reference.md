@@ -2,7 +2,7 @@
 
 Este documento especifica la interfaz de comunicación gRPC de alta frecuencia **Synapse HFT** y los canales de comunicación entre procesos (IPC) de CARINA.
 
-⬅️ [Centro de Documentación](../README.md) | 🏛️ [Arquitectura](architecture.md) | 🚦 [Controladores](hardware_drivers.md)
+⬅️ [Centro de Documentación](README.md) | 🏛️ [Arquitectura](architecture.md) | 🚦 [Controladores](hardware_drivers.md)
 
 ---
 

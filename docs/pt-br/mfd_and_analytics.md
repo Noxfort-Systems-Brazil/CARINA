@@ -2,7 +2,7 @@
 
 Este documento especifica o subsistema de análise macroscópica de tráfego localizado em `src/mfd/`, o processo dedicado `MFD_Worker`, as curvas de fluxo-densidade da malha urbana, os algoritmos de controle perimetral (*perimeter gating*) e o cache de isolamento de incidentes.
 
-⬅️ [Central de Documentação](../README.md) | 🏛️ [Arquitetura](architecture.md) | 🔍 [IA Explicável](xai_and_sas.md)
+⬅️ [Central de Documentação](README.md) | 🏛️ [Arquitetura](architecture.md) | 🔍 [IA Explicável](xai_and_sas.md)
 
 ---
 
@@ -21,3 +21,12 @@ Quando a densidade agregada ultrapassa o valor crítico ($K_{net} \ge K_{crit}$)
 1. O processo `MFD_Worker` emite um sinal de alerta de gating para o `CentralController`.
 2. Interseções nos limites externos da zona crítica estrangulam os tempos verdes de entrada ($T_{green} \leftarrow T_{green} \times \eta$, com $\eta \in [0,6, 0,8]$).
 3. Corredores de saída recebem prioridade máxima de escoamento para drenar veículos do centro congestionado.
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

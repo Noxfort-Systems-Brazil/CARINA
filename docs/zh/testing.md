@@ -2,7 +2,7 @@
 
 本文件说明 CARINA 的自动化测试流程、代码覆盖率分析及安全否决确定性验证。
 
-⬅️ [文档中心](../README.md) | 🛡️ [安全机制](safety_and_watchdog.md)
+⬅️ [文档中心](README.md) | 🛡️ [安全机制](safety_and_watchdog.md)
 
 ---
 

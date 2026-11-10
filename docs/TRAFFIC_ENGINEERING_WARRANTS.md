@@ -70,3 +70,12 @@ Located in [`src/analysis/warrant_math.py`](../src/analysis/warrant_math.py):
 - **85th-Percentile Speed Calculation:** Evaluates if posted speed limits should scale warrant threshold volumes down by 70% (applicable when major street speed exceeds $70\text{ km/h}$ or in isolated rural communities).
 - **Critical Flow Ratio:** Computes lane-by-lane saturation flows and degree of saturation ($X = v/c$).
 - **Moving-Window Accumulation:** Aggregates time-series samples into robust hourly volume bins.
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

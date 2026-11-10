@@ -2,7 +2,7 @@
 
 В этом документе специфицируется уровень взаимодействия CARINA с физическими дорожными контроллерами (Econolite, Siemens, Peek, SWARCO, Yunex).
 
-⬅️ [Главный Хаб](../README.md) | 🏛️ [Архитектура](architecture.md) | 🛡️ [Безопасность](safety_and_watchdog.md)
+⬅️ [Главный Хаб](README.md) | 🏛️ [Архитектура](architecture.md) | 🛡️ [Безопасность](safety_and_watchdog.md)
 
 ---
 

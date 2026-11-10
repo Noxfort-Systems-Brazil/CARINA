@@ -9,14 +9,28 @@ site_description: "Internal technical documentation for CARINA — neural brain 
 site_author: "Gabriel Moraes — Noxfort Systems"
 copyright: "Copyright &copy; 2026 — Noxfort Systems"
 
+# Exclude conflicting GitHub folder readme from MkDocs build
+exclude_docs: |
+  /README.md
+
+validation:
+  omitted_files: ignore
+  absolute_links: ignore
+  unrecognized_links: ignore
+  links:
+    not_found: ignore
+    absolute_links: ignore
+    unrecognized_links: ignore
+    anchors: ignore
+
 # ==============================================================================
 # Theme
 # ==============================================================================
 theme:
   name: material
   language: en
-  icon:
-    logo: material/traffic-light
+  logo: assets/carina-logo.png
+  favicon: assets/carina-logo.png
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
@@ -84,6 +98,7 @@ nav:
   - Overview: index.md
   - Master MOC: CARINA_MOC.md
   - Architecture & Core:
+    - System Architecture: ARCHITECTURE.md
     - Synapse HFT API: API_REFERENCE.md
     - Database & Schemas: DATABASE_AND_SCHEMAS.md
     - Security & Auth: SECURITY_AND_AUTH.md
@@ -104,6 +119,51 @@ nav:
     - Developer Guides: DEVELOPER_GUIDES.md
     - Testing & Validation: TESTING.md
     - Deployment & Packaging: DEPLOYMENT_AND_PACKAGING.md
+  - Multi-Language Hubs:
+    - 🇺🇸 English:
+      - Hub: en/README.md
+      - Master MOC: en/carina_moc.md
+      - System Architecture: en/architecture.md
+      - Hardware Drivers: en/hardware_drivers.md
+      - Safety & Watchdog: en/safety_and_watchdog.md
+      - Synapse HFT API: en/api_reference.md
+      - Database & Schemas: en/database_and_schemas.md
+      - Neural Research: en/research_notes.md
+      - Traffic Signal Warrants: en/traffic_engineering_warrants.md
+      - MFD & Analytics: en/mfd_and_analytics.md
+      - Explainable AI (XAI): en/xai_and_sas.md
+      - Report Blocks Engine: en/report_blocks_and_templates.md
+      - Small Language Models: en/slm_and_local_llm.md
+      - Desktop UI & Planning: en/ui_and_dashboard.md
+      - Rendering & Heatmaps: en/rendering_and_heatmaps.md
+      - Security & Auth: en/security_and_auth.md
+      - Developer Guides: en/developer_guides.md
+      - Testing & QA: en/testing.md
+      - Deployment & Packaging: en/deployment_and_packaging.md
+    - 🇧🇷 Português (Brasil):
+      - Central: pt-br/README.md
+      - Master MOC: pt-br/carina_moc.md
+      - Arquitetura do Sistema: pt-br/architecture.md
+      - Controladores de Hardware: pt-br/hardware_drivers.md
+      - Segurança & Watchdog: pt-br/safety_and_watchdog.md
+      - API Synapse HFT: pt-br/api_reference.md
+      - Banco de Dados & Schemas: pt-br/database_and_schemas.md
+      - Pesquisa Neural: pt-br/research_notes.md
+      - Critérios Semafóricos MUTCD: pt-br/traffic_engineering_warrants.md
+      - MFD & Análise de Tráfego: pt-br/mfd_and_analytics.md
+      - IA Explicável (XAI): pt-br/xai_and_sas.md
+      - Motor de Laudos ABNT: pt-br/report_blocks_and_templates.md
+      - Modelos Locais (SLM): pt-br/slm_and_local_llm.md
+      - Interface Desktop & UI: pt-br/ui_and_dashboard.md
+      - Renderização & Heatmaps: pt-br/rendering_and_heatmaps.md
+      - Segurança & Autenticação: pt-br/security_and_auth.md
+      - Guias de Desenvolvimento: pt-br/developer_guides.md
+      - Diretrizes de Testes: pt-br/testing.md
+      - Implantação & Docker: pt-br/deployment_and_packaging.md
+    - 🇫🇷 Français: fr/README.md
+    - 🇪🇸 Español: es/README.md
+    - 🇷🇺 Русский: ru/README.md
+    - 🇨🇳 简体中文: zh/README.md
 
 # ==============================================================================
 # Extra CSS

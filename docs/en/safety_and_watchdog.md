@@ -119,3 +119,12 @@ Located in [`src/fenix/state_reconciler.py`](../../src/fenix/state_reconciler.py
 ---
 
 For physical controller communication details, see [Hardware Drivers](hardware_drivers.md).
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

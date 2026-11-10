@@ -2,7 +2,7 @@
 
 本文件说明基于谷歌 Captum 积分梯度算法的数学可解释性技术及符合司法审计规范的 Word 报告生成引擎。
 
-⬅️ [文档中心](../README.md) | 🏛️ [系统架构](architecture.md)
+⬅️ [文档中心](README.md) | 🏛️ [系统架构](architecture.md)
 
 ---
 

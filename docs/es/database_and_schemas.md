@@ -2,7 +2,7 @@
 
 Este documento detalla el motor de persistencia relacional asíncrono de CARINA, los esquemas de tablas en PostgreSQL y SQLite, y las credenciales basadas en la metodología 12-Factor App.
 
-⬅️ [Centro de Documentación](../README.md) | 🏛️ [Arquitectura](architecture.md)
+⬅️ [Centro de Documentación](README.md) | 🏛️ [Arquitectura](architecture.md)
 
 ---
 

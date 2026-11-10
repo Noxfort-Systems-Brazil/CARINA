@@ -2,7 +2,7 @@
 
 Este documento especifica el cortafuegos de seguridad de doble etapa de CARINA (`SafetyAuditor` simbólico y `GuardianAgent` neural), el proceso de supervisión en tiempo real `Watchdog` y el subsistema de auto-sanación `F.E.N.I.X.`.
 
-⬅️ [Centro de Documentación](../README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🧪 [Pruebas](testing.md)
+⬅️ [Centro de Documentación](README.md) | 🚦 [Controladores de Hardware](hardware_drivers.md) | 🧪 [Pruebas](testing.md)
 
 ---
 

@@ -2,7 +2,7 @@
 
 Este documento especifica a interface gráfica desktop do CARINA localizada em `ui/`, o processo **Smart Dashboard Service (SDS)** em `src/sds/`, a gestão de bandeja do sistema (Tray) e o mecanismo de instância única.
 
-⬅️ [Central de Documentação](../README.md) | 🏛️ [Arquitetura](architecture.md) | 🚦 [Controladores de Hardware](hardware_drivers.md)
+⬅️ [Central de Documentação](README.md) | 🏛️ [Arquitetura](architecture.md) | 🚦 [Controladores de Hardware](hardware_drivers.md)
 
 ---
 
@@ -25,3 +25,12 @@ Localizada em `ui/views/planning_view.py`:
 
 ## 3. Bloqueio de Instância Única (`SingleInstanceLock`)
 Utiliza a porta TCP local `42123` para impedir a execução duplicada do sistema, restaurando a janela ativa caso o executável seja acionado novamente.
+
+---
+
+<div align="center">
+  <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+</div>

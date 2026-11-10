@@ -2,7 +2,7 @@
 
 本文件详细说明 CARINA 与现场实体信号机（Econolite、西门子 Siemens、Peek、SWARCO、Yunex 等）的底层网络通信架构。
 
-⬅️ [文档中心](../README.md) | 🏛️ [系统架构](architecture.md) | 🛡️ [安全机制](safety_and_watchdog.md)
+⬅️ [文档中心](README.md) | 🏛️ [系统架构](architecture.md) | 🛡️ [安全机制](safety_and_watchdog.md)
 
 ---
 

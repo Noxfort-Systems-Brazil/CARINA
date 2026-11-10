@@ -147,3 +147,12 @@ if agent_type == "CUSTOM_PPO":
 Legacy PyInstaller and `.deb` packaging via `build_installer.sh` have been deprecated and removed. A new deployment and installation method is planned for future releases.
 
 For deployment and runtime instructions, see [Deployment & Packaging](DEPLOYMENT_AND_PACKAGING.md).
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>

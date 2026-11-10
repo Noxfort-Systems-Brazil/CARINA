@@ -167,3 +167,12 @@ The factory function [`create_monitor_transport()`](../src/transports/factory.py
 1. If the host string starts with `http://` or `https://` $\implies$ **HTTP Transport**.
 2. If the host string contains `.ngrok`, `.run.app`, or an `/api/` path $\implies$ **HTTP Transport** (auto-prepends `https://` if protocol scheme was omitted).
 3. If the host string contains an IP address or domain with optional port (e.g. `10.0.0.1:1883`) $\implies$ **MQTT Transport**.
+
+---
+
+<div align="center">
+  <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
+  <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
+  <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+</div>
