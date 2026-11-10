@@ -1,29 +1,12 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/clients/system_status_client.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o SystemStatusClient.
+Defines the SystemStatusClient.
 
-Nesta versão, foi adicionado um loop de repetição (polling) na thread de
-busca, garantindo que ele continue a procurar pelo arquivo status.json por
-um período antes de desistir.
+Includes a polling loop in the background thread,
+ensuring it keeps searching for status.json for a duration before giving up.
 """
 
 import json
@@ -37,23 +20,23 @@ from typing import Any, Callable, Dict
 
 class SystemStatusClient:
     """
-    Busca o status.json mais recente em uma thread separada.
+    Fetches the latest status.json in a separate thread.
     """
 
     def __init__(self, on_complete_callback: Callable[[Dict[str, Any]], None]):
         """
-        Inicializa o cliente.
+        Initializes the client.
 
         Args:
-            on_complete_callback: A função que será chamada quando a busca terminar.
+            on_complete_callback: The function to be called when search completes.
         """
         self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         self.on_complete = on_complete_callback
 
     def _find_and_read_status_file(self) -> Dict[str, Any]:
         """
-        Encontra o arquivo status.json mais recente, lê e retorna seu conteúdo.
-        Se ocorrer um erro, retorna um dicionário de erro.
+        Finds the latest status.json file, reads and returns its content.
+        If an error occurs, returns an error dictionary.
         """
         try:
             from src.utils.paths import get_base_output_dir
@@ -95,7 +78,7 @@ class SystemStatusClient:
     # --- MAIN CHANGE HERE ---
     def _fetch_thread_target(self):
         """
-        Método alvo da thread: procura repetidamente pelo arquivo e chama o callback.
+        Thread target method: repeatedly searches for the file and invokes callback.
         """
         logging.info("[SystemStatusClient] Iniciando busca em loop pelo status.json...")
         final_result = None
@@ -124,8 +107,8 @@ class SystemStatusClient:
 
     def start_fetching_status(self):
         """
-        Inicia a busca pelo arquivo de status em uma nova thread.
-        Retorna imediatamente, sem bloquear a UI.
+        Starts searching for the status file in a new thread.
+        Returns immediately without blocking the UI.
         """
         thread = threading.Thread(target=self._fetch_thread_target, daemon=True)
         thread.start()

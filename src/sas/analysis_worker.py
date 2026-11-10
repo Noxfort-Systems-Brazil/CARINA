@@ -1,38 +1,15 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sas/analysis_worker.py (FIXED FOR CORRECT LOGGING INITIALIZATION)
-# Author: Gabriel Moraes
-# Date: October 5, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import logging
 import os
-import sys
 import threading
 import time
 from multiprocessing import Queue
 
 import psutil
-
-# Adds the 'src' directory to the path to allow imports from other modules
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 from sas.analysis_orchestrator import AnalysisOrchestrator
 from utils.locale_manager_backend import LocaleManagerBackend
@@ -49,7 +26,7 @@ def run_analysis_worker(
     # --- FIX APPLIED HERE: Boot order has been reversed ---
 
     # 1. Configure FIRST logging.
-    from src.utils.paths import get_base_output_dir
+    from utils.paths import get_base_output_dir
 
     log_dir = os.path.join(get_base_output_dir(), "logs", "sas_worker")
     os.makedirs(log_dir, exist_ok=True)

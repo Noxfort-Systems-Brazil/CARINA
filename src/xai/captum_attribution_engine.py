@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/xai/captum_attribution_engine.py
-# Author: Gabriel Moraes
-# Date: June 19, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from typing import Optional
 
@@ -37,9 +21,13 @@ class CaptumAttributionEngine:
     def __init__(self, agent: LocalAgent, device: torch.device) -> None:
         self.agent = agent
         self.device = device
+        if hasattr(self.agent.policy_net, "eval"):
+            self.agent.policy_net.eval()
         self.wrapped_model = CaptumModelWrapper(
             self.agent.policy_net, shared_pae=getattr(self.agent, "shared_pae", None)
         ).to(self.device)
+        if hasattr(self.wrapped_model, "eval"):
+            self.wrapped_model.eval()
         self.ig = IntegratedGradients(self.wrapped_model)
 
     def compute_importances(self, limit: int = 100) -> Optional[np.ndarray]:
@@ -51,6 +39,9 @@ class CaptumAttributionEngine:
                     f"[CaptumAttributionEngine] No tensor data in memory for agent {getattr(self.agent, 'id', 'N/A')}."
                 )
                 return None
+
+            if hasattr(self.wrapped_model, "eval"):
+                self.wrapped_model.eval()
 
             # Limit the number of samples to avoid excessive CPU compute times (max 100 samples)
             limit = min(self.agent.xai_memory.size, limit)
@@ -83,5 +74,5 @@ class CaptumAttributionEngine:
         except Exception as e:
             import logging
 
-            logging.error(f"[CaptumAttributionEngine] Failed to compute importances: {e}")
+            logging.error(f"[CaptumAttributionEngine] Failed to compute importances: {e}", exc_info=True)
             return None

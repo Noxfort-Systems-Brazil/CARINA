@@ -114,9 +114,36 @@ $$E(t) = E_{ideal} + (E_{max} - E_{ideal}) \cdot e^{-k \cdot t}$$
 
 Où $E_{ideal} = 0.10$, $k = 0.05$ pour la transition Enfant $\to$ Ado, et $k = 0.15$ pour la transition Ado $\to$ Adulte. Les objectifs de progression asymptotiques nominaux sont :
 
-1. **Stade ENFANT / CHILD (Mode Ombre) :** $\mathcal{H} > E_{child}(t)$ (objectif asymptotique nominal $\mathcal{H} > 0.40$). Les actions sont exécutées en ombre (télémétrie seule) ; le contrôleur historique pilote le matériel. Comme $E(t) < \ln(3)$ pour tout $t \ge 1$, une politique purement aléatoire ($\mathcal{H} = \ln 3$) est strictement empêchée de graduer.
-2. **Stade ADOLESCENT / TEEN (Autonomie Restreinte) :** $E_{adult}(t) < \mathcal{H} \le E_{child}(t)$ (plage nominale $0.15 < \mathcal{H} \le 0.40$). L'agent pilote le matériel pendant les heures à faible risque (01h00 - 04h00).
-3. **Stade ADULTE / ADULT (Autonomie Complète) :** $\mathcal{H} \le E_{adult}(t)$ (objectif asymptotique nominal $\mathcal{H} \le 0.15$, atteint à $t \ge 20$ épisodes avec $k=0.15$) et Récompense Moyenne $\mu_{reward} > \mu_{baseline} + \delta^*$. Autorité d'actionnement autonome 24h/24 et 7j/7 accordée.
+1. **Stade ENFANT / CHILD (Mode Ombre) :** $\mathcal{H} > E_{child}(t)$ (objectif asymptotique nominal $\mathcal{H} > 0.40$). Les actions sont exécutées en ombre (télémétrie passive seule) ; le contrôleur historique pilote le matériel. Comme $E(t) < \ln(3)$ pour tout $t \ge 1$, une politique purement aléatoire ($\mathcal{H} = \ln 3$) est strictement empêchée de graduer. Plancher minimal inviolable : 1 semaine complète ($E_{\text{semaine}}$ épisodes calculés via [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py)) pour observer les 168 créneaux horaires réels.
+2. **Stade ADOLESCENT / TEEN (Autonomie Restreinte) :** $E_{adult}(t) < \mathcal{H} \le E_{child}(t)$ (plage nominale $0.15 < \mathcal{H} \le 0.40$). L'agent pilote le matériel physique exclusivement hors des heures de pointe (définies par Synapse ou la norme urbaine classique) ; durant les heures de pointe, il bascule en mode ombre pour la sécurité routière. Plancher minimal inviolable : 1 semaine complète ($E_{\text{semaine}}$ épisodes).
+3. **Stade ADULTE / ADULT (Autonomie Complète) :** $\mathcal{H} \le E_{adult}(t)$ (objectif asymptotique nominal $\mathcal{H} \le 0.15$, atteint à $t \ge 20$ épisodes avec $k=0.15$) et Récompense Moyenne $\mu_{reward} > \mu_{baseline} + \delta^*$. Autorité d'actionnement autonome 24h/24 et 7j/7 accordée sous toutes les conditions de trafic.
+
+### 5.1.1 Dimensionnement Topologique des Pas et Rythme Hebdomadaire
+Pour éliminer les nombres magiques et calibrer l'horizon de chaque épisode sur l'échelle physique du réseau urbain, CARINA emploie [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py) :
+- **Complexité Topologique ($C_{\text{topo}}$) :** Ratio entre les connexions physiques réelles $E_{\text{real}}$ (unifiant les sens bidirectionnels et ignorant les connecteurs internes avec `:`) et les carrefours à feux $N$, pondéré par la moyenne des voies $\bar{F}$ :
+  $$C_{\text{topo}} = \text{clamp}\left( \frac{E_{\text{real}}}{N} \times \left(1.0 + 0.1 \times (\bar{F} - 1.0)\right), \quad 0.8, \quad 1.6 \right)$$
+- **Relaxation Sous-Linéaire :** Prévient l'explosion de durée dans les grandes métropoles en indexant sur la profondeur du corridor critique ($\sqrt{N}$) et le diamètre géographique ($D_{\text{km}}$) :
+  $$T_{\text{physique}} = 180 + \left( 60 \cdot \sqrt{N} + 30 \cdot D_{\text{km}} \right) \times C_{\text{topo}}$$
+- **Pas par Épisode ($S$) :** Conversion pessimiste à $\Delta t = 250\text{ ms}$ ($4\text{ pas/seconde}$), arrondie au multiple supérieur de 100 et bornée entre 2,5 minutes ($600\text{ pas}$) et 1 heure ($14\,400\text{ pas}$) :
+  $$S = \text{clamp}\left( \left\lceil \frac{T_{\text{physique}} / 0.25}{100} \right\rceil \times 100, \quad 600, \quad 14400 \right)$$
+- **Plancher Inviolable d'Une Semaine ($E_{\text{semaine}}$) :** Nombre minimal d'épisodes requis pour observer exactement 7 jours complets ($604\,800\text{ secondes}$) :
+  $$E_{\text{semaine}} = \left\lceil \frac{604800}{S \times 0.25} \right\rceil$$
+
+### 5.1.2 Suivi de Couverture Hebdomadaire et Résilience aux Redémarrages
+Pour vérifier que l'évaluation de la politique couvre l'ensemble des conditions réelles de trafic (jours ouvrés, nuits, heures de pointe et week-ends) avant la promotion, [`WeeklyCoverageTracker`](../../src/core/weekly_coverage_tracker.py) collabore avec [`ActionAuthorizer`](../../src/core/action_authorizer.py) :
+- **Matrice de 168 Créneaux Calendaires :** Mappe les 168 heures hebdomadaires ($7\text{ jours} \times 24\text{ heures}$). Chaque trame munie d'un horodatage réel (`datetime.fromtimestamp(raw_timestamp)`) enregistre sa présence dans la cellule `(jour_semaine, heure)`.
+- **Persistance Atomique :** L'état de couverture est sauvegardé de manière atomique sur disque (`weekly_coverage_CHILD.json` et `weekly_coverage_TEEN.json`), tolérant les pauses et redémarrages sans perte de progression.
+- **Régulation des Pointes Classique et Synapse :** La phase `TEEN` n'agit physiquement qu'en dehors des heures de pointe. Si Synapse ne transmet pas de fichier dynamique `peak_schedule.json`, CARINA applique l'ingénierie de trafic classique :
+  - *Lundi à Vendredi :* Heures de pointe matinale (**06h30 à 09h00**) et vespérale (**17h00 à 19h30**) en mode ombre.
+  - *Week-ends :* Hors-pointe (mode actif autorisé).
+- **Évaluation Macroscopique Holistique :** La promotion évalue la performance cumulée sur l'ensemble de la semaine ($\mu_{\text{semaine}} \ge \mu_{\text{baseline}} + \delta^*$), empêchant qu'une anomalie ponctuelle sur un seul jour ne disqualifie une politique par ailleurs sûre.
+
+### 5.1.3 Invariants Inviolables de Sécurité
+Pour protéger les infrastructures urbaines critiques contre des configurations imprudentes, des invariants mathématiques stricts sont appliqués :
+- **Plancher Temporel Inviolable :** Les opérateurs peuvent configurer une durée d'observation plus longue, mais jamais la réduire en dessous du plancher hebdomadaire :
+  $$t_{\min} = \max(E_{\text{semaine}}, \text{configuration\_opérateur})$$
+- **Plafond de Certitude (Plancher d'Entropie) :** Les opérateurs peuvent exiger une plus grande certitude (entropie plus faible), mais jamais relâcher le critère pour accepter des politiques chaotiques :
+  $$\text{seuil} = \min(E_{\text{calculé}}(t), E_{\text{manuel\_opérateur}})$$
 
 ### 5.2 Entraînement Basé sur la Population Intra-Phase (PBT)
 Pour assurer l'intégrité biologique et développementale entre les cohortes d'agents, l'exploitation et l'exploration évolutives dans [`PopulationManager`](../../src/core/population_manager.py) opèrent sous une stricte isolation intra-phase :
@@ -154,5 +181,5 @@ L'algorithme d'équilibrage physique dans [`RewardWeightsCalculator`](../../src/
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

@@ -1,37 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/views/diagnostics_view.py (FIXED: Path Results using utils.paths)
-# Author: Gabriel Moraes
-# Date: December 17, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import glob
 import logging
 import os
-import sys
 import threading
 import time
 
 import flet as ft
-
-# Ensures that utils.paths can be imported
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_path = os.path.abspath(os.path.join(current_dir, "..", ".."))
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 from src.utils.paths import get_base_output_dir
 from ui.handlers.locale_manager import LocaleManager
@@ -44,8 +21,8 @@ class DiagnosticsView(ft.Column):
     """
     View responsible for system diagnostics.
 
-    ATUALIZAÇÃO: Usa get_base_output_dir() para garantir que a UI
-    olhe para a mesma pasta 'results' que o Backend.
+    UPDATE: Uses get_base_output_dir() to ensure UI
+    looks at the same 'results' folder as the Backend.
     """
 
     def __init__(self, locale_manager: LocaleManager, control_client=None):
@@ -136,8 +113,9 @@ class DiagnosticsView(ft.Column):
         self.watching = False
 
     def _watch_loop(self):
-        """Monitora APENAS o arquivo de Log e a lista de Agentes."""
+        """Monitors ONLY the Log file and the Agent list."""
         last_log_size = 0
+        last_agent_ids = []
 
         while self.watching:
             try:
@@ -152,14 +130,15 @@ class DiagnosticsView(ft.Column):
                     agent_ids = sorted(
                         [os.path.basename(f).replace("agent_", "").replace(".pth", "") for f in agent_files]
                     )
-                    if agent_ids:
+                    if agent_ids and agent_ids != last_agent_ids:
+                        last_agent_ids = agent_ids
                         self.xai_viewer.update_agent_list(agent_ids)
 
             except Exception as e:
                 err_str = str(e)
                 if "Event loop is closed" in err_str or "cannot schedule new futures" in err_str:
                     break
-                logging.error(f"[UI_DIAG] Erro no loop de logs: {e}")
+                logging.error(f"[UI_DIAG] Erro no loop de logs: {e}", exc_info=True)
                 time.sleep(2.0)
 
             time.sleep(1.0)

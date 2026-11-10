@@ -1,25 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/map_legend_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o MapLegendWidget.
+Defines the MapLegendWidget.
 """
 
 import os
@@ -32,7 +16,7 @@ from ui.handlers.locale_manager import LocaleManager
 
 class MapLegendWidget(ft.Container):
     """
-    Um painel flutuante que exibe a legenda do mapa.
+    A floating panel that displays the map legend.
     """
 
     def __init__(self, locale_manager: LocaleManager):
@@ -80,12 +64,12 @@ class MapLegendWidget(ft.Container):
         )
 
     def did_mount(self):
-        """Chamado quando o widget é montado na página."""
+        """Called when the widget is mounted on the page."""
         self.update_translations(self.locale_manager)
 
     # --- CHANGE 3: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
-        """Atualiza os textos deste widget com base no LocaleManager."""
+        """Updates the texts of this widget based on LocaleManager."""
         self.text_existing.value = lm.get_string("planning_view.legend_existing")
         self.text_add.value = lm.get_string("planning_view.legend_add")
         self.text_remove.value = lm.get_string("planning_view.legend_remove")
@@ -94,7 +78,7 @@ class MapLegendWidget(ft.Container):
 
     def _pan_update(self, e: ft.DragUpdateEvent):
         """
-        Atualiza a posição da legenda e a restringe aos limites do contêiner pai.
+        Updates the legend position and constrains it within parent container bounds.
         """
         new_left = self.left + e.delta_x
         new_top = self.top + e.delta_y

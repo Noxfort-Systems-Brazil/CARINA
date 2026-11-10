@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/intersection_state_manager.py
-# Author: Gabriel Moraes
-# Date: April 25, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Intersection State Manager
@@ -31,25 +15,12 @@ This component is responsible for:
 
 import logging
 import time
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Dict, List, Optional
 
 from src.controller.common_types import SignalState, StageDefinition
+from src.domain.entities import IntersectionState
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class IntersectionState:
-    """Runtime state for a single intersection's fixed-time cycle."""
-
-    tls_id: str
-    phases: List[StageDefinition]
-    current_phase_index: int = 0
-    current_signal_state: SignalState = field(default=SignalState.ALL_RED)
-    state_start_time: float = 0.0
-    total_phase_changes: int = 0
 
 
 class IntersectionStateManager:

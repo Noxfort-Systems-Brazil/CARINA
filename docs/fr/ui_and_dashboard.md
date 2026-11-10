@@ -140,9 +140,9 @@ Pour la surveillance sur poste de travail, CARINA restitue les véhicules d'urge
 
 - **`EVPVehicleMarker` ([`ui/widgets/evp_vehicle_marker.py`](../../ui/widgets/evp_vehicle_marker.py)) :**
   - **Glyphes par Corporation :** Restitue des silhouettes vectorielles distinctes selon la corporation du véhicule :
-    - *Police / Militaire :* Triangle Équilatéral (`POLICE`).
-    - *Ambulance / SAMU :* Croix Rouge/Blanche Symétrique (`SAMU`).
-    - *Pompiers :* Bouclier Protecteur Courbé (`FIRE`).
+    - *Ambulance / SAMU :* Triangle Équilatéral ($\Delta$, Blanc `#FFFFFF` / Rouge Alerte `#E53935`).
+    - *Pompiers / Bombeiros :* Carré ($\square$, Orange `#FF9800`/`#FF8C00` / Rouge Feu `#FF3D00`).
+    - *Police / Militaire :* Cercle ($\bigcirc$, Bleu Sombre `#1E3A8A` / Bleu Royal `#2563EB`).
   - **Animation de Gyrophare :** Lorsque `siren_active=True`, le marqueur fait pulser des anneaux stroboscopiques concentriques à $2.5\text{ Hz}$ sur le canvas, alertant les opérateurs d'une intervention d'urgence en cours.
   - **Cap Dynamique :** Oriente automatiquement la rotation du véhicule pour correspondre au cap GPS en temps réel.
 
@@ -181,7 +181,7 @@ src_tsx/src_cco/
 │   ├── api/
 │   │   └── HttpTopologyRepository.ts       # Implémentation Axios/Fetch de ITopologyRepository
 │   ├── stream/
-│   │   └── SseCcoStreamService.ts          # Client Server-Sent Events (/stream/cco) avec reconnexion
+│   │   └── SseCcoStreamService.ts          # Client Server-Sent Events (/cco/stream) avec reconnexion
 │   └── adapters/
 │       └── EChartsOptionAdapter.ts         # Adaptateur transformant modèles métier en specs ECharts
 │
@@ -257,7 +257,7 @@ Le frontend CCO est conçu pour offrir une expérience opérationnelle optimale 
 Le CCO web est servi par la **Passerelle Web Go** à très haut débit ([`src_go/web_gateway/`](../../src_go/web_gateway)) s'exécutant sur le port `2201` :
 
 - **Diffusion des Ressources Statiques :** Sert le paquet React compilé pour la production sous `/cco/` avec compression gzip et en-têtes de cache.
-- **Flux Télémétrique SSE Inférieur à 50ms :** Expose `/stream/cco`, diffusant en temps réel les transitions de phases des feux, les mises à jour de congestion et la cinématique des véhicules d'urgence sans surcoût d'interrogation répétée (*polling*).
+- **Flux Télémétrique SSE Inférieur à 50ms :** Expose `/cco/stream`, diffusant en temps réel les transitions de phases des feux, les mises à jour de congestion et la cinématique des véhicules d'urgence sans surcoût d'interrogation répétée (*polling*).
 - **Réseau Maillé Tailscale & Ingestion Distante :** S'intègre avec Tailscale Funnel pour un accès distant sécurisé par les unités de terrain et l'ingestion par webhook depuis les systèmes de régulation et répartiteurs d'appels d'urgence (CAD).
 
 ---
@@ -266,5 +266,5 @@ Le CCO web est servi par la **Passerelle Web Go** à très haut débit ([`src_go
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

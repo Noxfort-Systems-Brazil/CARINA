@@ -1,22 +1,6 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/fenix/state_reconciler.py
-# Author: Gabriel Moraes
-# Date: September 25, 2026
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 State Reconciler for CARINA F.E.N.I.X. (Option B - Clean Boundary Handover).
@@ -32,7 +16,7 @@ Enforces the industry-standard traffic engineering safety rule:
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from src.fenix.protocols import IStateReconciler
 
@@ -56,9 +40,10 @@ class StateReconciler(IStateReconciler):
     Thread-safe.
     """
 
-    def __init__(self):
+    def __init__(self, on_handover_complete: Optional[Callable[[], None]] = None):
         self._intersections: Dict[str, IntersectionSyncState] = {}
         self._lock = threading.Lock()
+        self.on_handover_complete = on_handover_complete
 
     def reconcile_with_field(self, stages: Dict[str, int]) -> None:
         """
@@ -112,6 +97,11 @@ class StateReconciler(IStateReconciler):
                     f"Transitioned from sync stage {state.target_sync_stage} -> {new_stage}. "
                     "Adaptive Neural Control UNLOCKED."
                 )
+                if all(s.is_unfrozen for s in self._intersections.values()) and self.on_handover_complete:
+                    try:
+                        self.on_handover_complete()
+                    except Exception as e:
+                        logger.error(f"[STATE RECONCILER] Error in on_handover_complete callback: {e}", exc_info=True)
                 return True
 
             return False

@@ -6,6 +6,7 @@
     "pae_without": "without PAE",
     "reasons": {
       "spillback": "High spillback risk detected (Neural)",
+      "spillback_exploratory": "Spillback intervention (Exploratory / Random exploration)",
       "neuro_passed": "Neuro-Symbolic audit passed",
       "min_yellow": "Minimum Yellow limits",
       "min_green": "Minimum Green limits",

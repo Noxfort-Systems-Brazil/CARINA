@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/benchmark.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 import platform
@@ -73,7 +57,7 @@ def run_benchmark(num_junctions, duration=60):
         [sys.executable, mock_script, str(num_junctions)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
 
-    time.sleep(2)  # Dar tempo para portas abrirem
+    time.sleep(2)  # Allow time for ports to open
 
     core_script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "carina.py"))
     print("-> Passo 2/2: Iniciando a inteligência central (CARINA CORE)...")
@@ -132,7 +116,7 @@ def run_benchmark(num_junctions, duration=60):
         print("\nBenchmark interrompido pelo usuário.")
     finally:
         print("\n\nEncerrando Motores Neurais, Interfaces e Mocks (Hardkill)...")
-        # Hardkill em todos os subprocessos para garantir que a UI não fique aberta "zumbi"
+        # Hardkill all subprocesses to ensure UI does not remain as zombie
         for proc in [core_process, mock_process]:
             try:
                 parent = psutil.Process(proc.pid)
@@ -160,28 +144,28 @@ def get_next_tier(value, tiers):
     for t in tiers:
         if value <= t:
             return t
-    return int(value) + (1 if value % 1 > 0 else 0)  # Se passar do máximo tabelado, apenas arredonda para cima
+    return int(value) + (1 if value % 1 > 0 else 0)  # If exceeding maximum tier, round up
 
 
 def gerar_relatorio(os_info, base_cores, base_ram_mb, base_vram_mb, folder_size_mb, peak_cpu_percent, num_junctions):
     os_ram_reserve_mb = 2048
 
     # =========================================================
-    # SIMULAÇÃO DE PICO MÁXIMO (WORST-CASE STRESS TEST)
-    # Garante que o hardware recomendado suportará o sistema
-    # utilizando 100% da CARINA (Infernência contínua, XAI,
-    # Watchdog e tráfego intenso em todos os semáforos ao mesmo tempo).
+    # MAXIMUM PEAK SIMULATION (WORST-CASE STRESS TEST)
+    # Ensures recommended hardware supports system running
+    # 100% of CARINA (continuous inference, XAI, Watchdog,
+    # and heavy traffic across all traffic lights simultaneously).
     # =========================================================
-    stress_ram_factor = 2.5  # O pico de tráfego inunda filas MQTT e alocações de IA
-    stress_cpu_factor = 2.0  # Múltiplas threads do Motor Simbólico trabalhando sem parar
-    stress_vram_factor = 1.8  # Aceleradores trabalhando em capacidade máxima
+    stress_ram_factor = 2.5  # Peak traffic saturates MQTT queues and AI allocations
+    stress_cpu_factor = 2.0  # Multiple Symbolic Engine threads running non-stop
+    stress_vram_factor = 1.8  # Hardware accelerators operating at maximum capacity
 
-    # Cálculos brutos convertidos para GB
+    # Raw calculations converted to GB
     ram_raw_gb = max(4096, (base_ram_mb * stress_ram_factor) + os_ram_reserve_mb + 2048) / 1024.0
     cpu_cores_raw = int(base_cores * stress_cpu_factor) + 2
     disk_raw_gb = (folder_size_mb + (10.0 * num_junctions) + 5120) / 1024.0
 
-    # Arredondamento para "Padrões de Mercado" (2, 4, 8, 16, 32...)
+    # Rounding to industry standards (2, 4, 8, 16, 32...)
     ram_recomendada = get_next_tier(ram_raw_gb, [4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256, 512])
     cpu_cores_recomendado = get_next_tier(cpu_cores_raw, [2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 48, 64, 128])
     disk_recomendado = get_next_tier(disk_raw_gb, [16, 32, 64, 128, 256, 512, 1024, 2048])
@@ -261,7 +245,7 @@ if __name__ == "__main__":
         user_input = input("Quantos semáforos (cruzamentos) deseja simular no teste base? [Padrão: 20]: ").strip()
         num_junctions = int(user_input) if user_input else 20
 
-        duracao_teste = 60  # Tempo tabelado fixado
+        duracao_teste = 60  # Fixed benchmark duration
     except ValueError:
         print("Entrada inválida. Usando valores padrão (20 cruzamentos, 60 segundos).")
         num_junctions = 20

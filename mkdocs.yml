@@ -7,7 +7,7 @@
 site_name: "CARINA — Technical Documentation"
 site_description: "Internal technical documentation for CARINA — neural brain of the Noxfort ecosystem."
 site_author: "Gabriel Moraes — Noxfort Systems"
-copyright: "Copyright &copy; 2026 — Noxfort Systems"
+copyright: "Copyright &copy; 2026 Noxfort Systems &bull; Licensed under AGPL-3.0-or-later"
 
 # Exclude conflicting GitHub folder readme from MkDocs build
 exclude_docs: |
@@ -99,6 +99,7 @@ nav:
   - Master MOC: CARINA_MOC.md
   - Architecture & Core:
     - System Architecture: ARCHITECTURE.md
+    - Emergency Preemption (EVP): EVP_AND_PREEMPTION.md
     - Synapse HFT API: API_REFERENCE.md
     - Database & Schemas: DATABASE_AND_SCHEMAS.md
     - Security & Auth: SECURITY_AND_AUTH.md
@@ -124,6 +125,7 @@ nav:
       - Hub: en/README.md
       - Master MOC: en/carina_moc.md
       - System Architecture: en/architecture.md
+      - Emergency Preemption (EVP): en/evp_and_preemption.md
       - Hardware Drivers: en/hardware_drivers.md
       - Safety & Watchdog: en/safety_and_watchdog.md
       - Synapse HFT API: en/api_reference.md
@@ -144,6 +146,7 @@ nav:
       - Central: pt-br/README.md
       - Master MOC: pt-br/carina_moc.md
       - Arquitetura do Sistema: pt-br/architecture.md
+      - Preempção de Emergência (EVP): pt-br/evp_and_preemption.md
       - Controladores de Hardware: pt-br/hardware_drivers.md
       - Segurança & Watchdog: pt-br/safety_and_watchdog.md
       - API Synapse HFT: pt-br/api_reference.md
@@ -160,10 +163,90 @@ nav:
       - Guias de Desenvolvimento: pt-br/developer_guides.md
       - Diretrizes de Testes: pt-br/testing.md
       - Implantação & Docker: pt-br/deployment_and_packaging.md
-    - 🇫🇷 Français: fr/README.md
-    - 🇪🇸 Español: es/README.md
-    - 🇷🇺 Русский: ru/README.md
-    - 🇨🇳 简体中文: zh/README.md
+    - 🇪🇸 Español:
+      - Central: es/README.md
+      - Master MOC: es/carina_moc.md
+      - Arquitectura del Sistema: es/architecture.md
+      - Preemoción de Emergencia (EVP): es/evp_and_preemption.md
+      - Controladores de Hardware: es/hardware_drivers.md
+      - Seguridad & Watchdog: es/safety_and_watchdog.md
+      - API Synapse HFT: es/api_reference.md
+      - Base de Datos & Esquemas: es/database_and_schemas.md
+      - Investigación Neural: es/research_notes.md
+      - Criterios Semafóricos MUTCD: es/traffic_engineering_warrants.md
+      - MFD & Analítica de Tráfico: es/mfd_and_analytics.md
+      - IA Explicable (XAI): es/xai_and_sas.md
+      - Motor de Informes ABNT: es/report_blocks_and_templates.md
+      - Modelos Locales (SLM): es/slm_and_local_llm.md
+      - Interfaz de Escritorio & UI: es/ui_and_dashboard.md
+      - Renderizado & Mapas de Calor: es/rendering_and_heatmaps.md
+      - Seguridad & Autenticación: es/security_and_auth.md
+      - Guías del Desarrollador: es/developer_guides.md
+      - Pruebas y Validación: es/testing.md
+      - Despliegue & Docker: es/deployment_and_packaging.md
+    - 🇫🇷 Français:
+      - Hub: fr/README.md
+      - Master MOC: fr/carina_moc.md
+      - Architecture Système: fr/architecture.md
+      - Préemption d'Urgence (EVP): fr/evp_and_preemption.md
+      - Pilotes Matériels: fr/hardware_drivers.md
+      - Sécurité & Watchdog: fr/safety_and_watchdog.md
+      - API Synapse HFT: fr/api_reference.md
+      - Base de Données & Schémas: fr/database_and_schemas.md
+      - Recherche Neurale: fr/research_notes.md
+      - Normes de Signalisation MUTCD: fr/traffic_engineering_warrants.md
+      - MFD & Analytique de Trafic: fr/mfd_and_analytics.md
+      - IA Explicable (XAI): fr/xai_and_sas.md
+      - Moteur de Rapports ABNT: fr/report_blocks_and_templates.md
+      - Petits Modèles de Langage (SLM): fr/slm_and_local_llm.md
+      - Interface Desktop & UI: fr/ui_and_dashboard.md
+      - Rendu & Cartes Thermiques: fr/rendering_and_heatmaps.md
+      - Sécurité & Authentification: fr/security_and_auth.md
+      - Guides Développeur: fr/developer_guides.md
+      - Tests & Validation: fr/testing.md
+      - Déploiement & Docker: fr/deployment_and_packaging.md
+    - 🇷🇺 Русский:
+      - Главная: ru/README.md
+      - Главный MOC: ru/carina_moc.md
+      - Архитектура системы: ru/architecture.md
+      - Приоритет спецтранспорта (EVP): ru/evp_and_preemption.md
+      - Драйверы оборудования: ru/hardware_drivers.md
+      - Безопасность и Watchdog: ru/safety_and_watchdog.md
+      - API Synapse HFT: ru/api_reference.md
+      - Базы данных и схемы: ru/database_and_schemas.md
+      - Нейронные исследования: ru/research_notes.md
+      - Светофорные критерии MUTCD: ru/traffic_engineering_warrants.md
+      - MFD и сетевая аналитика: ru/mfd_and_analytics.md
+      - Объяснимый ИИ (XAI): ru/xai_and_sas.md
+      - Генератор отчетов ABNT: ru/report_blocks_and_templates.md
+      - Локальные языковые модели (SLM): ru/slm_and_local_llm.md
+      - Десктопный интерфейс и планирование: ru/ui_and_dashboard.md
+      - Рендеринг и тепловые карты: ru/rendering_and_heatmaps.md
+      - Безопасность и аутентификация: ru/security_and_auth.md
+      - Руководство разработчика: ru/developer_guides.md
+      - Тестирование и валидация: ru/testing.md
+      - Развертывание и Docker: ru/deployment_and_packaging.md
+    - 🇨🇳 简体中文:
+      - 导航中心: zh/README.md
+      - 知识库核心 (MOC): zh/carina_moc.md
+      - 系统多进程架构: zh/architecture.md
+      - 紧急车辆优先通行 (EVP): zh/evp_and_preemption.md
+      - 硬件驱动与网关: zh/hardware_drivers.md
+      - 安全防火墙与看门狗: zh/safety_and_watchdog.md
+      - Synapse HFT 接口规范: zh/api_reference.md
+      - 数据库与增量存储: zh/database_and_schemas.md
+      - 神经网络理论与公式: zh/research_notes.md
+      - 交通工程信号设置依据 (MUTCD): zh/traffic_engineering_warrants.md
+      - 宏观基本图与网络分析 (MFD): zh/mfd_and_analytics.md
+      - 可解释性人工智能 (XAI): zh/xai_and_sas.md
+      - 司法鉴定报告引擎 (Word/OMML): zh/report_blocks_and_templates.md
+      - 本地端侧小语言模型 (SLM): zh/slm_and_local_llm.md
+      - 桌面交互界面与路网规划: zh/ui_and_dashboard.md
+      - 矢量路网渲染与热力图: zh/rendering_and_heatmaps.md
+      - 安全体系与身份鉴权: zh/security_and_auth.md
+      - 开发者集成指南: zh/developer_guides.md
+      - 自动化测试与质量保障: zh/testing.md
+      - 容器化部署与运维: zh/deployment_and_packaging.md
 
 # ==============================================================================
 # Extra CSS

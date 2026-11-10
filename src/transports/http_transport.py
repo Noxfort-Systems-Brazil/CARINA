@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/transports/http_transport.py
-# Author: Gabriel Moraes
-# Date: 2026-09-12 (SOLID Refactoring)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 MonitorHttpTransport handles resilient HTTP/HTTPS REST telemetry ingestion.
@@ -114,13 +98,8 @@ class MonitorHttpTransport(BaseMonitorTransport):
             from communication.monitor_payload import MonitorPayloadBuilder
 
             payload = MonitorPayloadBuilder.create_payload(category="", level="INFO", message="heartbeat")
-        except Exception:
-            try:
-                from src.communication.monitor_payload import MonitorPayloadBuilder
-
-                payload = MonitorPayloadBuilder.create_payload(category="", level="INFO", message="heartbeat")
-            except Exception:
-                pass
+        except (ImportError, ValueError, TypeError):
+            pass
 
         success = self.publish(topic="noxfort/telemetry/", payload=payload, timeout=3.0)
         if success:
@@ -168,7 +147,7 @@ class MonitorHttpTransport(BaseMonitorTransport):
                 return False
         except Exception as e:
             self._is_connected = False
-            logging.error(f"[{self.__class__.__name__}] Connection error sending to {self.endpoint_url}: {e}")
+            logging.error(f"[{self.__class__.__name__}] Connection error sending to {self.endpoint_url}: {e}", exc_info=True)
             return False
 
     def disconnect(self) -> None:

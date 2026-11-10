@@ -1,22 +1,6 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_fenix_recovery_policy.py
-# Author: Gabriel Moraes
-# Date: September 25, 2026
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import pytest
 
@@ -64,3 +48,34 @@ def test_recovery_policy_sliding_window_and_limits():
     assert policy.crash_count == 1
     policy.reset()
     assert policy.crash_count == 0
+
+
+def test_recovery_policy_exponential_backoff():
+    """Verifies that exponential backoff scales with crash count up to max_backoff_seconds."""
+    policy = WindowedCrashRecoveryPolicy(
+        max_consecutive_crashes=5,
+        crash_window_seconds=60.0,
+        restart_backoff_seconds=1.5,
+        exponential=True,
+        max_backoff_seconds=10.0,
+    )
+
+    # 0 crashes -> base backoff
+    assert policy.get_backoff_seconds() == 1.5
+
+    # 1 crash -> base backoff (1.5 * 2^0 = 1.5)
+    policy.record_crash(1)
+    assert policy.get_backoff_seconds() == 1.5
+
+    # 2 crashes -> 1.5 * 2^1 = 3.0s
+    policy.record_crash(1)
+    assert policy.get_backoff_seconds() == 3.0
+
+    # 3 crashes -> 1.5 * 2^2 = 6.0s
+    policy.record_crash(1)
+    assert policy.get_backoff_seconds() == 6.0
+
+    # 4 crashes -> 1.5 * 2^3 = 12.0s, capped at max_backoff_seconds (10.0s)
+    policy.record_crash(1)
+    assert policy.get_backoff_seconds() == 10.0
+

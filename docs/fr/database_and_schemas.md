@@ -115,38 +115,51 @@ CREATE INDEX idx_sfd_scen_stage_time ON synapse_fluid_dynamics (scenario_name, m
 ```
 
 ### 3.4 Table : `hardware_controller_connections`
-Stocke les spécifications de connexion des contrôleurs physiques (points de terminaison NTCIP/UTMC).
+Stocke les points de terminaison des contrôleurs physiques pour les contrôleurs NTCIP/UDP/SNMP gérés par [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py) et définis dans [`config/database/schema_queries.json`](../../config/database/schema_queries.json) :
 
 ```sql
+-- Dialecte PostgreSQL
 CREATE TABLE IF NOT EXISTS hardware_controller_connections (
-    id SERIAL PRIMARY KEY,
-    intersection_id VARCHAR(64) UNIQUE NOT NULL,
-    protocol VARCHAR(32) NOT NULL,                  -- 'NTCIP_1202', 'UTMC', 'SNMP'
-    ip_address VARCHAR(45) NOT NULL,
-    port INTEGER NOT NULL DEFAULT 161,
-    snmp_community VARCHAR(64) DEFAULT 'public',
-    timeout_seconds REAL DEFAULT 1.0,
-    retry_count INTEGER DEFAULT 3,
-    status VARCHAR(32) DEFAULT 'DISCONNECTED',
-    last_heartbeat TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    intersection_id TEXT PRIMARY KEY,
+    ip_address TEXT NOT NULL,
+    auto_connect BOOLEAN NOT NULL DEFAULT TRUE,
+    last_connected TIMESTAMP DEFAULT NOW()
+);
+
+-- Dialecte SQLite (secours embarqué)
+CREATE TABLE IF NOT EXISTS hardware_controller_connections (
+    intersection_id TEXT PRIMARY KEY,
+    ip_address TEXT NOT NULL,
+    auto_connect BOOLEAN NOT NULL DEFAULT 1,
+    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-### 3.5 Table : `users` (Niveau de Sécurité)
-Stocke les comptes opérateurs et les identifiants hachés gérés par [`src/utils/security/user_repository.py`](../../src/utils/security/user_repository.py).
+### 3.5 Isolation de la Sécurité des Utilisateurs et Persistance Relationnelle Hybride
+CARINA fournit une architecture hybride de gestion des utilisateurs conçue pour le mode hors-ligne, administrée par [`src/security/`](../../src/security) :
+- **Stockage Local Découplé (`security.json`) :** Utilisé lors des opérations en périphérie (edge) sans connectivité à une base de données relationnelle via [`JsonUserRepository`](../../src/security/json_user_repo.py).
+- **Persistance Relationnelle (`system_users` & `system_security_state`) :** Gérée par [`SqlUserRepository`](../../src/security/sql_user_repo.py) et [`SqlSecurityStateRepository`](../../src/security/sql_security_state_repo.py) sous PostgreSQL et SQLite, synchronisée via [`HybridUserRepository`](../../src/security/hybrid_user_repo.py) :
 
 ```sql
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS system_users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(64) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(32) NOT NULL DEFAULT 'OPERATOR',   -- 'ADMIN', 'ENGINEER', 'OPERATOR'
+    role VARCHAR(32) NOT NULL DEFAULT 'OPERATOR',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS system_security_state (
+    id VARCHAR(32) PRIMARY KEY,
     failed_attempts INTEGER NOT NULL DEFAULT 0,
+    is_locked BOOLEAN NOT NULL DEFAULT FALSE,
     locked_until TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
+La protection contre les attaques par force brute et les indicateurs de verrouillage sont conservés en mémoire (`MemoryAttemptStore`), enregistrés sur disque (`lockdown.flag` via [`FileLockdownManager`](../../src/security/lockdown_manager.py)) et synchronisés avec la table `system_security_state`.
 
 ### 3.6 Table : `evp_registered_fleet` (Préemption pour Véhicules d'Urgence)
 Stocke les véhicules d'urgence municipaux autorisés gérés par [`src/evp/evp_fleet_repository.py`](../../src/evp/evp_fleet_repository.py).
@@ -198,6 +211,58 @@ CREATE TABLE IF NOT EXISTS evp_denied_fleet (
 );
 ```
 
+### 3.9 Tables : `sas_analysis_cache` & `mfd_analysis_cache` (Cache Analytique)
+Accélère l'évaluation des justifications techniques (warrants) et le recalcul du Diagramme Fondamental Macroscopique au cours des cycles système :
+
+```sql
+CREATE TABLE IF NOT EXISTS sas_analysis_cache (
+    scenario_name VARCHAR(255) PRIMARY KEY,
+    metrics_cache JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS mfd_analysis_cache (
+    scenario_name VARCHAR(255) NOT NULL,
+    cache_type VARCHAR(50) NOT NULL,
+    metrics_cache JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (scenario_name, cache_type)
+);
+```
+
+### 3.10 Tables d'Exécution : `operation_sessions`, `step_decision_counters` & `topology_dictionary` (Migration 002)
+Consolidées via la migration Alembic `002_consolidate_missing_tables.py` pour le suivi des sessions d'exploitation, l'agrégation de décisions à haute fréquence et la modélisation topologique numérique du réseau :
+
+```sql
+CREATE TABLE IF NOT EXISTS operation_sessions (
+    session_id BIGSERIAL PRIMARY KEY,
+    start_time TIMESTAMP DEFAULT NOW(),
+    end_time TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'EM_OPERACAO',
+    error_message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS step_decision_counters (
+    agent_id BIGINT NOT NULL,
+    decision_code INT NOT NULL,
+    count BIGINT DEFAULT 0 NOT NULL,
+    PRIMARY KEY (agent_id, decision_code)
+);
+
+CREATE TABLE IF NOT EXISTS topology_dictionary (
+    id BIGSERIAL PRIMARY KEY,
+    element_type VARCHAR(20) NOT NULL,
+    raw_net_id VARCHAR(255) UNIQUE NOT NULL,
+    numeric_id BIGINT NOT NULL,
+    custom_name VARCHAR(255) NOT NULL,
+    from_node VARCHAR(100),
+    to_node VARCHAR(100),
+    is_bidirectional_pair BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX idx_topodict_raw ON topology_dictionary (raw_net_id);
+```
+
 ---
 
 ## 4. Banc d'Essai d'Efficacité du Stockage
@@ -212,9 +277,19 @@ CREATE TABLE IF NOT EXISTS evp_denied_fleet (
 
 ---
 
+## 5. Pool de Connexions, Cycle de Vie et Idempotence des Migrations (`src/database/`)
+
+- **`DatabaseEngineFactory` (`src/database/engine_factory.py`) :** Instancie des moteurs optimisés avec `QueuePool` sous PostgreSQL ou `NullPool` sous SQLite avec commutation thread-safe sécurisée.
+- **`DatabaseSchemaInitializer` (`src/database/schema_initializer.py`) :** Orchestre l'initialisation des schémas et applique les migrations gérées par **Alembic** (`migrations/versions/`).
+- **Idempotence DDL des Migrations :** Pour éviter les échecs critiques du type `table already exists` au démarrage sur des bases existantes, les migrations (`001_initial_schema.py` et `002_consolidate_missing_tables.py`) inspectent dynamiquement les tables à l'exécution avec `sa.inspect(op.get_bind()).get_table_names()`, ne créant que les entités et index manquants.
+- **Récupération par Marquage Automatique de Version :** Lorsqu'une base de données contient déjà des tables héritées sans historique dans `alembic_version`, `DatabaseSchemaInitializer.apply_migrations` intercepte les erreurs opérationnelles et synchronise automatiquement le pointeur de révision sur `head` (`command.stamp(alembic_cfg, "head")`), garantissant un démarrage propre du `DatabaseWorker`.
+- **Arrêt Propre (Graceful Shutdown) :** Lors de l'arrêt du processus (`SIGINT`/`SIGTERM`), le `DatabaseWorker` vide les files d'attente en mémoire RAM avant de fermer les connexions, garantissant zéro perte de données.
+
+---
+
 <div align="center">
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

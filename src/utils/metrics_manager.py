@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/utils/metrics_manager.py
-# Author: Gabriel Moraes
-# Date: December 17, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the MetricsManager, a reusable component to manage the exposure
@@ -37,13 +21,13 @@ class MetricsManager:
 
     def __init__(self, process_name: str, port: int, locale_manager=None):
         """
-        Inicializa o gerenciador de métricas para um processo.
+        Initializes the metrics manager for a process.
 
         Args:
-            process_name (str): O nome do processo (ex: 'AI_Process', 'SDS_Worker').
-                                Será usado como uma label nas métricas.
-            port (int): A porta TCP onde o servidor de métricas irá escutar.
-            locale_manager: Instância opcional de LocaleManagerBackend.
+            process_name (str): The process name (e.g., 'AI_Process', 'SDS_Worker').
+                                Will be used as a label in metrics.
+            port (int): TCP port where the metrics server will listen.
+            locale_manager: Optional instance of LocaleManagerBackend.
         """
         self.process_name = process_name
         self.port = port
@@ -128,7 +112,7 @@ class MetricsManager:
                             port=port_to_try,
                             error=e,
                         )
-                    )
+                    , exc_info=True)
 
             logging.error(
                 self._get_string(
@@ -150,17 +134,17 @@ class MetricsManager:
                     process=self.process_name,
                     error=e,
                 )
-            )
+            , exc_info=True)
 
     def register_metric(self, name: str, description: str, metric_type: str = "gauge", buckets: list = None):
         """
-        Cria e registra uma nova métrica.
+        Creates and registers a new metric.
 
         Args:
-            name (str): O nome da métrica (ex: 'queue_size').
-            description (str): Uma descrição do que a métrica representa.
-            metric_type (str): O tipo de métrica ('gauge', 'counter', 'histogram' ou 'summary').
-            buckets (list): Lista opcional de limites de buckets para Histogram.
+            name (str): Metric name (e.g., 'queue_size').
+            description (str): Description of what the metric represents.
+            metric_type (str): Metric type ('gauge', 'counter', 'histogram', or 'summary').
+            buckets (list): Optional list of bucket thresholds for Histogram.
         """
         if name in self.metrics:
             return
@@ -209,15 +193,15 @@ class MetricsManager:
                     name=name,
                     error=e,
                 )
-            )
+            , exc_info=True)
 
     def update_metric(self, name: str, value: float):
         """
-        Atualiza o valor de uma métrica registrada.
+        Updates the value of a registered metric.
 
         Args:
-            name (str): O nome da métrica a ser atualizada.
-            value (float): O novo valor para a métrica ou observação.
+            name (str): Name of the metric to update.
+            value (float): New value for the metric or observation.
         """
         if name not in self.metrics:
             return

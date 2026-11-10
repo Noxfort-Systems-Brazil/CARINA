@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/topology_loader.py
-# Author: Gabriel Moraes
-# Date: April 25, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Topology Loader
@@ -25,23 +9,15 @@ Handles loading and processing of SUMO network topology files for the fixed-time
 """
 
 import logging
-from dataclasses import dataclass
 from typing import List, Tuple
 
 from src.controller.common_types import StageDefinition
 from src.controller.stage_derivator import derive_yellow_state
 from src.controller.stage_extractor import extract_green_stages
 from src.controller.stage_validator import validate_stages
+from src.domain.value_objects import IntersectionData
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class IntersectionData:
-    """Data structure for intersection information."""
-
-    tls_id: str
-    phase_definitions: List[StageDefinition]
 
 
 class TopologyLoader:
@@ -74,12 +50,12 @@ class TopologyLoader:
         try:
             import sumolib  # type: ignore
 
-            net = sumolib.net.readNet(net_file_path, withInternal=False)
+            net = sumolib.net.readNet(net_file_path, withPrograms=True, withInternal=False)
         except ImportError:
             logger.error("[TopologyLoader] sumolib not available. Cannot load topology.")
             return [], False
         except Exception as e:
-            logger.error(f"[TopologyLoader] Failed to parse network file '{net_file_path}': {e}")
+            logger.error(f"[TopologyLoader] Failed to parse network file '{net_file_path}': {e}", exc_info=True)
             return [], False
 
         tls_list = net.getTrafficLights()

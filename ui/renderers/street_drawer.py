@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: ui/renderers/street_drawer.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from typing import Any, Callable, Dict, List, Optional
 
@@ -49,6 +41,7 @@ class StreetDrawer:
         nodes_map: Dict[str, dict],
         drawn_edges_cache: Optional[list] = None,
         selected_edge_id: Optional[str] = None,
+        node_neighbors: Optional[Dict[str, set]] = None,
     ) -> None:
         """Draws all network streets, populating caches and drawing selection halos."""
         edges_data = topology.get("edges", [])
@@ -63,6 +56,10 @@ class StreetDrawer:
 
         processed_topology = set()
         processed_bases = set()
+
+        from ui.managers.alias_manager import AliasManager
+
+        alias_mgr = AliasManager()
 
         for edge_id, edge_item in edges_items:
             if not edge_item:
@@ -95,9 +92,12 @@ class StreetDrawer:
 
                 if from_n and from_n in nodes_map:
                     fn = nodes_map[from_n]
-                    start_x, start_y = map_to_canvas(topology, fn["x"], fn["y"])
-                    points.append(cv.Path.MoveTo(start_x, start_y))
-                    canvas_pts.append((start_x, start_y))
+                    fn_type = fn.get("type")
+                    fn_neighbors = len(node_neighbors.get(from_n, set())) if node_neighbors is not None else 2
+                    if fn_type not in ("dead_end", "internal", "rail_crossing", "rail_signal") and fn_neighbors >= 2:
+                        start_x, start_y = map_to_canvas(topology, fn["x"], fn["y"])
+                        points.append(cv.Path.MoveTo(start_x, start_y))
+                        canvas_pts.append((start_x, start_y))
 
                 for i, coord in enumerate(shape_points):
                     cx, cy = map_to_canvas(topology, coord[0], coord[1])
@@ -109,16 +109,21 @@ class StreetDrawer:
 
                 if to_n and to_n in nodes_map:
                     tn = nodes_map[to_n]
-                    end_x, end_y = map_to_canvas(topology, tn["x"], tn["y"])
-                    points.append(cv.Path.LineTo(end_x, end_y))
-                    canvas_pts.append((end_x, end_y))
+                    tn_type = tn.get("type")
+                    tn_neighbors = len(node_neighbors.get(to_n, set())) if node_neighbors is not None else 2
+                    if tn_type not in ("dead_end", "internal", "rail_crossing", "rail_signal") and tn_neighbors >= 2:
+                        end_x, end_y = map_to_canvas(topology, tn["x"], tn["y"])
+                        points.append(cv.Path.LineTo(end_x, end_y))
+                        canvas_pts.append((end_x, end_y))
 
                 if drawn_edges_cache is not None:
                     edge_dict = edge_item if isinstance(edge_item, dict) else {}
+                    edge_raw_name = edge_dict.get("name")
+                    resolved_name = alias_mgr.get_alias(str(edge_id), default=edge_raw_name)
                     drawn_edges_cache.append(
                         {
                             "id": str(edge_id),
-                            "name": edge_dict.get("name", str(edge_id)),
+                            "name": resolved_name,
                             "points": canvas_pts,
                             "raw": edge_dict,
                         }

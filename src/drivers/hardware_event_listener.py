@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/drivers/hardware_event_listener.py
-# Author: Gabriel Moraes
-# Date: 2026-07-30 (Refactored 2026-09-25)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Abstract and concrete event listeners for active controller notifications (Traps, Push, Webhooks).
@@ -27,6 +11,7 @@ import logging
 import socket
 import threading
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
@@ -40,6 +25,16 @@ class BaseActiveEventListener(ABC):
     Abstract base class for active event listeners.
     Listens for asynchronous push notifications / traps from physical controllers.
     """
+
+    _incident_executor: Optional[ThreadPoolExecutor] = None
+    _executor_lock = threading.Lock()
+
+    @classmethod
+    def _get_executor(cls) -> ThreadPoolExecutor:
+        with cls._executor_lock:
+            if cls._incident_executor is None:
+                cls._incident_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="HardwareIncidentWorker")
+            return cls._incident_executor
 
     def __init__(
         self,
@@ -66,7 +61,7 @@ class BaseActiveEventListener(ABC):
     def dispatch_event(self, event_data: Dict[str, Any]) -> None:
         """
         Dispatches event payload to the UI callback (Channel 1) synchronously
-        and to the Monitor MQTT reporter (Channel 2) asynchronously via background thread.
+        and to the Monitor MQTT reporter (Channel 2) asynchronously via bounded thread pool.
         """
         try:
             intersection_id = event_data.get("intersection_id", "DESCONHECIDO")
@@ -77,9 +72,9 @@ class BaseActiveEventListener(ABC):
                 try:
                     self.on_event_callback(event_data)
                 except Exception as cb_err:
-                    logger.error(f"[BaseActiveEventListener] Error in UI event callback: {cb_err}")
+                    logger.error(f"[BaseActiveEventListener] Error in UI event callback: {cb_err}", exc_info=True)
 
-            # Channel 2: External Monitor MQTT via IncidentFilter pass-through (Asynchronous daemon thread)
+            # Channel 2: External Monitor MQTT via IncidentFilter pass-through (Bounded ThreadPool)
             if self.incident_handler:
                 target_func = self.incident_handler
             else:
@@ -87,15 +82,10 @@ class BaseActiveEventListener(ABC):
 
                 target_func = IncidentFilter.process_and_report
 
-            threading.Thread(
-                target=target_func,
-                args=(intersection_id, level, event_data),
-                daemon=True,
-                name="IncidentFilterThread",
-            ).start()
+            self.__class__._get_executor().submit(target_func, intersection_id, level, event_data)
 
         except Exception as e:
-            logger.error(f"[BaseActiveEventListener] Error dispatching event: {e}")
+            logger.error(f"[BaseActiveEventListener] Error dispatching event: {e}", exc_info=True)
 
 
 class SnmpTrapListener(BaseActiveEventListener):
@@ -122,8 +112,8 @@ class SnmpTrapListener(BaseActiveEventListener):
             from src.drivers.go_gateway_client import GoGatewayClient
 
             GoGatewayClient.get_instance().register_ui_callback(self.dispatch_event)
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("[drivers] Ignored recoverable error: %s", _exc)
 
     def start(self) -> None:
         if self.is_running:
@@ -139,8 +129,8 @@ class SnmpTrapListener(BaseActiveEventListener):
         if self._socket:
             try:
                 self._socket.close()
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("[drivers] Ignored recoverable error: %s", _exc)
             self._socket = None
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
@@ -164,8 +154,8 @@ class SnmpTrapListener(BaseActiveEventListener):
                 if self._socket:
                     try:
                         self._socket.close()
-                    except Exception:
-                        pass
+                    except Exception as _exc:
+                        logger.debug("[drivers] Ignored recoverable error: %s", _exc)
                     self._socket = None
 
         if not bound:
@@ -221,7 +211,7 @@ class SnmpTrapListener(BaseActiveEventListener):
             self.dispatch_event(event_payload)
 
         except Exception as e:
-            logger.error(f"[SnmpTrapListener] Failed to process trap from {sender_ip}: {e}")
+            logger.error(f"[SnmpTrapListener] Failed to process trap from {sender_ip}: {e}", exc_info=True)
 
     def _parse_snmp_pdu(self, raw_data: bytes) -> Dict[str, Any]:
         """Delegates PDU decoding to SnmpPduParser (SRP)."""

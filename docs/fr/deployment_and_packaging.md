@@ -17,7 +17,7 @@ CARINA coordonne les pipelines multiprocessus locaux, les contrôleurs matériel
 
 | Port | Protocole | Sous-système / Processus | Description |
 | :--- | :--- | :--- | :--- |
-| **`50051`** | TCP (gRPC) | CentralController $\leftrightarrow$ Microservices | Bus RPC interne pour les trames de télémétrie et les requêtes d'actions neuronales. |
+| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | Serveur gRPC externe haute fréquence pour simulateurs microscopiques (SUMO/CityFlow) ou ingestion de perception en périphérie. |
 | **`8080`** | TCP (WS) | Smart Dashboard Service (SDS) | Serveur WebSocket de télémétrie diffusant les données de file en direct aux clients web. |
 | **`2201`** | TCP (HTTP/SSE) | Passerelle Web Go (`src_go/web_gateway`) | Entrée principale périphérique : `POST /api/v1/evp/telemetry` (HTTP 204), `GET /cco/stream` (SSE) et tableau de bord CCO. |
 | **`8085`** | TCP (HTTP) | Récepteur EVP Autonome (`src/evp`) | Écouteur de repli pour la télémétrie GPS des véhicules d'urgence lorsque la passerelle Go est inactive. |
@@ -122,9 +122,27 @@ Pour les réseaux métropolitains distribués sans IP publique statique :
 
 ---
 
-## 6. Empaquetage & Distribution
+## 6. Empaquetage & Distribution Hermétique Debian (`.deb`)
 
-Les solutions historiques d'empaquetage PyInstaller et paquets `.deb` via `build_installer.sh` ont été dépréciées et retirées. Un pipeline moderne de distribution et d'installation entièrement conteneurisé est prévu pour les prochaines versions.
+CARINA propose un générateur hermétique multi-étapes basé sur Docker et Docker Buildx ([`scripts/build_deb.sh`](../../scripts/build_deb.sh) et [`packaging/Dockerfile.build`](../../packaging/Dockerfile.build)) :
+
+- **Étape 1 (Frontend) :** Compile l'interface cartographique web CCO en React/TypeScript en paquets de production (`node:20-bookworm-slim`).
+- **Étape 2 (Passerelle Go) :** Compile `bin/carina-go` nativement sans dépendances CGO (`golang:1.24-alpine`).
+- **Étape 3 (Environnement Virtuel Python) :** Configure un environnement isolé dans `/opt/carina/venv` avec Python 3.12, les optimisations processeur de PyTorch et l'ensemble des dépendances (`ubuntu:24.04`).
+- **Étape 4 (Empaqueteur Debian) :** Assemble les binaires, configurations, services systemd (`carina.service`) et raccourcis de bureau dans un paquet Debian autonome (`dist/carina_1.0.0_amd64.deb`).
+
+### Compilation du Paquet
+Pour compiler un paquet d'installation propre et reproductible :
+```bash
+./scripts/build_deb.sh
+```
+
+### Installation du Paquet
+```bash
+sudo dpkg -i dist/carina_1.0.0_amd64.deb
+sudo apt-get install -f  # Résout les dépendances système facultatives (SUMO, libgl1, etc.)
+```
+L'installateur configure automatiquement `/opt/carina`, enregistre le service systemd `carina` et crée le lien symbolique vers `/usr/local/bin/carina`.
 
 ---
 
@@ -132,5 +150,5 @@ Les solutions historiques d'empaquetage PyInstaller et paquets `.deb` via `build
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

@@ -1,26 +1,12 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/builders/settings_dialog_builder.py
-# Author: Gabriel Moraes
-# Date: August 10, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from typing import Any, Callable, Tuple
 
 import flet as ft
+
+from ui.dialogs.confirmation_dialog_manager import ConfirmationDialogManager
 
 
 class SettingsDialogBuilder:
@@ -46,12 +32,36 @@ class SettingsDialogBuilder:
         Returns:
             Tuple[ft.AlertDialog, Callable]: (settings_dialog, open_settings_dialog_callback)
         """
+        settings_view.page = page
+        if not getattr(settings_view, "dialog_manager", None):
+            settings_view.dialog_manager = ConfirmationDialogManager(page, locale_manager)
 
-        def close_settings_dialog(e=None):
-            if hasattr(settings_view, "discard_changes"):
-                settings_view.discard_changes()
+        def _close_immediately():
             settings_dialog.open = False
             page.update()
+
+        def _discard_and_close():
+            if not getattr(settings_view, "_is_saving", False) and hasattr(settings_view, "discard_changes"):
+                settings_view.discard_changes()
+            _close_immediately()
+
+        def close_settings_dialog(e=None):
+            if getattr(settings_view, "_is_saving", False):
+                return
+            if hasattr(settings_view, "has_unsaved_changes") and settings_view.has_unsaved_changes():
+                if settings_view.dialog_manager:
+                    settings_view.dialog_manager.show_unsaved_changes(
+                        on_save=lambda: settings_view.save_and_close(on_close=_close_immediately),
+                        on_discard=_discard_and_close,
+                        on_cancel=None,
+                    )
+                    return
+
+            _discard_and_close()
+
+        def _on_dialog_dismiss(e):
+            if not getattr(settings_view, "_is_saving", False) and hasattr(settings_view, "discard_changes"):
+                settings_view.discard_changes()
 
         settings_dialog = ft.AlertDialog(
             modal=True,
@@ -68,13 +78,13 @@ class SettingsDialogBuilder:
                 )
             ],
             actions_alignment=ft.MainAxisAlignment.END,
-            on_dismiss=lambda e: settings_view.discard_changes() if hasattr(settings_view, "discard_changes") else None,
+            on_dismiss=_on_dialog_dismiss,
         )
         page.overlay.append(settings_dialog)
 
         def open_settings_dialog(e=None):
             def _open():
-                if hasattr(settings_view, "discard_changes"):
+                if not getattr(settings_view, "_is_saving", False) and hasattr(settings_view, "discard_changes"):
                     settings_view.discard_changes()
                 settings_dialog.open = True
                 if settings_client and hasattr(settings_client, "live_data_provider"):

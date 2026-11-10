@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_engine_metrics_and_rewards.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from unittest.mock import MagicMock
 
@@ -24,10 +8,10 @@ import numpy as np
 import pytest
 import torch
 
-from engine.episode_override_manager import EpisodeOverrideManager
 from engine.input_preprocessor import InputPreprocessor
 from engine.metrics_tracker import MetricsTracker
 from engine.reward_calculator import RewardCalculator
+from manager.episode_override_manager import EpisodeOverrideManager
 
 
 @pytest.fixture
@@ -131,11 +115,18 @@ def test_episode_override_manager():
 
 
 def test_reward_computer():
-    """RewardComputer computes queue length and occupancy penalties from edge data."""
+    """RewardComputer computes queue length, occupancy, and non-linear spillback/safety penalties from edge data."""
     from engine.reward_computer import RewardComputer
 
     mock_settings = MagicMock()
-    mock_settings.getfloat.side_effect = lambda sec, key, fallback=None: -2.0 if "waiting" in key else -0.5
+    weights_map = {
+        "weight_waiting_time": -2.0,
+        "weight_occupancy": -0.5,
+        "weight_spillback": -25.0,
+        "weight_emergency_brake": -50.0,
+        "weight_teleport": -300.0,
+    }
+    mock_settings.getfloat.side_effect = lambda sec, key, fallback=None: weights_map.get(key, fallback)
 
     mock_extractor = MagicMock()
     mock_extractor.tl_lanes = {"TL_1": ["edge1_0", "edge1_1"]}
@@ -144,5 +135,56 @@ def test_reward_computer():
     edges_data = {"edge1": {"queue_length": 5, "occupancy": 0.4}}
 
     reward = computer.calculate("TL_1", edges_data)
-    # queue: 5 * -2.0 = -10.0, occupancy: 0.4 * -0.5 = -0.2 => total = -10.2
+    # queue: 5 * -2.0 = -10.0, occupancy: 0.4 * -0.5 = -0.2, spillback: 0.0 => total = -10.2
     assert reward == pytest.approx(-10.2)
+
+    # With severe spillback (occupancy = 0.90 -> excess = (0.90-0.80)/0.20 = 0.5 -> severity = 0.25) and 1 emergency brake
+    edges_data_spill = {"edge1": {"queue_length": 5, "occupancy": 0.90, "emergency_brakes": 1}}
+    reward_spill = computer.calculate("TL_1", edges_data_spill)
+    # queue: -10.0, occupancy: -0.45, spillback: 0.25 * -25.0 = -6.25, brake: -50.0 => -66.7
+    assert reward_spill == pytest.approx(-66.7)
+
+
+def test_reward_calculator_multi_objective_terms(mock_locale):
+    """RewardCalculator incorporates Max-Pressure, non-linear spillback, phase switch, emergency brakes, and teleports."""
+    import configparser
+
+    cfg = configparser.ConfigParser()
+    cfg["REWARD_WEIGHTS"] = {
+        "weight_waiting_time": "-1.0",
+        "weight_flow": "2.0",
+        "weight_queue_pressure": "-0.5",
+        "weight_spillback": "-20.0",
+        "weight_phase_switch": "-3.0",
+        "weight_emergency_brake": "-50.0",
+        "weight_teleport": "-300.0",
+    }
+
+    calc = RewardCalculator(cfg, mock_locale)
+    current_batch = {
+        "tls_controlled_lanes": {"TL_1": ["lane_1"]},
+        "lane_waiting_time": {"lane_1": 10.0},
+        "lane_vehicle_ids": {"lane_1": ["v2"]},
+        "lane_queue_length": {"lane_1": 8.0},
+        "downstream_queue_length": {"lane_1": 2.0},
+        "lane_occupancy": {"lane_1": 0.90},
+        "lane_emergency_brakes": {"lane_1": 1},
+        "tls_teleports": {"TL_1": 1},
+        "tls_phases": {"TL_1": 2},
+    }
+    last_batch = {
+        "lane_vehicle_ids": {"lane_1": ["v1", "v2"]},
+        "tls_phases": {"TL_1": 0},
+    }
+
+    rewards = calc.calculate_rewards_from_batch(["TL_1"], current_batch, last_batch)
+    breakdown = calc.get_last_reward_breakdown("TL_1")
+
+    assert breakdown["waiting_time"] == pytest.approx(-10.0)
+    assert breakdown["flow"] == pytest.approx(2.0)
+    assert breakdown["queue_pressure"] == pytest.approx(-3.0)  # (8 - 2) * -0.5
+    assert breakdown["spillback"] == pytest.approx(-5.0)  # ((0.90-0.80)/0.20)^2 * -20 = 0.25 * -20
+    assert breakdown["phase_switch"] == pytest.approx(-3.0)
+    assert breakdown["emergency_brake"] == pytest.approx(-50.0)
+    assert breakdown["teleport"] == pytest.approx(-300.0)
+    assert rewards["TL_1"] == pytest.approx(-369.0)

@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/xai/xai_worker.py
-# Author: Gabriel Moraes
-# Date: December 17, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import glob
@@ -25,7 +9,6 @@ import logging
 import os
 import re
 import subprocess
-import sys
 import time
 from typing import Any, Dict
 
@@ -111,7 +94,7 @@ class XaiWorker:
                                 if not primary_text_content and res.get("text_content"):
                                     primary_text_content = res.get("text_content")
                 except Exception as ex:
-                    logging.warning(f"[XAI_ORCHESTRATOR] Non-fatal: Could not reconstruct/analyze agent {aid}: {ex}")
+                    logging.warning(f"[XAI_ORCHESTRATOR] Non-fatal: Could not reconstruct/analyze agent {aid}: {ex}", exc_info=True)
 
             # 3. Generate Consolidated Multi-Agent XAI Report Text
             from xai.xai_report_generator import XaiReportGenerator
@@ -175,12 +158,7 @@ def run_xai_worker(settings: configparser.ConfigParser, scenario_results_dir: st
     except Exception:
         pass
 
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    src_path = os.path.join(project_root, "src")
-    if src_path not in sys.path:
-        sys.path.insert(0, src_path)
-
-    from src.utils.paths import get_base_output_dir
+    from utils.paths import get_base_output_dir
     from utils.logging_setup import setup_logging
 
     log_dir = os.path.join(get_base_output_dir(), "logs", "xai_worker")
@@ -193,6 +171,6 @@ def run_xai_worker(settings: configparser.ConfigParser, scenario_results_dir: st
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception as e:
-        logging.error(f"[XAI_WORKER] Error: {e}")
+        logging.error(f"[XAI_WORKER] Error: {e}", exc_info=True)
     finally:
         os._exit(0)

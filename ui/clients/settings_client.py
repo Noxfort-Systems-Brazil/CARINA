@@ -1,26 +1,10 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/clients/settings_client.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o SettingsClient, responsável por comunicar as alterações de
-configuração da UI para o backend.
+Defines the SettingsClient, responsible for communicating UI configuration
+changes to the backend.
 """
 
 import logging
@@ -33,29 +17,29 @@ if TYPE_CHECKING:
 
 class SettingsClient:
     """
-    Envia comandos de atualização de configurações para o backend através
-    do provedor de dados em tempo real (WebSocket).
+    Sends configuration update commands to the backend via
+    the real-time data provider (WebSocket).
     """
 
     def __init__(self, live_data_provider: "LiveDataProvider"):
         """
-        Inicializa o cliente de configurações.
+        Initializes the settings client.
 
         Args:
-            live_data_provider: A instância do LiveDataProvider que gerencia a
-                                conexão WebSocket com o backend.
+            live_data_provider: The LiveDataProvider instance that manages the
+                                WebSocket connection with the backend.
         """
         self.live_data_provider = live_data_provider
         logging.info("[SettingsClient] Cliente de configurações inicializado.")
 
     def save_settings(self, settings_payload: Dict[str, Any]):
         """
-        Cria um comando padronizado e o envia para o backend para salvar
-        as novas configurações.
+        Creates a standardized command and sends it to the backend to save
+        the new settings.
 
         Args:
-            settings_payload (Dict[str, Any]): Um dicionário contendo as
-                                               configurações a serem salvas.
+            settings_payload (Dict[str, Any]): A dictionary containing the
+                                               settings to be saved.
         """
         if not self.live_data_provider:
             logging.error("[SettingsClient] LiveDataProvider não foi fornecido. Impossível enviar configurações.")
@@ -70,11 +54,11 @@ class SettingsClient:
 
     def send_command(self, cmd_type: str, payload: Dict[str, Any]):
         """
-        Envia um comando genérico para o backend.
+        Sends a generic command to the backend.
 
         Args:
-            cmd_type (str): O tipo de comando (ex: 'set_hardware_connection').
-            payload (Dict[str, Any]): Os dados associados ao comando.
+            cmd_type (str): The command type (e.g. 'set_hardware_connection').
+            payload (Dict[str, Any]): The data associated with the command.
         """
         if not self.live_data_provider:
             logging.error(

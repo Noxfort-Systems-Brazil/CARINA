@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/builders/map_scene_builder.py
-# Author: Gabriel Moraes
-# Date: 2026-08-14
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the MapSceneBuilder.
@@ -26,6 +10,8 @@ isolating geometry transformations, element assembly, and manager wiring from UI
 """
 
 from dataclasses import dataclass
+import logging
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import flet as ft
@@ -114,8 +100,26 @@ class MapSceneBuilder:
         edge_paths = drawer.draw_initial_map(canvas, stroke_width=7.0, initial_congestion=congestion_data)
         street_interaction_handler.load_paths(edge_paths)
 
-        # 5. Assemble canvas and interactive widgets
-        stack_controls, interactive_widgets_map = controls_assembler.assemble_map_controls(drawer=drawer, canvas=canvas)
+        # 5. Assemble canvas and interactive widgets (with CartoDB basemap if present and enabled)
+        background_ctrl = None
+        try:
+            from ui.builders.map_background_builder import MapBackgroundBuilder
+
+            if MapBackgroundBuilder.ENABLED:
+                from ui.loader.map_asset_loader import MapAssetLoader
+
+                loader = MapAssetLoader()
+                basemap_path = loader.get_asset_path("maps", "basemap_positron.png")
+                if not basemap_path or not os.path.exists(basemap_path) or os.path.getsize(basemap_path) == 0:
+                    basemap_path = loader.ensure_basemap_present()
+                if basemap_path and os.path.exists(basemap_path):
+                    background_ctrl = MapBackgroundBuilder.build(basemap_path, drawer)
+        except Exception as bg_err:
+            logging.debug(f"[MapSceneBuilder] Basemap não aplicado: {bg_err}")
+
+        stack_controls, interactive_widgets_map = controls_assembler.assemble_map_controls(
+            drawer=drawer, canvas=canvas, background_control=background_ctrl
+        )
         map_stack.controls = stack_controls
 
         # 6. Create state manager and restore selection
@@ -137,6 +141,7 @@ class MapSceneBuilder:
             initial_panel_data=panel_data.copy(),
             initial_street_overrides=street_overrides,
             initial_semaphore_overrides=semaphore_overrides,
+            vehicle_markers=getattr(widget_to_update, "vehicle_markers", None),
         )
 
         # 8. Synchronize cached visuals immediately

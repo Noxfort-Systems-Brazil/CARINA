@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/handlers/alias_manager.py
-# Author: Gabriel Moraes
-# Date: 2026-06-10
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -48,11 +32,22 @@ class AliasManager:
                 shutil.copy2(old_filepath, self.filepath)
                 logging.info(f"[AliasManager] Migrated aliases.json from {old_filepath} to {self.filepath}")
             except Exception as e:
-                logging.error(f"[AliasManager] Failed to migrate aliases.json: {e}")
+                logging.error(f"[AliasManager] Failed to migrate aliases.json: {e}", exc_info=True)
 
         self.aliases = {}
+        self.default_aliases = {}
         self.load()
         self._initialized = True
+
+    def register_default_alias(self, original_id: str, default_name: str) -> None:
+        """Registers a default friendly name (e.g., from SUMO road network) without overriding user customizations."""
+        if original_id and default_name and default_name != original_id:
+            self.default_aliases[str(original_id)] = str(default_name)
+
+    def register_default_aliases(self, mapping: dict[str, str]) -> None:
+        """Registers multiple default friendly names at once."""
+        for orig_id, name in mapping.items():
+            self.register_default_alias(orig_id, name)
 
     def load(self):
         if os.path.exists(self.filepath):
@@ -60,7 +55,7 @@ class AliasManager:
                 with open(self.filepath, "r", encoding="utf-8") as f:
                     self.aliases = json.load(f)
             except Exception as e:
-                logging.error(f"[AliasManager] Erro ao carregar aliases: {e}")
+                logging.error(f"[AliasManager] Error loading aliases: {e}", exc_info=True)
                 self.aliases = {}
 
     def save(self):
@@ -69,15 +64,46 @@ class AliasManager:
             with open(self.filepath, "w", encoding="utf-8") as f:
                 json.dump(self.aliases, f, indent=4)
         except Exception as e:
-            logging.error(f"[AliasManager] Erro ao salvar aliases: {e}")
+            logging.error(f"[AliasManager] Error saving aliases: {e}", exc_info=True)
 
-    def get_alias(self, original_id: str) -> str:
-        return self.aliases.get(original_id, original_id)
+    def get_alias(self, original_id: str, default: str | None = None) -> str:
+        """
+        Returns the friendly name of the element.
+        Priority:
+        1. User-customized alias (aliases.json)
+        2. default provided by caller
+        3. Default name extracted from network mesh (default_aliases)
+        4. Intelligent lane resolution (e.g. 'Main St [Lane 0]')
+        5. Original ID
+        """
+        orig_str = str(original_id)
+        if orig_str in self.aliases:
+            return self.aliases[orig_str]
+
+        if default is not None and str(default).strip() and str(default) != orig_str:
+            return str(default)
+
+        if orig_str in self.default_aliases:
+            return self.default_aliases[orig_str]
+
+        # SUMO lane resolution (<edge_id>_<lane_index>)
+        if "_" in orig_str:
+            edge_id, _, lane_idx = orig_str.rpartition("_")
+            if lane_idx.isdigit():
+                parent_alias = self.get_alias(edge_id, default=None)
+                if parent_alias != edge_id:
+                    return f"{parent_alias} [Faixa {lane_idx}]"
+
+        return orig_str
 
     def set_alias(self, original_id: str, alias: str):
-        if alias and alias.strip():
-            self.aliases[original_id] = alias.strip()
+        orig_str = str(original_id)
+        clean_alias = alias.strip() if alias else ""
+
+        # If alias is empty or identical to mesh default, remove customization
+        if not clean_alias or clean_alias == self.default_aliases.get(orig_str):
+            if orig_str in self.aliases:
+                del self.aliases[orig_str]
         else:
-            if original_id in self.aliases:
-                del self.aliases[original_id]
+            self.aliases[orig_str] = clean_alias
         self.save()

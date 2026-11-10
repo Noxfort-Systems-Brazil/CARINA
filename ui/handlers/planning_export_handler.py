@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/handlers/planning_export_handler.py
-# Author: Gabriel Moraes
-# Date: August 13, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import base64
 import logging
@@ -48,7 +32,7 @@ class PlanningExportHandler:
                 with open(map_path, "rb") as img_file:
                     return base64.b64encode(img_file.read()).decode("utf-8")
             except Exception as ex:
-                logging.error(f"[PlanningExportHandler] Error reading map PNG: {ex}")
+                logging.error(f"[PlanningExportHandler] Error reading map PNG: {ex}", exc_info=True)
                 return ""
         return ""
 

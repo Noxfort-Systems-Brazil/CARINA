@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/integration/test_watchdog_resilience.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import queue
 import threading
@@ -45,17 +29,22 @@ def test_watchdog_lifecycle_and_failsafe_transition():
     # 2. Wait for grace period to expire
     time.sleep(0.06)
 
-    # 3. Check health with no heartbeats -> triggers failsafe
+    # 3. Check health with no heartbeats -> triggers failsafe via timer (fixed-time only, no FENIX)
     assert wd.check_system_health() is False
     assert wd.is_in_failsafe is True
     on_activate.assert_called_once()
-    on_fenix.assert_called_once()
+    on_fenix.assert_not_called()
 
     # 4. Register heartbeat -> recovers
     wd.register_heartbeat()
     assert wd.is_in_failsafe is False
     on_deactivate.assert_called_once()
     assert wd.check_system_health() is True
+
+    # 5. Verify that a DNN error DOES trigger FENIX
+    wd.trigger_dnn_error("Simulated DNN failure")
+    assert wd.is_in_failsafe is True
+    on_fenix.assert_called_once()
 
 
 @pytest.mark.integration

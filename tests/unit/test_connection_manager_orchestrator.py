@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_connection_manager_orchestrator.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from unittest.mock import MagicMock
 
@@ -112,3 +96,130 @@ def test_connection_operation_handler_shutdown_all():
     assert len(saved_ips) == 0
     mock_driver1.shutdown.assert_called_once()
     mock_driver2.shutdown.assert_called_once()
+
+
+def test_connection_operation_handler_get_string():
+    lm = MagicMock()
+    lm.get_string.return_value = "localized_msg"
+    handler = ConnectionOperationHandler({}, {}, locale_manager=lm)
+    assert handler._get_string("key") == "localized_msg"
+
+    # Fallback without locale_manager
+    handler_no_lm = ConnectionOperationHandler({}, {}, locale_manager=None)
+    assert handler_no_lm._get_string("key", default="Default {param}", param="value") == "Default value"
+    assert handler_no_lm._get_string("key", default=None) == "key"
+
+
+def test_connection_operation_handler_restore_saved_async():
+    active_conn = {}
+    saved_ips = {}
+    known_intersections = []
+    toggle_func = MagicMock()
+
+    handler = ConnectionOperationHandler(active_conn, saved_ips)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "src.controller.connection_config_repo.ConnectionConfigRepository.load_all_connections_db",
+            MagicMock(return_value={"tl_1": "10.0.0.1:161"}),
+        )
+        # Run restore
+        handler.restore_saved_connections_async(known_intersections, toggle_func)
+
+        # Allow background thread to execute
+        import time
+        time.sleep(0.1)
+
+    assert "tl_1" in saved_ips
+    assert "tl_1" in known_intersections
+
+
+def test_connection_operation_handler_connect_success_and_failure():
+    from unittest.mock import patch
+    active_conn = {}
+    saved_ips = {}
+
+    handler = ConnectionOperationHandler(active_conn, saved_ips)
+
+    # 1. No IP provided
+    with patch("src.controller.connection_config_repo.ConnectionConfigRepository.remove_connection_db") as mock_remove:
+        res = handler.toggle_connection("tl_1", ip_address=None, action="connect")
+        assert res is False
+        assert mock_remove.called
+
+    # 2. Invalid IP format
+    with patch("src.controller.connection_config_repo.ConnectionConfigRepository.remove_connection_db") as mock_remove:
+        res = handler.toggle_connection("tl_1", ip_address="invalid_ip", action="connect")
+        assert res is False
+        assert mock_remove.called
+
+    # 3. Valid IP connect success
+    mock_driver = MagicMock()
+    mock_driver.is_connected = True
+    with patch("src.controller.connection_operation_handler.TrafficLightDriver", return_value=mock_driver), \
+         patch("src.controller.connection_config_repo.ConnectionConfigRepository.save_connection_db") as mock_save:
+        res = handler.toggle_connection("tl_1", ip_address="192.168.1.10:161", action="connect")
+        assert res is True
+        assert "tl_1" in active_conn
+        assert mock_save.called
+
+    # 4. Valid IP connect failure (not connected)
+    mock_driver_fail = MagicMock()
+    mock_driver_fail.is_connected = False
+    with patch("src.controller.connection_operation_handler.TrafficLightDriver", return_value=mock_driver_fail):
+        res = handler.toggle_connection("tl_2", ip_address="192.168.1.20:161", action="connect")
+        assert res is False
+        assert "tl_2" not in active_conn
+
+
+def test_connection_operation_handler_local_simulator_autodetection():
+    from unittest.mock import patch
+    active_conn = {}
+    saved_ips = {}
+
+    handler = ConnectionOperationHandler(active_conn, saved_ips)
+
+    # Initial driver fails on standard port, but driver on candidate port 1610 succeeds
+    first_driver = MagicMock()
+    first_driver.is_connected = False
+
+    detected_driver = MagicMock()
+    detected_driver.is_connected = True
+
+    def driver_side_effect(**kwargs):
+        if kwargs.get("port") == 1610:
+            return detected_driver
+        return first_driver
+
+    with patch("src.controller.connection_operation_handler.TrafficLightDriver", side_effect=driver_side_effect), \
+         patch("src.controller.connection_config_repo.ConnectionConfigRepository.save_connection_db"):
+        res = handler.toggle_connection("tl_1", ip_address="127.0.0.1", action="connect")
+        assert res is True
+        assert saved_ips["tl_1"] == "127.0.0.1:1610"
+        assert active_conn["tl_1"] is detected_driver
+
+
+def test_connection_operation_handler_import_csv_and_bulk_connect():
+    from unittest.mock import patch
+    active_conn = {"tl_1": MagicMock()}
+    saved_ips = {}
+    known_intersections = []
+
+    handler = ConnectionOperationHandler(active_conn, saved_ips)
+
+    mock_toggle = MagicMock(side_effect=[True, False])
+    with patch(
+        "src.controller.connection_config_repo.ConnectionConfigRepository.import_csv_config",
+        return_value={"tl_1": "192.168.1.10", "tl_2": "192.168.1.20"},
+    ):
+        success, total = handler.import_csv_and_bulk_connect(
+            filepath="connections.csv",
+            known_intersections=known_intersections,
+            toggle_func=mock_toggle,
+        )
+
+    assert total == 2
+    assert success == 1
+    assert "tl_1" in known_intersections
+    assert "tl_2" in known_intersections
+

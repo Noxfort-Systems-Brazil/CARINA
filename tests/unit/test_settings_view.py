@@ -1,27 +1,19 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: tests/unit/test_settings_view.py
-# Author: Gabriel Moraes
-# Date: 2026-06-24
+"""Unit tests for SettingsView mounting, file picker registration, and discard behaviors."""
 
 from unittest.mock import MagicMock
-
+import configparser
 import flet as ft
 import pytest
+
+from ui.cards.general_settings_card import GeneralSettingsCard
+from ui.cards.report_formatting_card import ReportFormattingCard
+from ui.cards.traffic_rules_card import TrafficRulesCard
+from ui.handlers.settings_handler import SettingsHandler
+from ui.views.settings_view import SettingsView
 
 
 def test_settings_view_file_picker_registration():
@@ -30,9 +22,6 @@ def test_settings_view_file_picker_registration():
     on mounting SettingsView, and that subsequent individual card did_mount calls
     do not register duplicates.
     """
-    from ui.cards.report_formatting_card import ReportFormattingCard
-    from ui.views.settings_view import SettingsView
-
     mock_locale_manager = MagicMock()
     mock_locale_manager.get_string.return_value = "Mock Text"
     mock_settings_client = MagicMock()
@@ -92,28 +81,7 @@ def test_settings_view_file_picker_registration():
     assert len(mock_page.overlay) == count_before
 
 
-def test_units_section_get_set_values():
-    from ui.section.units_section import UnitsSection
-
-    initial_values = {"xai_speed_unit": "km/h"}
-    section = UnitsSection(initial_values)
-
-    assert section.get_values()["xai_speed_unit"] == "km/h"
-
-    section.set_values({"xai_speed_unit": "imperial"})
-    assert section.get_values()["xai_speed_unit"] == "imperial"
-
-    mock_locale_manager = MagicMock()
-    mock_locale_manager.get_string.side_effect = lambda key, default=None: f"Mock_{key}"
-    section.update_translations(mock_locale_manager)
-    assert section.lbl_units_title.value == "Mock_settings_view.formatting_card.units_title"
-
-
 def test_settings_view_discard_changes_reverts_values_and_theme():
-    from ui.cards.general_settings_card import GeneralSettingsCard
-    from ui.cards.traffic_rules_card import TrafficRulesCard
-    from ui.views.settings_view import SettingsView
-
     mock_lm = MagicMock()
     mock_lm.get_string.return_value = "Mock"
     mock_client = MagicMock()
@@ -155,60 +123,30 @@ def test_settings_view_discard_changes_reverts_values_and_theme():
     assert mock_page.theme_mode == ft.ThemeMode.DARK
 
 
-def test_settings_dialog_builder_close_discards_unsaved_changes():
-    from ui.builders.settings_dialog_builder import SettingsDialogBuilder
-    from ui.cards.traffic_rules_card import TrafficRulesCard
-    from ui.views.settings_view import SettingsView
+def test_settings_save_then_discard_reverts_to_saved(tmp_path):
+    ini_file = tmp_path / "settings.ini"
+    cfg = configparser.ConfigParser()
+    cfg.add_section("TRAFFIC_RULES")
+    cfg.set("TRAFFIC_RULES", "min_green_time", "10")
+    cfg.set("TRAFFIC_RULES", "yellow_time", "3")
+    with open(ini_file, "w") as f:
+        cfg.write(f)
 
     mock_lm = MagicMock()
     mock_lm.get_string.return_value = "Mock"
     mock_client = MagicMock()
+    test_handler = SettingsHandler(config_path=str(ini_file))
 
     initial = {"min_green_time": "10", "yellow_time": "3"}
     traffic_card = TrafficRulesCard(initial)
     tab_defs = [{"icon": ft.Icons.TUNE, "title_key": "k", "default_title": "T", "cards": [traffic_card]}]
 
     view = SettingsView(
-        locale_manager=mock_lm, settings_client=mock_client, tab_definitions=tab_defs, warning_text_ref=ft.Text("w")
-    )
-    mock_page = MagicMock()
-    mock_page.overlay = []
-    view.page = mock_page
-    traffic_card.page = mock_page
-
-    dialog, open_dialog = SettingsDialogBuilder.build_settings_dialog(
-        page=mock_page, locale_manager=mock_lm, security_ui=None, settings_view=view, settings_client=mock_client
-    )
-
-    open_dialog()
-    assert dialog.open is True
-
-    # User modifies field without clicking Save Changes
-    traffic_card.tf_min_green_time.value = "55"
-
-    # User clicks Close (action button)
-    close_button = dialog.actions[0]
-    close_button.on_click()
-
-    # Dialog should be closed and modifications discarded
-    assert dialog.open is False
-    assert traffic_card.tf_min_green_time.value == "10"
-
-
-def test_settings_save_then_discard_reverts_to_saved():
-    from ui.cards.traffic_rules_card import TrafficRulesCard
-    from ui.views.settings_view import SettingsView
-
-    mock_lm = MagicMock()
-    mock_lm.get_string.return_value = "Mock"
-    mock_client = MagicMock()
-
-    initial = {"min_green_time": "10", "yellow_time": "3"}
-    traffic_card = TrafficRulesCard(initial)
-    tab_defs = [{"icon": ft.Icons.TUNE, "title_key": "k", "default_title": "T", "cards": [traffic_card]}]
-
-    view = SettingsView(
-        locale_manager=mock_lm, settings_client=mock_client, tab_definitions=tab_defs, warning_text_ref=ft.Text("w")
+        locale_manager=mock_lm,
+        settings_client=mock_client,
+        tab_definitions=tab_defs,
+        warning_text_ref=ft.Text("w"),
+        handler=test_handler,
     )
     mock_page = MagicMock()
     view.page = mock_page

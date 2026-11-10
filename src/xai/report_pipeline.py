@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/xai/report_pipeline.py
-# Author: Gabriel Moraes
-# Date: April 15, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -122,7 +106,7 @@ class ReportPipeline:
                 else:
                     logging.warning(f"[ReportPipeline] Transducer failed. STDERR: {proc.stderr}")
             except Exception as e:
-                logging.error(f"[ReportPipeline] LLM Pipeline crashed: {e}")
+                logging.error(f"[ReportPipeline] LLM Pipeline crashed: {e}", exc_info=True)
 
         # If transducer report wasn't generated/failed, fall back to basic text report
         if not final_report_text:
@@ -146,7 +130,7 @@ class ReportPipeline:
                     continue
             return attributions
         except Exception as e:
-            logging.error(f"[ReportPipeline] Failed to parse intermediate report content: {e}")
+            logging.error(f"[ReportPipeline] Failed to parse intermediate report content: {e}", exc_info=True)
             return {}
 
     def _parse_captum_text_report(self, report_path: str) -> dict:
@@ -156,7 +140,7 @@ class ReportPipeline:
                 content = f.read()
             return self._parse_captum_text_report_content(content)
         except Exception as e:
-            logging.error(f"[ReportPipeline] Failed to read report file: {e}")
+            logging.error(f"[ReportPipeline] Failed to read report file: {e}", exc_info=True)
             return {}
 
     def _get_fallback_sorted_analysis(self) -> list:

@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: src/database/step_decision_worker.py
-# Author: Gabriel Moraes
-# Date: August 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import queue
@@ -85,7 +77,9 @@ class StepDecisionWorker:
         dec_upper = str(final_decision or "").upper()
         veto_upper = str(veto_reason or "").upper()
 
-        if dec_upper in ("APROVADA", "APPROVED", "PASS") and "SEM_VETO" in veto_upper:
+        if "EVP" in veto_upper or "PREEMPT" in veto_upper or "EMERGENCIA" in veto_upper:
+            code = 6
+        elif dec_upper in ("APROVADA", "APPROVED", "PASS") and "SEM_VETO" in veto_upper:
             code = 0
         elif "AMARELO" in veto_upper or "YELLOW" in veto_upper:
             code = 2
@@ -126,4 +120,4 @@ class StepDecisionWorker:
                     self._flush_queue_batch()
                     last_flush = now
             except Exception as e:
-                logging.error(f"[StepDecisionWorker] Error in worker loop: {e}")
+                logging.error(f"[StepDecisionWorker] Error in worker loop: {e}", exc_info=True)

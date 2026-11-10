@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: ui/formatting/report_asset_resolver.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import base64
 import logging
@@ -57,7 +49,7 @@ class ReportAssetResolver:
                             resolved_b64 = base64.b64encode(img_f.read()).decode("utf-8")
                         break
                     except Exception as e:
-                        logging.warning(f"[ReportAssetResolver] Failed to read fallback image {p}: {e}")
+                        logging.warning(f"[ReportAssetResolver] Failed to read fallback image {p}: {e}", exc_info=True)
 
         if resolved_b64 and resolved_b64.strip() != "":
             try:
@@ -65,7 +57,7 @@ class ReportAssetResolver:
                     tmp_img.write(base64.b64decode(resolved_b64))
                     tmp_img_path = tmp_img.name
             except Exception as e:
-                logging.warning(f"[ReportAssetResolver] Failed to create temp image file: {e}")
+                logging.warning(f"[ReportAssetResolver] Failed to create temp image file: {e}", exc_info=True)
 
         return resolved_b64, tmp_img_path
 

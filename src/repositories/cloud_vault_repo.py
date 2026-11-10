@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/repositories/cloud_vault_repo.py
-# Author: Gabriel Moraes
-# Date: May 31, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -87,13 +71,13 @@ class CloudVaultRepository:
                 conn.commit()
                 return True
             except Exception as e:
-                logging.error(f"[CLOUD_VAULT] Failed to insert file {filename} in vault: {e}")
+                logging.error(f"[CLOUD_VAULT] Failed to insert file {filename} in vault: {e}", exc_info=True)
                 return False
             finally:
                 if conn:
                     conn.close()
         except Exception as general_err:
-            logging.error(f"[CLOUD_VAULT] Vault File Read Error for {filepath}: {general_err}")
+            logging.error(f"[CLOUD_VAULT] Vault File Read Error for {filepath}: {general_err}", exc_info=True)
             return False
 
     def sync_all_files_to_vault(self, base_dir: str):
@@ -143,7 +127,7 @@ class CloudVaultRepository:
                 return bytes(val) if not isinstance(val, bytes) else val
             return None
         except Exception as e:
-            logging.error(f"[CLOUD_VAULT] Failed to fetch file {relative_path} from vault: {e}")
+            logging.error(f"[CLOUD_VAULT] Failed to fetch file {relative_path} from vault: {e}", exc_info=True)
             return None
         finally:
             if conn:
@@ -163,7 +147,7 @@ class CloudVaultRepository:
             logging.info(f"[CLOUD_VAULT] Restored {relative_path} from database vault to {target_filepath}")
             return True
         except Exception as e:
-            logging.error(f"[CLOUD_VAULT] Failed to write restored file {target_filepath}: {e}")
+            logging.error(f"[CLOUD_VAULT] Failed to write restored file {target_filepath}: {e}", exc_info=True)
             return False
 
     def restore_all_files_from_vault(self, base_dir: str) -> int:
@@ -189,7 +173,7 @@ class CloudVaultRepository:
             logging.info(f"[CLOUD_VAULT] Restored {restored} files from PostgreSQL database vault into {base_dir}")
             return restored
         except Exception as e:
-            logging.error(f"[CLOUD_VAULT] Error restoring all files from vault: {e}")
+            logging.error(f"[CLOUD_VAULT] Error restoring all files from vault: {e}", exc_info=True)
             return restored
         finally:
             if conn:

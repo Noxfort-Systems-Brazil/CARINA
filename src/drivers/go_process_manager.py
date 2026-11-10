@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/drivers/go_process_manager.py
-# Author: Gabriel Moraes
-# Date: 2026-09-25
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Manages the lifecycle, subprocess execution, and standard error streams of the carina-go binary.
@@ -42,6 +26,7 @@ class GoProcessManager:
         self.binary_path = binary_path
         self.process: Optional[subprocess.Popen] = None
         self._running = False
+        self._lock = threading.Lock()
         self._stderr_thread: Optional[threading.Thread] = None
         atexit.register(self.stop)
 
@@ -51,8 +36,9 @@ class GoProcessManager:
 
     def start(self) -> bool:
         """Spawns the Go binary and starts the stderr logger thread."""
-        if self.is_running():
-            return True
+        with self._lock:
+            if self.is_running():
+                return True
 
         if not os.path.exists(self.binary_path):
             logger.error(f"[GoProcessManager] Gateway binary not found at: {self.binary_path}")
@@ -80,7 +66,7 @@ class GoProcessManager:
             return True
 
         except Exception as e:
-            logger.error(f"[GoProcessManager] Failed to start Go binary: {e}")
+            logger.error(f"[GoProcessManager] Failed to start Go binary: {e}", exc_info=True)
             self.stop()
             return False
 
@@ -103,8 +89,8 @@ class GoProcessManager:
                 if self.process.stdin:
                     try:
                         self.process.stdin.close()
-                    except Exception:
-                        pass
+                    except Exception as _exc:
+                        logger.debug("[drivers] Ignored recoverable error: %s", _exc)
 
                 self.process.wait(timeout=2.0)
         except subprocess.TimeoutExpired:
@@ -112,7 +98,7 @@ class GoProcessManager:
             if self.process:
                 self.process.kill()
         except Exception as e:
-            logger.error(f"[GoProcessManager] Error during gateway termination: {e}")
+            logger.error(f"[GoProcessManager] Error during gateway termination: {e}", exc_info=True)
         finally:
             self.process = None
 
@@ -128,3 +114,11 @@ class GoProcessManager:
                     logger.info(f"[GoGateway] {line_str}")
             except Exception:
                 break
+
+        # Subprocess closed stderr; reap process to prevent zombie (<defunct>) processes
+        if self.process:
+            try:
+                self.process.poll()
+                self.process.wait(timeout=1.0)
+            except Exception as _exc:
+                logger.debug("[drivers] Ignored recoverable error: %s", _exc)

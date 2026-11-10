@@ -1,37 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/initialization_orchestrator.py (FIXED TO RECEIVE LOCALE_MANAGER)
-# Author: Gabriel Moraes
-# Date: October 5, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
 import os
-import sys
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import torch
-
-# Add 'src' directory to path to allow absolute imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -39,15 +16,15 @@ if TYPE_CHECKING:
 from communication.monitor_client import MonitorClient
 from core.childhood_analyzer import ChildhoodAnalyzer
 from core.lifecycle_manager import LifecycleManager
-from engine.asset_manager import AssetManager
 from engine.environment import SumoEnvironment
+from manager.asset_manager import AssetManager
 from utils.network_parser import build_structural_neighborhood_map
 from utils.settings_manager import SettingsManager
 
 
 class InitializationOrchestrator:
     """
-    Orquestra a sequência de SETUP do sistema, incluindo a geração dos ativos de mapa.
+    Orchestrates system SETUP sequence, including map asset generation.
     """
 
     # --- FIX 1: Constructor now receives and stores locale_manager ---
@@ -100,7 +77,7 @@ class InitializationOrchestrator:
 
         scenario_filename = os.path.basename(scenario_path)
         scenario_name, _ = os.path.splitext(scenario_filename)
-        from src.utils.paths import get_base_output_dir
+        from utils.paths import get_base_output_dir
 
         scenario_results_dir = os.path.join(get_base_output_dir(), "results", scenario_name)
 

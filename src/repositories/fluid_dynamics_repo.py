@@ -1,35 +1,19 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/repositories/fluid_dynamics_repo.py
-# Author: Gabriel Moraes
-# Date: May 31, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from src.repositories.fluid_dynamics_maintenance import FluidDynamicsMaintenance
-from src.repositories.fluid_dynamics_metrics import FluidDynamicsMetrics
-from src.repositories.fluid_dynamics_query_provider import FluidDynamicsQueryProvider
-from src.repositories.fluid_dynamics_reader import FluidDynamicsReader
-from src.repositories.fluid_dynamics_writer import FluidDynamicsWriter
+from repositories.fluid_dynamics_maintenance import FluidDynamicsMaintenance
+from repositories.fluid_dynamics_metrics import FluidDynamicsMetrics
+from repositories.fluid_dynamics_query_provider import FluidDynamicsQueryProvider
+from repositories.fluid_dynamics_reader import FluidDynamicsReader
+from repositories.fluid_dynamics_writer import FluidDynamicsWriter
 
 if TYPE_CHECKING:
-    from src.database.db_engine import DatabaseEngine
-    from src.utils.locale_manager_backend import LocaleManagerBackend
+    from database.db_engine import DatabaseEngine
+    from utils.locale_manager_backend import LocaleManagerBackend
 
 
 class FluidDynamicsRepository:
@@ -73,21 +57,6 @@ class FluidDynamicsRepository:
         self.reader = FluidDynamicsReader(engine, self.query_provider, self.SAMPLE_COLUMNS, self.AGGREGATED_COLUMNS)
         self.maintenance = FluidDynamicsMaintenance(engine, self.query_provider)
         self.metrics = FluidDynamicsMetrics(engine, self.query_provider)
-
-    # --- Backward-compatible Private Helpers Forwarding ---
-    @classmethod
-    def _load_queries(cls):
-        FluidDynamicsQueryProvider._load_queries()
-
-    def _get_query(self, query_key: str, key_suffix: str = None) -> str:
-        return self.query_provider.get_query(query_key, key_suffix)
-
-    def _get_cutoff_timestamp(self, conn, limit_seconds: int):
-        return self.query_provider.get_cutoff_timestamp(conn, limit_seconds)
-
-    @staticmethod
-    def _parse_timestamp(val) -> Optional[datetime]:
-        return FluidDynamicsQueryProvider.parse_timestamp(val)
 
     # --- Orchestrated Public API Methods ---
     def insert_synapse_fluid_dynamics(self, samples: List[Dict]):

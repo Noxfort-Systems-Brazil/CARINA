@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/rendering/heatmap_renderer.py (MODIFIED FOR TRANSLATION)
-# Author: Gabriel Moraes
-# Date: October 4, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import base64
 import io
@@ -49,13 +33,13 @@ class HeatmapRenderer:
         self, map_data: tuple, congestion_data: dict, saturation_threshold: float = 100.0
     ) -> str | None:
         """
-        Gera uma imagem de mapa com as ruas coloridas pelo nível de
-        congestionamento e a retorna como uma string Base64.
+        Generates a map image with streets colored by congestion level
+        and returns it as a Base64 string.
 
-        Esta versão inclui otimizações de desempenho:
-        - Cache de renderizações anteriores
-        - Redução da resolução para maior velocidade
-        - Simplificação do processo de renderização
+        This version includes performance optimizations:
+        - Cache of previous renders
+        - Reduced resolution for higher speed
+        - Simplified rendering pipeline
         """
         lm = self.locale_manager
 
@@ -164,28 +148,28 @@ class HeatmapRenderer:
 
     def get_precise_color_for_congestion(self, value: float, max_expected_value: float = 100.0) -> tuple:
         """
-        Converte um valor de congestão em uma tupla RGB com alta precisão.
-        Implementa uma escala de cores similar às usadas por Waze e Google Maps.
+        Converts a congestion value into an RGB tuple with high precision.
+        Implements a color scale similar to those used by Waze and Google Maps.
 
         Args:
-            value: Valor de congestão a ser convertido
-            max_expected_value: Valor máximo esperado (para normalização)
+            value: Congestion value to convert
+            max_expected_value: Maximum expected value (for normalization)
 
         Returns:
-            Tupla RGB representando a cor apropriada
+            RGB tuple representing the appropriate color
         """
         # Normalize the value between 0 and 1, considering the maximum expected value
         normalized = min(max(value / max_expected_value, 0.0), 1.0)
 
         # Color scale used by services like Waze and Google Maps:
-        # Verde escuro (tráfego livre) -> Verde -> Amarelo -> Laranja -> Vermelho -> Roxo (congestionamento extremo)
+        # Dark green (free traffic) -> Green -> Yellow -> Orange -> Red -> Purple (extreme congestion)
         color_stops = [
-            (0.0, (0, 100, 0)),  # Verde escuro - tráfego livre
-            (0.25, (0, 255, 0)),  # Verde - tráfego leve
-            (0.5, (255, 255, 0)),  # Amarelo - tráfego moderado
-            (0.7, (255, 165, 0)),  # Laranja - tráfego pesado
-            (0.85, (255, 69, 0)),  # Laranja vermelho - tráfego muito pesado
-            (1.0, (255, 0, 0)),  # Vermelho - congestionamento severo
+            (0.0, (0, 100, 0)),  # Dark green - free traffic
+            (0.25, (0, 255, 0)),  # Green - light traffic
+            (0.5, (255, 255, 0)),  # Yellow - moderate traffic
+            (0.7, (255, 165, 0)),  # Orange - heavy traffic
+            (0.85, (255, 69, 0)),  # Orange red - very heavy traffic
+            (1.0, (255, 0, 0)),  # Red - severe congestion
         ]
 
         # Find between which control points the normalized value is
@@ -211,19 +195,19 @@ class HeatmapRenderer:
 
     def get_enhanced_color_for_congestion(self, value: float, max_expected_value: float = 100.0) -> tuple:
         """
-        Converte um valor de congestão em uma tupla RGB com escala avançada.
-        Usa uma curva logarítmica para melhor representação de pequenas variações.
+        Converts a congestion value into an RGB tuple with an advanced scale.
+        Uses a logarithmic curve for improved representation of small variations.
 
         Args:
-            value: Valor de congestão a ser convertido
-            max_expected_value: Valor máximo esperado (para normalização)
+            value: Congestion value to convert
+            max_expected_value: Maximum expected value (for normalization)
 
         Returns:
-            Tupla RGB representando a cor apropriada
+            RGB tuple representing the appropriate color
         """
         import math
 
-        # Normalizar o valor
+        # Normalize value
         normalized = min(max(value / max_expected_value, 0.0), 1.0)
 
         # Apply a smoothed logarithmic transformation to highlight small variations
@@ -243,12 +227,12 @@ class HeatmapRenderer:
 
         # Now use the standardized color scale
         color_stops = [
-            (0.0, (0, 100, 0)),  # Verde escuro - tráfego livre
-            (0.25, (0, 255, 0)),  # Verde - tráfego leve
-            (0.5, (255, 255, 0)),  # Amarelo - tráfego moderado
-            (0.7, (255, 165, 0)),  # Laranja - tráfego pesado
-            (0.85, (255, 69, 0)),  # Laranja vermelho - tráfego muito pesado
-            (1.0, (255, 0, 0)),  # Vermelho - congestionamento severo
+            (0.0, (0, 100, 0)),  # Dark green - free traffic
+            (0.25, (0, 255, 0)),  # Green - light traffic
+            (0.5, (255, 255, 0)),  # Yellow - moderate traffic
+            (0.7, (255, 165, 0)),  # Orange - heavy traffic
+            (0.85, (255, 69, 0)),  # Orange red - very heavy traffic
+            (1.0, (255, 0, 0)),  # Red - severe congestion
         ]
 
         # Find between which control points the adjusted value is

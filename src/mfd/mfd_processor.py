@@ -1,27 +1,21 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/mfd/mfd_processor.py
-# Author: Gabriel Moraes
-# Date: July 03, 2026
+"""
+MFD Processor & Step Orchestrator.
 
-import json
+Handles runtime macroscopic fundamental diagram (MFD) calculations, step processing,
+and delegates database reconstruction to MFDHistoryReconstructor.
+"""
+
 import logging
-import os
 from typing import Any, Dict, Optional
+
+from mfd.mfd_db_fetcher import MFDDataFetcher
+from mfd.mfd_history_reconstructor import MFDHistoryReconstructor
+from mfd.mfd_metrics_processor import MFDMetricsProcessor
+from mfd.mfd_network_parser import MFDNetworkParser
 
 
 class MFDProcessor:
@@ -31,9 +25,18 @@ class MFDProcessor:
         self.mfd = mfd
         self.state_extractor = state_extractor
 
-    def save_mfd_history_to_disk(self) -> None:
-        """Saves MFD history to disk for the MFD Optimization Analysis worker. (No-op: database is used directly)"""
-        pass
+    def reset(self) -> None:
+        """Resets the MFD history and resets internal MFD state."""
+        if self.mfd and hasattr(self.mfd, "reset"):
+            self.mfd.reset()
+
+    def get_latest_efficiency(self) -> float:
+        """Returns the efficiency score from the latest MFD calculation."""
+        if self.mfd and hasattr(self.mfd, "get_latest"):
+            latest = self.mfd.get_latest()
+            if latest and hasattr(latest, "efficiency"):
+                return latest.efficiency
+        return 0.0
 
     def process_step(
         self, edges_data: Dict[str, Any], sim_time: float, agents_keys: list, step_counter: int, episode_steps: int
@@ -83,9 +86,8 @@ class MFDProcessor:
         mfd_snapshot = self.mfd.compute_step(edges_data, sim_time, intersections=intersection_metrics)
         mfd_data = mfd_snapshot.to_dict()
 
-        # Save history to disk at episode boundaries
+        # Log network state at episode boundaries
         if step_counter % episode_steps == 0:
-            self.save_mfd_history_to_disk()
             report = self.mfd.get_network_report()
             if report.get("status") == "OK":
                 state = report["network_state"]
@@ -98,3 +100,12 @@ class MFDProcessor:
                 )
 
         return mfd_data
+
+
+__all__ = [
+    "MFDProcessor",
+    "MFDNetworkParser",
+    "MFDDataFetcher",
+    "MFDMetricsProcessor",
+    "MFDHistoryReconstructor",
+]

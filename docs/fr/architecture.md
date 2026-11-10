@@ -29,7 +29,7 @@ graph TD
     PM --> MFD[8. Moteur MFD_Worker]
 
     CC <-->|Tube IPC| AI
-    AI -->|File g_state| WD
+    CC -->|File wd (Heartbeats)| WD
     AI -->|File db| DB
     CC -->|File sds| SDS
     CC -->|File sas| SAS
@@ -272,20 +272,24 @@ CARINA intègre **F.E.N.I.X.** (*Fault-tolerant Engine for Networked Intelligent
 CARINA structure les politiques d'apprentissage par renforcement comme un organisme en évolution soumis à un cursus de développement en 3 étapes :
 
 ```text
-  ┌──────────────────┐   Chute Entropie & Rythme    ┌──────────────────┐  Entropie & Marge Fluides (delta*)  ┌──────────────────┐
-  │   STADE ENFANT   │ ───────────────────────────> │  STADE ADOLESCENT│ ─────────────────────────────────>  │   STADE ADULTE   │
-  │   (Mode Ombre)   │                              │(Autonomie Nuit)  │                                     │(Pleine Autonomie)│
-  └────────┬─────────┘                              └────────┬─────────┘                                     └────────┬─────────┘
-           │                                                 │                                                        │
-           ▼                                                 ▼                                                        ▼
-  [Protégé du PBT]                                  [PBT Intra-Phase]                                        [PBT Intra-Phase]
-  [Observe Dynamique Fluides]                       (ADO <-> ADO uniquement)                                 (ADULTE <-> ADULTE uniq)
+  ┌──────────────────┐    Chute Entropie & Rythme      ┌──────────────────┐   Entropie & Marge Fluides (delta*)   ┌──────────────────┐
+  │   STADE ENFANT   │ ──────────────────────────────> │ STADE ADOLESCENT │ ────────────────────────────────────> │   STADE ADULTE   │
+  │   (Mode Ombre)   │                                 │(Autonomie Hors-Pk│                                       │(Pleine Autonomie)│
+  └────────┬─────────┘                                 └────────┬─────────┘                                       └────────┬─────────┘
+           │                                                    │                                                          │
+           ▼                                                    ▼                                                          ▼
+  [Protégé du PBT]                                     [PBT Intra-Phase]                                          [PBT Intra-Phase]
+  [Observe Dynamique Fluides]                          (ADO <-> ADO uniquement)                                   (ADULTE <-> ADULTE uniq)
+  [Plancher Minimal 1 Semaine]                         [Mode Ombre en Pointes]                                    [Contrôle Actif 24/7]
 ```
 
 - **`MaturityManager` (`src/maturity/maturity_manager.py`) :** Service applicatif central et façade orchestrant les évaluations de maturité des agents, appuyé par l'entité riche `AgentMaturity`, `MaturityConfig` et `MaturityPromotionService`.
 - **`PopulationManager` (`src/core/population_manager.py`) :** Exécute l'**Entraînement Basé sur la Population Intra-Phase**. Les agents clonent et mutent strictement au sein de leur cohorte de pairs (`TEEN` avec `TEEN`, `ADULT` avec `ADULT`), tandis que les agents `CHILD` restent totalement préservés. Intègre la vérification dimensionnelle des tenseurs pour empêcher les plantages sur des carrefours hétérogènes.
 - **`PromotionEvaluator` (`src/promotion/promotion_evaluator.py`) :** Vérifie rigoureusement l'entropie de Shannon de la politique, les durées minimales d'épisodes et les cibles de performance.
-- **`MaturityPacingCalculator` (`src/promotion/maturity_pacing_calculator.py`) :** Établit automatiquement le rythme des durées d'épisodes requises selon le nombre de tronçons routiers et les pas de mise à jour du réseau.
+- **`EpisodeStepCalculator` (`src/utils/episode_step_calculator.py`) :** Dimensionne dynamiquement les pas par épisode à partir de la topologie physique (unification des voies bidirectionnelles, exclusion des connecteurs internes `:` et application de la relaxation sous-linéaire $\sqrt{N}$ et $D_{\text{km}}$), calculant le plancher inviolable d'1 semaine complète ($E_{\text{semaine}}$ épisodes à $\Delta t = 250\text{ ms}$).
+- **`WeeklyCoverageTracker` (`src/core/weekly_coverage_tracker.py`) :** Suit et persiste de façon atomique la couverture des 168 heures hebdomadaires ($7\text{ jours} \times 24\text{ heures}$), assurant la résilience aux pauses et redémarrages sans perte d'historique de maturation.
+- **`ActionAuthorizer` (`src/core/action_authorizer.py`) :** Restreint le contrôle physique de l'agent `TEEN`, imposant le mode ombre pendant les heures de pointe urbaines classiques (06h30-09h00 et 17h00-19h30 les jours ouvrés) ou selon la planification de Synapse.
+- **`MaturityPacingCalculator` (`src/promotion/maturity_pacing_calculator.py`) :** Orchestre le rythme dynamique en intégrant `EpisodeStepCalculator` et en imposant le plancher de sécurité inviolable ($t_{\min} = \max(E_{\text{semaine}}, \text{configuration})$).
 - **`PerformanceMarginCalculator` (`src/promotion/performance_margin_calculator.py`) :** Calcule en continu les marges de graduation requises $\delta^* \in [3.0\%, 25.0\%]$ en exploitant la télémétrie empirique d'enfance de vitesse et d'occupation issue de `synapse_fluid_dynamics`.
 
 ---
@@ -351,5 +355,5 @@ CARINA fournit un centre d'opérations basé sur le web pour les murs d'écrans 
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

@@ -106,11 +106,74 @@ O pipeline **Dynamic Agent Safety Integrated Learning for Validated Autonomy (DA
 
 $$\mathcal{H}(\pi_\theta(\cdot | s_t)) = -\sum_{a \in \mathcal{A}} \pi_\theta(a | s_t) \log \pi_\theta(a | s_t)$$
 
-### 5.1 Critérios de Progressão Estagiada
+### 5.1 Critérios de Progressão Estagiada e Curva Dinâmica de Entropia
 
-1. **Estágio CRIANÇA (Shadow Mode):** $\mathcal{H} > 0.40$. As ações do agente rodam em modo sombra (apenas telemetria); o controlador legado opera os semáforos físicos.
-2. **Estágio ADOLESCENTE (Autonomia Restrita):** $0.15 < \mathcal{H} \le 0.40$. O agente assume o controle físico apenas em horários de baixo risco (01:00 às 04:00 da madrugada).
-3. **Estágio ADULTO (Autonomia Integral):** $\mathcal{H} \le 0.15$ e Recompensa Média $\mu_{reward} > \mu_{baseline} + 2\sigma$. Liberação total da atuação autônoma 24 horas por dia, 7 dias por semana.
+Para garantir que políticas aleatórias nunca sejam promovidas precocemente, a maturação utiliza um teto de entropia limitado pelo espaço de ações $E_{max} = \ln(|\mathcal{A}|)$ (onde $E_{max} = \ln(3) \approx 1,0986$ para 3 ações) ou pela entropia normalizada $\mathcal{H}_{norm} = \mathcal{H} / \ln(|\mathcal{A}|) \in [0, 1]$. O limiar de admissão decai dinamicamente com o tempo configurado pelo usuário ($t$ episódios) via `DynamicEntropyCalculator`:
+
+$$E(t) = E_{ideal} + (E_{max} - E_{ideal}) \cdot e^{-k \cdot t}$$
+
+Onde $E_{ideal} = 0,10$, $k = 0,05$ para a transição Criança $\to$ Adolescente e $k = 0,15$ para Adolescente $\to$ Adulto. Os critérios de progressão nominais assintóticos são:
+
+1. **Estágio CRIANÇA (Shadow Mode):** $\mathcal{H} > E_{child}(t)$ (meta nominal assintótica $\mathcal{H} > 0.40$). As ações do agente rodam em modo sombra (apenas telemetria); o controlador legado opera os semáforos físicos. Como $E(t) < \ln(3)$ para todo $t \ge 1$, um agente com escolhas ao acaso ($\mathcal{H} = \ln 3$) é estritamente impedido de progredir. Duração mínima inviolável: 1 semana completa ($E_{\text{semana}}$ episódios calculados via [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py)) para cobertura representativa das 168 faixas horárias reais.
+2. **Estágio ADOLESCENTE (Autonomia Restrita):** $E_{adult}(t) < \mathcal{H} \le E_{child}(t)$ (faixa nominal $0.15 < \mathcal{H} \le 0.40$). O agente assume o controle físico exclusivamente fora dos horários de pico (definidos pela grade do Synapse ou fallback padrão municipal); durante os picos, opera em modo sombra para segurança viária. Duração mínima inviolável: 1 semana completa ($E_{\text{semana}}$ episódios).
+3. **Estágio ADULTO (Autonomia Integral):** $\mathcal{H} \le E_{adult}(t)$ (meta nominal assintótica $\mathcal{H} \le 0.15$, atingida para $t \ge 20$ episódios com $k=0,15$) e Recompensa Média $\mu_{reward} > \mu_{baseline} + \delta^*$. Liberação total da atuação autônoma 24 horas por dia, 7 dias por semana.
+
+### 5.1.1 Dimensionamento Topológico de Passos e Pacing Semanal
+Para eliminar números mágicos e calibrar o horizonte de cada episódio com a escala física da malha urbana, o CARINA emprega o [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py):
+- **Complexidade Topológica ($C_{\text{topo}}$):** Relação entre conexões físicas reais $E_{\text{real}}$ (com unificação de sentidos bidirecionais de mão dupla e descarte de conexões internas prefixadas com `:`) e semáforos $N$, ponderada pela média de faixas de rolamento $\bar{F}$:
+  $$C_{\text{topo}} = \text{clamp}\left( \frac{E_{\text{real}}}{N} \times \left(1.0 + 0.1 \times (\bar{F} - 1.0)\right), \quad 0.8, \quad 1.6 \right)$$
+- **Relaxamento Sub-linear:** Previne a explosão de duração em grandes metrópoles escalando com a profundidade do corredor crítico ($\sqrt{N}$) e vão geográfico ($D_{\text{km}}$):
+  $$T_{\text{físico}} = 180 + \left( 60 \cdot \sqrt{N} + 30 \cdot D_{\text{km}} \right) \times C_{\text{topo}}$$
+- **Passos por Episódio ($S$):** Conversão pessimista a $\Delta t = 250\text{ ms}$ ($4\text{ passos/segundo}$), arredondado para cima na base 10 em múltiplos de 100 e delimitado entre 2,5 minutos ($600\text{ passos}$) e 1 hora ($14.400\text{ passos}$):
+  $$S = \text{clamp}\left( \left\lceil \frac{T_{\text{físico}} / 0.25}{100} \right\rceil \times 100, \quad 600, \quad 14400 \right)$$
+- **Piso Inviolável de 1 Semana:** Garante a quantidade mínima de episódios para cobrir $604.800\text{ segundos}$ ($7\text{ dias}$):
+  $$E_{\text{semana}} = \left\lceil \frac{604800}{S \times 0.25} \right\rceil$$
+
+### 5.1.2 Rastreamento de Cobertura Semanal e Resiliência a Reinicializações
+Para garantir que o agente experimente todas as condições viárias reais (dias úteis, madrugadas, picos e finais de semana) antes de qualquer promoção, o [`WeeklyCoverageTracker`](../../src/core/weekly_coverage_tracker.py) opera em conjunto com o [`ActionAuthorizer`](../../src/core/action_authorizer.py):
+- **Matriz de 168 Slots de Calendário:** Mapeia exatamente as 168 horas semanais ($7\text{ dias} \times 24\text{ horas}$). Cada passo com timestamp real (`datetime.fromtimestamp(raw_timestamp)`) registra a presença do agente na célula `(dia_da_semana, hora)`.
+- **Persistência Atômica:** O progresso da matriz de cobertura é persistido atomicamente em disco (`weekly_coverage_CHILD.json` e `weekly_coverage_TEEN.json`), permitindo pausas, manutenções e reinicializações de processos sem perda de histórico.
+- **Gating de Pico Clássico e Synapse:** O estágio `TEEN` atua fisicamente apenas fora do pico. Caso o Synapse não envie a grade dinâmica `peak_schedule.json`, o CARINA adota a engenharia de tráfego clássica:
+  - *Segunda a Sexta:* Picos das **06:30 às 09:00** e das **17:00 às 19:30** (Modo Sombra obrigatório).
+  - *Finais de Semana:* Fora de pico (Modo Ativo liberado para consolidação).
+- **Avaliação Macro / Holística:** A progressão avalia a integral semanal ($\mu_{\text{semana}} \ge \mu_{\text{baseline}} + \delta^*$), impedindo que anomalias isoladas em um único dia (como tempestades severas ou feriados atípicos) reprovem uma política robusta.
+
+### 5.1.3 Invariantes Invioláveis de Segurança
+Para proteger a infraestrutura crítica urbana contra configurações imprudentes de operadores, os critérios de maturação implementam invariantes invioláveis:
+- **Piso de Tempo Inviolável:** O operador pode aumentar o tempo de observação, mas nunca reduzi-lo abaixo do piso semanal:
+  $$t_{\min} = \max(E_{\text{semana}}, \text{configuração\_do\_operador})$$
+- **Teto de Certeza (Entropia):** O operador pode exigir maior rigor (menor entropia), mas nunca afrouxar o critério para aceitar políticas caóticas:
+  $$\text{limiar\_admissão} = \min(E_{\text{calculado}}(t), E_{\text{manual\_operador}})$$
+
+### 5.2 Algoritmo PBT Intra-Fase
+Para preservar a integridade biológica e desenvolvimental das populações de agentes, a evolução genética do [`PopulationManager`](../../src/core/population_manager.py) opera com estrito isolamento por coorte:
+- **Agrupamento por Coortes:** Os agentes competem, clonam pesos neurais e sofrem mutação apenas entre seus pares geracionais ($\text{TEEN} \leftrightarrow \text{TEEN}$, $\text{ADULT} \leftrightarrow \text{ADULT}$).
+- **Blindagem da Infância:** Agentes na fase `CHILD` ficam isentos de mutações evolutivas e PBT. Seus cérebros observam passivamente a dinâmica física da malha sem perturbação de gradientes ou contaminação cruzada.
+- **Segurança de Tensores em Malhas Heterogêneas:** A transferência de pesos entre cruzamentos com diferentes geometrias e números de fases é protegida contra incompatibilidades de dimensões de tensores com validação em tempo de execução.
+
+### 5.3 Margem Dinâmica de Performance para Graduação ($\delta^*$)
+Em vez de margens fixas estáticas arbitradas manualmente, a margem de melhoria exigida para promoção de `TEEN` para `ADULT` é calculada continuamente a partir da fluidodinâmica empírica observada durante a infância:
+
+$$\delta^* = K \times \left(1 - \frac{\bar{v}_{\text{infância}}}{v_{\text{limite}}}\right) \times (1 - \text{occupancy}_{\text{infância}}) \times 100\%$$
+
+Onde:
+- $\left(1 - \frac{\bar{v}_{\text{infância}}}{v_{\text{limite}}}\right)$ mede a ineficiência herdada dos planos semafóricos legados ou tempos fixos.
+- $(1 - \text{occupancy}_{\text{infância}})$ representa a folga física de espaço viário não saturado.
+- $K = 0.25$ alinha a meta com a literatura internacional de sistemas adaptativos consolidados (SCATS / SCOOT: $10\%\text{--}15\%$).
+- $\delta^*$ é delimitado entre $[3.0\%, 25.0\%]$ para evitar metas matematicamente inatingíveis em malhas saturadas ou graduações precipitadas em vias sem demanda.
+
+### 5.4 Balanceamento Físico de Pesos de Recompensa (HCM)
+O CARINA equilibra a função de recompensa multiobjetivo para eliminar o abismo de grandezas entre a penalidade de atraso e o incentivo de vazão:
+
+$$R(t) = w_{\text{wait}} \times T_{\text{wait}}(t) + w_{\text{flow}} \times F_{\text{escoado}}(t)$$
+
+Pela engenharia de tráfego (Highway Capacity Manual - HCM), 1 veículo escoado economiza o tempo livre de travessia característico da via:
+
+$$\tau = \frac{\bar{L}_{\text{vias}}}{\bar{v}_{\text{limite}}}$$
+
+O [`RewardWeightsCalculator`](../../src/engine/reward_weights_calculator.py) calibra automaticamente:
+- $w_{\text{wait}} = -1.0$ (penalidade normalizada por segundo de fila).
+- $w_{\text{flow}} = \text{clamp}(2.0, 25.0, \text{round}(\tau \times \alpha, 2))$, garantindo que descarregar frentes de veículos tenha a mesma força no gradiente de treinamento que o alívio das filas.
 
 ---
 

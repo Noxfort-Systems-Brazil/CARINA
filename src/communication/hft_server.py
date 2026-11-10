@@ -1,47 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/communication/hft_server.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
-
-# SYNAPSE - A Gateway of Intelligent Perception for Traffic Management
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# File: src/communication/hft_server.py
-# Author: Gabriel Moraes
-# Date: 2026-02-20
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
-import os
 import queue
-import sys
 import threading
 import time
 from datetime import datetime
@@ -51,13 +13,6 @@ from src.communication.hft_diagnostics import HFTDiagnostics
 from src.communication.hft_session_manager import HFTSessionManager
 from src.communication.hft_worker import HFTWorker
 
-# Ensure project root and proto paths are in sys.path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
-proto_path = os.path.join(project_root, "proto")
-
-if proto_path not in sys.path:
-    sys.path.insert(0, proto_path)
 
 # Import generated gRPC modules
 try:
@@ -198,7 +153,7 @@ class CarinaHFTImpl(pb2_grpc.HFTLinkServicer):  # type: ignore
             try:
                 self.controller.start_ai_session()
             except Exception as session_err:
-                logging.warning(f"[HFT] Could not start AI session on stream arrival: {session_err}")
+                logging.warning(f"[HFT] Could not start AI session on stream arrival: {session_err}", exc_info=True)
 
         try:
             for frame in request_iterator:
@@ -216,7 +171,7 @@ class CarinaHFTImpl(pb2_grpc.HFTLinkServicer):  # type: ignore
                         self._get_string(
                             "hft_server.heartbeat_error", default="[HFT] Failed to send Heartbeat: {error}", error=e
                         )
-                    )
+                    , exc_info=True)
 
                 # ── 2. RECV DELTA CALCULATION & LOGGING ──
                 if msg_counter > 1 and last_recv_time > 0:
@@ -233,7 +188,7 @@ class CarinaHFTImpl(pb2_grpc.HFTLinkServicer):  # type: ignore
         except Exception as e:
             logging.error(
                 self._get_string("hft_server.stream_error", default="[HFT] Error in traffic stream: {error}", error=e)
-            )
+            , exc_info=True)
             print(
                 self._get_string(
                     "hft_server.connection_lost", default="❌ [HFT] Stream Connection Lost: {error}", error=e

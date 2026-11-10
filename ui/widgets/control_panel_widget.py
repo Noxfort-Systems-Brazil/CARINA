@@ -1,25 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/control_panel_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o widget do Painel de Controle.
+Defines the Control Panel widget.
 """
 
 from typing import Callable, Dict
@@ -39,7 +23,7 @@ from ui.widgets.street_info_widget import StreetInfoWidget
 
 class ControlPanelWidget(ft.Container):
     """
-    O widget que organiza os painéis de controle global e específico.
+    Widget that organizes the global and specific control panels.
     """
 
     def __init__(
@@ -85,7 +69,7 @@ class ControlPanelWidget(ft.Container):
         )
 
     def update_translations(self, lm: LocaleManager):
-        """Comanda os widgets filhos a se atualizarem com o novo idioma."""
+        """Commands child widgets to update to the new locale."""
         self.global_controls.update_translations(lm)
         self.specific_controls.update_translations(lm)
         self.street_info.update_translations(lm)

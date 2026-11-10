@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/providers/live_data_provider.py (Pure In-Memory IPC / Zero-Port Edition)
-# Author: Gabriel Moraes
-# Date: 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the LiveDataProvider using multiprocessing.Queue for 100% in-memory IPC.
@@ -97,7 +81,7 @@ class LiveDataProvider:
                     logging.info("[LiveDataProvider] Re-dispatching cached map geometry to new/restored UI view.")
                     self.on_data_received(LiveDataProvider.CACHED_INITIAL_GEOMETRY)
                 except Exception as ex:
-                    logging.warning(f"[LiveDataProvider] Error dispatching cached geometry: {ex}")
+                    logging.warning(f"[LiveDataProvider] Error dispatching cached geometry: {ex}", exc_info=True)
 
             self._thread = threading.Thread(target=self._listen_loop, name="LiveDataProviderIPCThread", daemon=True)
             self._thread.start()
@@ -171,7 +155,7 @@ class LiveDataProvider:
                 q.put(command)
                 logging.debug(f"[LiveDataProvider] Command dispatched to ui_command_queue: {command.get('type')}")
             except Exception as e:
-                logging.warning(f"[LiveDataProvider] Failed to put command into queue: {e}")
+                logging.warning(f"[LiveDataProvider] Failed to put command into queue: {e}", exc_info=True)
         else:
             logging.warning(
                 f"[LiveDataProvider] Attempting to send command '{command.get('type')}' without an active ui_command_queue."

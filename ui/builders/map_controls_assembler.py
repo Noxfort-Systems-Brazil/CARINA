@@ -1,24 +1,8 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: ui/builders/map_controls_assembler.py
-# Author: Gabriel Moraes
-# Date: October 1, 2025
-
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import flet as ft
 import flet.canvas as cv
@@ -33,7 +17,7 @@ class MapControlsAssembler:
     """
 
     def assemble_map_controls(
-        self, drawer: MapDrawerProtocol, canvas: cv.Canvas
+        self, drawer: MapDrawerProtocol, canvas: cv.Canvas, background_control: Optional[ft.Control] = None
     ) -> Tuple[List[ft.Control], Dict[str, Any]]:
         """
         Creates control instances using the element factory and returns them as a Stack-ready list.
@@ -52,7 +36,10 @@ class MapControlsAssembler:
                     if hasattr(widget, "apply_telemetry"):
                         interactive_widgets_map[node_id] = widget
 
-        stack_controls = [canvas]
+        stack_controls = []
+        if background_control:
+            stack_controls.append(background_control)
+        stack_controls.append(canvas)
         stack_controls.extend(widgets_list)
 
         return stack_controls, interactive_widgets_map

@@ -38,6 +38,8 @@ carina_incident_filter_debug.log
 coverage/
 htmlcov/
 .coverage
+coverage.json
+site/
 
 # OS specific
 .DS_Store
@@ -120,3 +122,19 @@ Model_Vault/
 
 # Local templates / files
 cabecalho.txt
+
+# Video recordings & captures
+recordings/
+demo/recordings/
+*.mp4
+*.webm
+
+# Local runtime databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+carina.db
+

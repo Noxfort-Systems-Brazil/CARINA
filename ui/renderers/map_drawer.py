@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/renderers/map_drawer.py
-# Author: Gabriel Moraes
-# Date: September 23, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the MapDrawer class.
@@ -89,6 +73,35 @@ class MapDrawer:
 
         return canvas_x, canvas_y
 
+    def _is_intersection_node(
+        self,
+        node_id: Optional[str],
+        node_neighbors: Dict[str, set],
+        incoming_edges: Dict[str, list],
+        outgoing_edges: Dict[str, list],
+        is_origin: bool = False,
+        is_destination: bool = False,
+    ) -> bool:
+        """
+        Determines whether a node is an actual intersection where
+        connecting streets should converge to the center point.
+        Dead ends (extremities, single-neighbor nodes, and dead_end types) are excluded.
+        """
+        if not node_id or node_id not in self.nodes:
+            return False
+        node_data = self.nodes[node_id]
+        n_type = node_data.get("type")
+        if n_type in ("dead_end", "internal", "rail_crossing", "rail_signal"):
+            return False
+        unique_neighbors = len(node_neighbors.get(node_id, set()))
+        if unique_neighbors <= 1:
+            return False
+        if is_origin and len(incoming_edges.get(node_id, [])) == 0:
+            return False
+        if is_destination and len(outgoing_edges.get(node_id, [])) == 0:
+            return False
+        return True
+
     def draw_initial_map(
         self, canvas: cv.Canvas, stroke_width: float = 5.0, initial_congestion: Optional[Dict[str, Any]] = None
     ) -> Dict[str, cv.Path]:
@@ -106,6 +119,23 @@ class MapDrawer:
         edge_paths = {}
         processed_bases = {}
         processed_topology = {}
+
+        # Count unique neighbor nodes and incoming/outgoing edges to identify dead ends and intersections
+        node_neighbors: Dict[str, set] = {}
+        incoming_edges: Dict[str, list] = {}
+        outgoing_edges: Dict[str, list] = {}
+        for edge in self.edges:
+            f = edge.get("from")
+            t = edge.get("to")
+            if f and t and f != t:
+                if f not in node_neighbors:
+                    node_neighbors[f] = set()
+                if t not in node_neighbors:
+                    node_neighbors[t] = set()
+                node_neighbors[f].add(t)
+                node_neighbors[t].add(f)
+                outgoing_edges.setdefault(f, []).append(edge)
+                incoming_edges.setdefault(t, []).append(edge)
 
         # First, draw the streets
         for edge in self.edges:
@@ -131,8 +161,8 @@ class MapDrawer:
 
             path_points = []
 
-            # Extend to from_node center if available
-            if from_n and from_n in self.nodes:
+            # Extend to from_node center ONLY if it is an intersection (not a dead end / extremity)
+            if self._is_intersection_node(from_n, node_neighbors, incoming_edges, outgoing_edges, is_origin=True):
                 fn = self.nodes[from_n]
                 tx, ty = self.transform_point(fn["x"], fn["y"])
                 path_points.append(cv.Path.MoveTo(tx, ty))
@@ -144,8 +174,8 @@ class MapDrawer:
                 else:
                     path_points.append(cv.Path.LineTo(tx, ty))
 
-            # Extend to to_node center if available
-            if to_n and to_n in self.nodes:
+            # Extend to to_node center ONLY if it is an intersection (not a dead end / extremity)
+            if self._is_intersection_node(to_n, node_neighbors, incoming_edges, outgoing_edges, is_destination=True):
                 tn = self.nodes[to_n]
                 tx, ty = self.transform_point(tn["x"], tn["y"])
                 path_points.append(cv.Path.LineTo(tx, ty))
@@ -203,28 +233,14 @@ class MapDrawer:
 
             edge_paths[edge_id] = path_object
 
-        # Count unique neighbor nodes to identify extremity/dead-end nodes
-        node_neighbors = {}
-        for edge in self.edges:
-            f = edge.get("from")
-            t = edge.get("to")
-            if f and t and f != t:
-                if f not in node_neighbors:
-                    node_neighbors[f] = set()
-                if t not in node_neighbors:
-                    node_neighbors[t] = set()
-                node_neighbors[f].add(t)
-                node_neighbors[t].add(f)
-
-        # Then, draw the nodes (intersections) above the streets
+        # Draw the nodes (intersections) above the streets - only for genuine priority intersections
         for node_id, node_data in self.nodes.items():
             n_type = node_data.get("type")
-            unique_neighbors = len(node_neighbors.get(node_id, set()))
-
-            # Skip traffic lights, dead ends, internal nodes, and extremity nodes (unique neighbors <= 1)
             if (
-                n_type not in ("traffic_light", "dead_end", "internal", "rail_crossing", "rail_signal")
-                and unique_neighbors >= 2
+                n_type != "traffic_light"
+                and self._is_intersection_node(node_id, node_neighbors, incoming_edges, outgoing_edges)
+                and len(incoming_edges.get(node_id, [])) > 0
+                and len(outgoing_edges.get(node_id, [])) > 0
             ):
                 tx, ty = self.transform_point(node_data["x"], node_data["y"])
 

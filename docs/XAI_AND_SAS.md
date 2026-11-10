@@ -41,8 +41,8 @@ $$\mathbf{y}(t) = (x *_d f)(t) = \sum_{i=0}^{k-1} f(i) \cdot x(t - d \cdot i)$$
 ### 2.2 Spatiotemporal Graph Attention (ST-GATv2 Lite)
 $$\alpha_{ij}(t) = \frac{\exp\left(\mathbf{a}^T \text{LeakyReLU}\left(\mathbf{W} [\mathbf{h}_i \parallel \mathbf{h}_j]\right)\right)}{\sum_{k \in \mathcal{N}_i} \exp\left(\mathbf{a}^T \text{LeakyReLU}\left(\mathbf{W} [\mathbf{h}_i \parallel \mathbf{h}_k]\right)\right)}$$
 
-### 2.3 Multimodal Cross-Attention Fusion (Transformer)
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k} \cdot \tau}\right) V$$
+### 2.3 Predictive Autoencoder Formulation (PAE)
+$$\mathcal{L}_{\text{PAE}}(\phi, \theta) = \frac{1}{N} \sum_{k=1}^N \| x_k(t + \Delta t) - g_\theta(f_\phi(x_k(t))) \|^2$$
 
 ### 2.4 Guardian Safety Dueling Q-Value (D3QN Veto)
 $$Q(s, a) = V(s) + \left( A(s, a) - \frac{1}{|\mathcal{A}|} \sum_{a'} A(s, a') \right)$$
@@ -72,5 +72,5 @@ For offline natural language justification synthesis, see [Small Language Models
   <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3 or later (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

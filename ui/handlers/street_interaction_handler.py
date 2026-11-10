@@ -1,28 +1,12 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/handlers/street_interaction_handler.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o StreetInteractionHandler.
+Defines the StreetInteractionHandler.
 
-Esta versão foi atualizada para aceitar coordenadas x, y pré-traduzidas,
-desacoplando-o da lógica de transformação de pan e zoom do widget pai.
+This version was updated to accept pre-translated x, y coordinates,
+decoupling it from the pan and zoom transformation logic of the parent widget.
 """
 
 import math
@@ -34,7 +18,7 @@ import flet.canvas as cv
 
 class StreetInteractionHandler:
     """
-    Gerencia a lógica de clique e seleção para as ruas no canvas.
+    Manages click and selection logic for streets on the canvas.
     """
 
     def __init__(self, on_street_selected: Callable[[str | None], None]):
@@ -55,13 +39,13 @@ class StreetInteractionHandler:
 
     def find_closest_edge(self, click_x: float, click_y: float) -> tuple[str | None, float]:
         """
-        Encontra a rua mais próxima do ponto de clique e a respectiva distância euclidiana.
+        Finds the closest street to the click point and its Euclidean distance.
         """
         return self._find_closest_edge(click_x, click_y)
 
     def select_edge(self, edge_id: str | None):
         """
-        Atualiza a seleção de rua, alternando (deselecionando) se clicada a mesma rua.
+        Updates the street selection, toggling (deselecting) if the same street is clicked.
         """
         newly_selected_id = None
         if edge_id:
@@ -74,8 +58,8 @@ class StreetInteractionHandler:
 
     def handle_click(self, click_x: float, click_y: float, current_scale: float):
         """
-        Processa um clique no mapa usando coordenadas já traduzidas para o
-        espaço do mapa.
+        Processes a click on the map using coordinates already translated
+        into map space.
         """
         effective_scale = current_scale if current_scale > 0 else 1.0
         dynamic_threshold = self.base_hit_threshold / effective_scale

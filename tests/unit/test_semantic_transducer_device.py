@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_semantic_transducer_device.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 from unittest.mock import MagicMock, patch
@@ -57,7 +41,7 @@ def test_transducer_device_init_insufficient_vram(mock_mem, mock_cuda):
 
 
 @patch("torch.cuda.is_available", return_value=True)
-@patch("torch.cuda.mem_get_info", side_effect=Exception("Driver error"), create=True)
+@patch("torch.cuda.mem_get_info", side_effect=RuntimeError("Driver error"), create=True)
 def test_transducer_device_init_vram_error(mock_mem, mock_cuda):
     transducer = SemanticTransducer(model_path="dummy_path.gguf")
     # Should fallback to gpu / -1 layers as best effort
@@ -93,7 +77,7 @@ def test_transducer_load_resources_gpu_fallback(mock_mem, mock_cuda, mock_exists
     mock_llama = mock_llama_cpp_module.Llama
     mock_llama.reset_mock()
     # Make GPU load raise an exception, fallback to CPU
-    mock_llama.side_effect = [Exception("CUDA error"), MagicMock()]
+    mock_llama.side_effect = [RuntimeError("CUDA error"), MagicMock()]
     transducer = SemanticTransducer(model_path="dummy_path.gguf")
     transducer.load_resources()
     assert mock_llama.call_count == 2

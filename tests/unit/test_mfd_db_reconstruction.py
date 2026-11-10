@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: tests/unit/test_mfd_db_reconstruction.py
-# Author: Gabriel Moraes
-# Date: July 10, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import sys
 from unittest.mock import MagicMock, patch
@@ -19,7 +11,7 @@ mock_captum_attr.IntegratedGradients = MagicMock()
 sys.modules["captum"] = MagicMock()
 sys.modules["captum.attr"] = mock_captum_attr
 
-from mfd.mfd_history_reconstructor import MFDHistoryReconstructor
+from mfd.mfd_processor import MFDHistoryReconstructor
 from mfd.mfd_worker import MFDOrchestrator
 
 

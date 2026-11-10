@@ -1,171 +1,44 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/models/d3qn_tcn.py
-# Author: Gabriel Moraes
-# Date: April 14, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Dueling Double DQN (D3QN) with self-contained Temporal Convolutional Network (TCN) backbone
-and PAE latent space fusion.
+Distributional Dueling Double DQN (QR-D3QN) with Unified Causal TCN Backbone,
+Temporal Attention Pooling, and Universal PAE Latent Fusion.
 
-This module is fully independent — it does NOT import from actor_critic_tcn.py.
-The TCN classes (Chomp1d, TemporalBlock, TemporalConvNet) are internalized here
-to eliminate coupling between the DQN (Guardian) and PPO (Local) paradigms.
-
-Architecture:
-    1. TCN Backbone: Processes the temporal state sequence to capture
-       flow patterns and temporal trends (causal dilation).
-
-    2. PAE Latent Fusion: Receives the latent vector from the shared Universal PAE,
-       which encodes the spillback projection (risk of overflow).
-
-    3. Dueling Architecture: Separates the estimation of state value V(s) and
-       advantage of each action A(s,a), leading to more stable Q-values.
-
-Flow: sequence -> TCN -> temporal_features --+
-       PAE encode -> latent_vector -----------+
-                                              +-> Fusion -> Advantage Stream -> Q(s,a)
-                                              +-> Fusion -> Value Stream ------>
+Designed for CARINA's Neuro-Symbolic Guardian Agent:
+- Models the full return distribution over `num_quantiles` (default 32) per binary
+  safety action (`0 = KEEP_STAGE`, `1 = CHANGE_STAGE`), enabling tail-risk CVaR
+  spillback protection in `GuardianNeuralPredictor`.
+- `forward()` returns the expectation `q_quantiles.mean(dim=-1)` `[B, n_actions]`
+  for 100% drop-in compatibility with standard Q-value callers.
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
-from torch.nn.utils import weight_norm
+import torch.nn.functional as F
 
-# =============================================================================
-# Temporal Convolutional Network (TCN) — Self-contained Implementation
-# =============================================================================
+from src.models.tcn_backbone import (
+    Chomp1d,
+    TemporalAttentionPool,
+    TemporalBlock,
+    TemporalConvNet,
+    align_tcn_input_channels,
+    init_orthogonal,
+)
 
-
-class Chomp1d(nn.Module):
-    """
-    Removes extra right padding to ensure causality.
-    This ensures that the output at t depends only on inputs t, t-1, ...
-    """
-
-    def __init__(self, chomp_size: int) -> None:
-        super(Chomp1d, self).__init__()
-        self.chomp_size = chomp_size
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x[:, :, : -self.chomp_size].contiguous()
-
-
-class TemporalBlock(nn.Module):
-    """
-    A standard TCN residual block consisting of two dilated convolutions,
-    weight normalization, ReLU, Dropout and Chomp (causal trimming).
-    """
-
-    def __init__(
-        self,
-        n_inputs: int,
-        n_outputs: int,
-        kernel_size: int,
-        stride: int,
-        dilation: int,
-        padding: int,
-        dropout: float = 0.2,
-    ) -> None:
-        super(TemporalBlock, self).__init__()
-
-        # First convolutional layer
-        self.conv1 = weight_norm(
-            nn.Conv1d(n_inputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
-        )
-        self.chomp1 = Chomp1d(padding)
-        self.relu1 = nn.ReLU()
-        self.dropout1 = nn.Dropout(dropout)
-
-        # Second convolutional layer
-        self.conv2 = weight_norm(
-            nn.Conv1d(n_outputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
-        )
-        self.chomp2 = Chomp1d(padding)
-        self.relu2 = nn.ReLU()
-        self.dropout2 = nn.Dropout(dropout)
-
-        self.net = nn.Sequential(
-            self.conv1, self.chomp1, self.relu1, self.dropout1, self.conv2, self.chomp2, self.relu2, self.dropout2
-        )
-
-        # Residual connection (downsample if dimensions change)
-        self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
-        self.relu = nn.ReLU()
-        self.init_weights()
-
-    def init_weights(self) -> None:
-        self.conv1.weight.data.normal_(0, 0.01)
-        self.conv2.weight.data.normal_(0, 0.01)
-        if self.downsample is not None:
-            self.downsample.weight.data.normal_(0, 0.01)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.net(x)
-        res = x if self.downsample is None else self.downsample(x)
-        return self.relu(out + res)
-
-
-class TemporalConvNet(nn.Module):
-    """
-    The complete TCN network, composed of a stack of TemporalBlocks.
-    """
-
-    def __init__(self, num_inputs: int, num_channels: List[int], kernel_size: int = 2, dropout: float = 0.2) -> None:
-        super(TemporalConvNet, self).__init__()
-        layers: List[nn.Module] = []
-        num_levels = len(num_channels)
-        for i in range(num_levels):
-            dilation_size = 2**i
-            in_channels = num_inputs if i == 0 else num_channels[i - 1]
-            out_channels = num_channels[i]
-            layers += [
-                TemporalBlock(
-                    in_channels,
-                    out_channels,
-                    kernel_size,
-                    stride=1,
-                    dilation=dilation_size,
-                    padding=(kernel_size - 1) * dilation_size,
-                    dropout=dropout,
-                )
-            ]
-
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.network(x)
-
-
-# =============================================================================
-# D3QN with TCN Backbone
-# =============================================================================
+__all__ = ["Chomp1d", "TemporalBlock", "TemporalConvNet", "D3QN_TCN"]
 
 
 class D3QN_TCN(nn.Module):
     """
-    D3QN architecture with TCN temporal backbone and PAE latent space fusion.
-
-    Designed for the Guardian Agent — combines temporal perception (TCN) with
-    fluid dynamics projection (PAE) for safety decisions informed
-    by spillback risk.
+    Distributional Dueling Double DQN (`QR-D3QN`) with causal TCN + `TemporalAttentionPool`
+    and PAE latent fusion.
     """
+
+    is_distributional: bool = True
 
     def __init__(
         self,
@@ -176,78 +49,112 @@ class D3QN_TCN(nn.Module):
         tcn_channels: Optional[List[int]] = None,
         kernel_size: int = 3,
         dropout: float = 0.1,
+        num_quantiles: int = 32,
     ) -> None:
-        """
-        Initializes the D3QN neural network with TCN and PAE fusion.
-
-        Args:
-            n_observations (int): Dimension of the state vector per timestep.
-            n_actions (int): Number of possible actions (KEEP=0, CHANGE=1).
-            pae_latent_dim (int): Dimension of the PAE latent vector (0 = no PAE).
-            hidden_size (int): Neurons in hidden layers.
-            tcn_channels (list): Channels for each TCN level.
-            kernel_size (int): Size of the TCN kernel.
-            dropout (float): Dropout rate.
-        """
-        super(D3QN_TCN, self).__init__()
+        super().__init__()
 
         if tcn_channels is None:
-            tcn_channels = [hidden_size, hidden_size]
+            tcn_channels = [hidden_size, hidden_size, hidden_size]
 
-        self.n_observations = n_observations
-        self.n_actions = n_actions
-        self.pae_latent_dim = pae_latent_dim
-        self.hidden_size = hidden_size
+        self.n_observations = int(n_observations)
+        self.n_actions = int(n_actions)
+        self.pae_latent_dim = int(pae_latent_dim)
+        self.hidden_size = int(hidden_size)
+        self.num_quantiles = max(1, int(num_quantiles))
 
-        # --- TCN Backbone: Processes the temporal sequence ---
+        taus = (torch.arange(self.num_quantiles, dtype=torch.float32) + 0.5) / float(self.num_quantiles)
+        self.register_buffer("quantile_taus", taus)
+
+        tcn_out_dim = int(tcn_channels[-1])
         self.tcn = TemporalConvNet(
-            num_inputs=n_observations, num_channels=tcn_channels, kernel_size=kernel_size, dropout=dropout
+            num_inputs=self.n_observations,
+            num_channels=tcn_channels,
+            kernel_size=kernel_size,
+            dropout=dropout,
         )
+        self.temporal_pool = TemporalAttentionPool(tcn_out_dim, dropout=dropout)
 
-        # --- Fusion Layer: Combines temporal features + PAE latent space ---
-        fusion_input_dim = hidden_size + pae_latent_dim
+        fusion_input_dim = tcn_out_dim + self.pae_latent_dim
+        fusion_fc = nn.Linear(fusion_input_dim, self.hidden_size)
+        init_orthogonal(fusion_fc, gain=1.41421356)
         self.fusion_layer = nn.Sequential(
-            nn.Linear(fusion_input_dim, hidden_size), nn.LayerNorm(hidden_size), nn.ReLU(), nn.Dropout(dropout)
+            fusion_fc,
+            nn.LayerNorm(self.hidden_size),
+            nn.SiLU(),
+            nn.Dropout(dropout),
         )
 
-        # --- Advantage Stream: Estimates relative advantage of each action ---
-        self.advantage_stream = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, n_actions)
-        )
+        # Distributional Dueling Streams: [B, n_actions * N_quantiles] and [B, 1 * N_quantiles]
+        adv_fc1 = nn.Linear(self.hidden_size, self.hidden_size)
+        adv_fc2 = nn.Linear(self.hidden_size, self.n_actions * self.num_quantiles)
+        val_fc1 = nn.Linear(self.hidden_size, self.hidden_size)
+        val_fc2 = nn.Linear(self.hidden_size, self.num_quantiles)
+        init_orthogonal(adv_fc1, gain=1.41421356)
+        init_orthogonal(adv_fc2, gain=0.1)
+        init_orthogonal(val_fc1, gain=1.41421356)
+        init_orthogonal(val_fc2, gain=1.0)
 
-        # --- Value Stream: Estimates the state value V(s) ---
-        self.value_stream = nn.Sequential(nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1))
+        self.advantage_stream = nn.Sequential(adv_fc1, nn.SiLU(), adv_fc2)
+        self.value_stream = nn.Sequential(val_fc1, nn.SiLU(), val_fc2)
 
-    def forward(self, state_sequence: torch.Tensor, pae_latent: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass with temporal-predictive fusion.
+    def _extract_fused_features(
+        self, state_sequence: torch.Tensor, pae_latent: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        if hasattr(state_sequence, "dim") and state_sequence.dim() == 2:
+            state_sequence = state_sequence.unsqueeze(1)
 
-        Args:
-            state_sequence (torch.Tensor): Temporal sequence of states
-                [batch_size, seq_len, n_observations].
-            pae_latent (torch.Tensor): Latent vector from the shared PAE
-                [batch_size, pae_latent_dim].
-
-        Returns:
-            torch.Tensor: Q-values for each action [batch_size, n_actions].
-        """
-        # --- 1. TCN: Extract temporal features ---
-        # TCN expects [batch, channels, seq_len]
         x = state_sequence.transpose(1, 2)
-        temporal_out = self.tcn(x)  # [batch, hidden_size, seq_len]
+        x = align_tcn_input_channels(x, self.tcn)
 
-        # Get only the last timestep (causal output)
-        temporal_features = temporal_out[:, :, -1]  # [batch, hidden_size]
+        temporal_out = self.tcn(x)
+        temporal_features = self.temporal_pool(temporal_out)
 
-        # --- 2. Fusion: Temporal + PAE Latent ---
-        fused = torch.cat([temporal_features, pae_latent], dim=-1)  # [batch, hidden + latent]
-        fused = self.fusion_layer(fused)  # [batch, hidden_size]
+        if self.pae_latent_dim <= 0:
+            return self.fusion_layer(temporal_features)
 
-        # --- 3. Dueling: Value/Advantage separation ---
-        advantages = self.advantage_stream(fused)  # [batch, n_actions]
-        value = self.value_stream(fused)  # [batch, 1]
+        if pae_latent is None:
+            pae_latent = torch.zeros(
+                temporal_features.size(0),
+                self.pae_latent_dim,
+                device=getattr(temporal_features, "device", "cpu"),
+            )
 
-        # Q(s, a) = V(s) + (A(s, a) - mean(A(s, a')))
-        q_values = value + (advantages - advantages.mean(dim=1, keepdim=True))
+        if (
+            hasattr(pae_latent, "device")
+            and hasattr(temporal_features, "device")
+            and pae_latent.device != temporal_features.device
+        ):
+            pae_latent = pae_latent.to(temporal_features.device)
 
-        return q_values
+        if hasattr(pae_latent, "shape") and len(pae_latent.shape) > 1 and isinstance(pae_latent.shape[1], int):
+            if pae_latent.shape[1] < self.pae_latent_dim:
+                pad_size = self.pae_latent_dim - pae_latent.shape[1]
+                pae_latent = F.pad(pae_latent, (0, pad_size))
+            elif pae_latent.shape[1] > self.pae_latent_dim:
+                pae_latent = pae_latent[:, : self.pae_latent_dim]
+
+        fused = torch.cat([temporal_features, pae_latent], dim=-1)
+        return self.fusion_layer(fused)
+
+    def forward_quantiles(
+        self, state_sequence: torch.Tensor, pae_latent: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Computes distributional action-value quantiles `[batch_size, n_actions, num_quantiles]`.
+        """
+        fused = self._extract_fused_features(state_sequence, pae_latent)
+        batch_size = fused.size(0) if hasattr(fused, "size") else -1
+
+        adv_q = self.advantage_stream(fused).view(batch_size, self.n_actions, self.num_quantiles)
+        val_q = self.value_stream(fused).view(batch_size, 1, self.num_quantiles)
+
+        return val_q + (adv_q - adv_q.mean(dim=1, keepdim=True))
+
+    def forward(
+        self, state_sequence: torch.Tensor, pae_latent: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Computes expected Q-values `[batch_size, n_actions]` by averaging across quantiles.
+        """
+        q_quantiles = self.forward_quantiles(state_sequence, pae_latent)
+        return q_quantiles.mean(dim=-1)

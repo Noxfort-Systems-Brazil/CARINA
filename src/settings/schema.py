@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/settings/schema.py
-# Author: Gabriel Moraes
-# Date: 2026-09-12
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Encapsulates configuration metadata, key-to-section mappings, and schema rules.
@@ -32,8 +16,10 @@ class SettingsSchema:
     DEFAULT_KEY_TO_SECTION_MAP: Dict[str, str] = {
         "theme_dark": "UI",
         "language": "UI",
+        "min_green_time": "TRAFFIC_RULES",
         "green_time": "TRAFFIC_RULES",
         "yellow_time": "TRAFFIC_RULES",
+        "yellow_time_seconds": "TRAFFIC_RULES",
         "heatmap_strategy": "HEATMAP_SCALING",
         "heatmap_saturation": "HEATMAP_SCALING",
         "log_progress": "LOGGING",
@@ -41,6 +27,15 @@ class SettingsSchema:
         "analysis_interval_value": "ANALYSIS_SCHEDULE",
         "analysis_interval_unit": "ANALYSIS_SCHEDULE",
         "performance_margin": "MATURITY",
+        "auto_pacing_enabled": "MATURITY",
+        "auto_performance_margin_enabled": "MATURITY",
+        "child_phase_episodes": "MATURITY",
+        "teen_phase_min_episodes": "MATURITY",
+        "child_promotion_max_entropy": "MATURITY",
+        "performance_check_window": "MATURITY",
+        "calibration_window_size": "CALIBRATION",
+        "telemetry_delta_ms": "AI_TRAINING",
+        "episode_max_steps": "AI_TRAINING",
         "ppo_gamma": "AI_TRAINING",
         "ppo_k_epochs": "AI_TRAINING",
         "ppo_eps_clip": "AI_TRAINING",
@@ -50,6 +45,9 @@ class SettingsSchema:
         "pbt_exploitation": "PBT",
         "weight_waiting_time": "REWARD_WEIGHTS",
         "weight_flow": "REWARD_WEIGHTS",
+        "auto_reward_weights_enabled": "REWARD_WEIGHTS",
+        "weight_emergency_brake": "REWARD_WEIGHTS",
+        "weight_teleport": "REWARD_WEIGHTS",
         "update_frequency_seconds": "GAT_STRATEGIST",
         # CARINA Monitor Integration
         "monitor_enabled": "EXTERNAL_MONITOR",
@@ -57,6 +55,13 @@ class SettingsSchema:
         "monitor_mqtt_port": "EXTERNAL_MONITOR",
         "monitor_mqtt_topic_heartbeat": "EXTERNAL_MONITOR",
         "monitor_mqtt_topic_incident": "EXTERNAL_MONITOR",
+        # CARINA Remote Gateway (Tailscale Funnel)
+        "gateway_enabled": "REMOTE_GATEWAY",
+        "cco_subdomain": "REMOTE_GATEWAY",
+        "evp_subdomain": "REMOTE_GATEWAY",
+        "evp_auth_token": "REMOTE_GATEWAY",
+        "cco_port": "REMOTE_GATEWAY",
+        "evp_port": "REMOTE_GATEWAY",
         # CARINA Database Settings
         "db_type": "DATABASE",
         "db_host": "DATABASE",
@@ -110,14 +115,31 @@ class SettingsSchema:
         "xai_speed_unit": "REPORT_FORMATTING",
         "xai_slm_device": "REPORT_FORMATTING",
         "xai_slm_gpu_layers": "REPORT_FORMATTING",
+        # Yellow Flashing Schedule Settings
+        "yellow_schedule_enabled": "YELLOW_SCHEDULE",
+        "yellow_schedule_start": "YELLOW_SCHEDULE",
+        "yellow_schedule_end": "YELLOW_SCHEDULE",
+        "yellow_schedule_all_semaphores": "YELLOW_SCHEDULE",
+        "yellow_schedule_semaphores": "YELLOW_SCHEDULE",
+        # EVP Settings
+        "auto_register_fleet": "EVP",
     }
 
     DEFAULT_BOOLEAN_KEYS: Set[str] = {
+        "auto_register_fleet",
         "theme_dark",
         "log_progress",
         "monitor_enabled",
+        "gateway_enabled",
         "tensorboard_enabled",
         "report_ordinance_enabled",
+        "xai_ordinance_enabled",
+        "yellow_schedule_enabled",
+        "yellow_schedule_all_semaphores",
+        "auto_pacing_enabled",
+        "auto_performance_margin_enabled",
+        "auto_reward_weights_enabled",
+        "db_connected",
     }
 
     PROTECTED_ENV_KEYS: Set[str] = {

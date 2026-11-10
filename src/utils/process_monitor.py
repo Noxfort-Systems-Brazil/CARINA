@@ -1,24 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/utils/process_monitor.py
-# Author: Gabriel Moraes
-# Date: August 10, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
+import sys
 import threading
 import time
 from typing import Optional
@@ -33,13 +18,6 @@ try:
     HAS_PYNVML = True
 except ImportError:
     HAS_PYNVML = False
-
-try:
-    import torch
-
-    HAS_TORCH = True
-except ImportError:
-    HAS_TORCH = False
 
 
 class ProcessMonitor:
@@ -87,7 +65,7 @@ class ProcessMonitor:
         try:
             current_process = psutil.Process()
         except Exception as e:
-            logging.warning(f"[PROCESS_MONITOR] Failed to obtain current process handle: {e}")
+            logging.warning(f"[PROCESS_MONITOR] Failed to obtain current process handle: {e}", exc_info=True)
             return metrics_manager
 
         def monitor_loop():
@@ -137,13 +115,15 @@ class ProcessMonitor:
                         except Exception as gpu_err:
                             logging.debug(f"[PROCESS_MONITOR] GPU polling exception: {gpu_err}")
 
-                    # PyTorch VRAM metrics
-                    if HAS_TORCH and torch.cuda.is_available():
+                    # PyTorch VRAM metrics (only queried if torch is already imported in this process)
+                    if "torch" in sys.modules:
                         try:
-                            alloc = torch.cuda.memory_allocated()
-                            res = torch.cuda.memory_reserved()
-                            metrics_manager.update_metric("pytorch_vram_allocated_bytes", float(alloc))
-                            metrics_manager.update_metric("pytorch_vram_reserved_bytes", float(res))
+                            torch_mod = sys.modules["torch"]
+                            if hasattr(torch_mod, "cuda") and torch_mod.cuda.is_available():
+                                alloc = torch_mod.cuda.memory_allocated()
+                                res = torch_mod.cuda.memory_reserved()
+                                metrics_manager.update_metric("pytorch_vram_allocated_bytes", float(alloc))
+                                metrics_manager.update_metric("pytorch_vram_reserved_bytes", float(res))
                         except Exception as torch_err:
                             logging.debug(f"[PROCESS_MONITOR] PyTorch VRAM polling exception: {torch_err}")
 

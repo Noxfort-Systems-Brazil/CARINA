@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sas/sas_analysis_cache_manager.py
-# Author: Gabriel Moraes
-# Date: August 12, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -42,7 +26,7 @@ class SASAnalysisCacheManager:
                 if last_analysis_cache:
                     has_previous_report = True
             except Exception as e:
-                logging.warning(f"[SAS_CACHE_MANAGER] Failed to load cache from database: {e}")
+                logging.warning(f"[SAS_CACHE_MANAGER] Failed to load cache from database: {e}", exc_info=True)
 
         # Fallback to local JSON file if cache was not loaded from DB
         if not last_analysis_cache and last_analysis_path and os.path.exists(last_analysis_path):
@@ -51,7 +35,7 @@ class SASAnalysisCacheManager:
                     last_analysis_cache = json.load(f)
                 has_previous_report = True
             except Exception as e:
-                logging.warning(f"[SAS_CACHE_MANAGER] Failed to load cache from file: {e}")
+                logging.warning(f"[SAS_CACHE_MANAGER] Failed to load cache from file: {e}", exc_info=True)
 
         return last_analysis_cache, has_previous_report
 
@@ -64,7 +48,7 @@ class SASAnalysisCacheManager:
             try:
                 db_manager.save_sas_analysis_cache(scenario_name, new_cache_data)
             except Exception as e:
-                logging.error(f"[SAS_CACHE_MANAGER] Failed to save cache into database: {e}")
+                logging.error(f"[SAS_CACHE_MANAGER] Failed to save cache into database: {e}", exc_info=True)
 
         if scenario_dir:
             last_analysis_path = os.path.join(scenario_dir, "sas_last_analysis.json")
@@ -72,4 +56,4 @@ class SASAnalysisCacheManager:
                 with open(last_analysis_path, "w", encoding="utf-8") as f:
                     json.dump(new_cache_data, f, indent=4)
             except Exception as e:
-                logging.error(f"[SAS_CACHE_MANAGER] Failed to save cache into file: {e}")
+                logging.error(f"[SAS_CACHE_MANAGER] Failed to save cache into file: {e}", exc_info=True)

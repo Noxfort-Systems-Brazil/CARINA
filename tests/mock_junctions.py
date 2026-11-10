@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/mock_junctions.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 import sys
@@ -43,7 +27,7 @@ def main():
 
     manager = TrafficLightManager(base_port=8080)
 
-    # Criar 'num_junctions' junções simuladas
+    # Create 'num_junctions' simulated junctions
     for i in range(num_junctions):
         phases = [
             PhaseData(duration=10, state="GGggrrrr"),
@@ -60,15 +44,15 @@ def main():
     manager.start()
 
     try:
-        print("Iniciando gerador de tráfego de PICO (Stress Test) para forçar o CARINA CORE...")
+        print("Starting PEAK traffic generator (Stress Test) to push CARINA CORE...")
         while True:
-            # Simula um cenário de pico absoluto: envia interrupções e mudanças de estado frenéticas
-            # Isso força o Motor Simbólico e as threads de NTCIP a processarem dados constantemente.
+            # Simulates absolute peak scenario: sends frantic interrupts and state transitions
+            # This forces the Symbolic Engine and NTCIP threads to constantly process data.
             for j_id, junc in manager.junctions.items():
                 junc.last_ntcip_activity = time.time()
-                # Alterna o estado repetidamente para invalidar os caches e forçar recálculos
+                # Repeatedly toggles state to invalidate caches and force recalculations
                 junc._apply_phase("GGrryyGG")
-            time.sleep(0.05)  # Bombardeia o core 20 vezes por segundo por cruzamento
+            time.sleep(0.05)  # Bombards core 20 times per second per intersection
     except KeyboardInterrupt:
         manager.stop()
 

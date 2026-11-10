@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/utils/hardware_logging_setup.py
-# Author: Gabriel Moraes
-# Date: August 10, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -77,7 +61,7 @@ def setup_hardware_loggers() -> Tuple[logging.Logger, logging.Logger]:
             src.drivers.traffic_light_driver.logger.addHandler(hw_handler)
         src.drivers.traffic_light_driver.cmd_logger = cmd_logger
     except Exception as e:
-        logger.warning(f"[HARDWARE_LOGGING] Warning binding handlers to traffic_light_driver: {e}")
+        logger.warning(f"[HARDWARE_LOGGING] Warning binding handlers to traffic_light_driver: {e}", exc_info=True)
 
     try:
         import src.drivers.driver_factory
@@ -88,6 +72,6 @@ def setup_hardware_loggers() -> Tuple[logging.Logger, logging.Logger]:
         ):
             src.drivers.driver_factory.logger.addHandler(hw_handler)
     except Exception as e:
-        logger.warning(f"[HARDWARE_LOGGING] Warning binding handlers to driver_factory: {e}")
+        logger.warning(f"[HARDWARE_LOGGING] Warning binding handlers to driver_factory: {e}", exc_info=True)
 
     return logger, cmd_logger

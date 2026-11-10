@@ -5,15 +5,15 @@ aliases: [System Architecture, Multiprocessing Blueprint, System Overview]
 
 # 🏛️ CARINA: System Blueprint & Multiprocessing Architecture
 
-This document specifies the internal engineering architecture of the CARINA ecosystem. It details the 8 concurrent operating system microservices, the deep neural network topology, the `TopologicalScaler`, the `ConsultantAgent`, the `CrossAttentionFusion` duality, physical controller drivers, and the asynchronous PostgreSQL delta storage engine.
+This document specifies the internal engineering architecture of the CARINA ecosystem. It details the 8 concurrent operating system microservices, the canonical deep neural network topology (LocalAgent PPO-TCN, GuardianAgent D3QN, and StrategistAgent ST-GATv2 Lite), the `TopologicalScaler`, physical controller drivers, and the asynchronous PostgreSQL delta storage engine.
 
-⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🚦 See [Hardware Drivers](HARDWARE_DRIVERS.md) | 🧠 See [Neural Formulations](RESEARCH_NOTES.md) | 🛡️ See [Safety & Watchdog](SAFETY_AND_WATCHDOG.md)
+⬅️ Back to [Main Documentation Hub](CARINA_MOC.md) | 🚨 See [EVP Preemption](EVP_AND_PREEMPTION.md) | 🚦 See [Hardware Drivers](HARDWARE_DRIVERS.md) | 🧠 See [Neural Formulations](RESEARCH_NOTES.md) | 🛡️ See [Safety & Watchdog](SAFETY_AND_WATCHDOG.md)
 
 ---
 
 ## 1. Multiprocessing Microservices Concurrency Model
 
-Python's Global Interpreter Lock (GIL) prevents multi-threaded CPU-bound AI inference and heavy I/O operations from running in true parallelism. To achieve sub-millisecond actuation latency, CARINA employs a **multiprocessing microservice model** orchestrated by [`carina.py`](../carina.py) and [`src/launcher/process_manager.py`](../src/launcher/process_manager.py).
+Python's Global Interpreter Lock (GIL) prevents multi-threaded CPU-bound AI inference and heavy I/O operations from running in true parallelism. To achieve sub-millisecond actuation latency, CARINA employs a **multiprocessing microservice model** orchestrated by [`carina.py`](../carina.py) and [`src/launcher/process_manager.py`](../src/launcher/process_manager.py), combined with an industrial-grade **Go Hardware & Web Gateway** (`bin/carina-go`):
 
 ```mermaid
 graph TD
@@ -29,7 +29,7 @@ graph TD
     PM --> MFD[8. MFD_Worker Engine]
 
     CC <-->|IPC Pipe| AI
-    AI -->|g_state Queue| WD
+    CC -->|wd Queue (Heartbeats)| WD
     AI -->|db Queue| DB
     CC -->|sds Queue| SDS
     CC -->|sas Queue| SAS
@@ -37,6 +37,12 @@ graph TD
     MFD -->|mfd_results Queue| CC
     SAS -->|sas_results Queue| CC
     XAI -->|Disk HFT Logs| AI
+
+    CC <-->|NDJSON Stdin/Stdout| GW[Go Gateway carina-go]
+    GW --> NTCIP[NTCIP / UTMC Field Controllers UDP 161]
+    GW --> WebGW[Go Web Gateway Port 2201 / Tailscale]
+    WebGW --> CCO[CCO Web Map React/TSX src_tsx]
+    WebGW <--|POST 204 Telemetry| EVP[EVP GPS Antennas Port 8085]
 ```
 
 ---
@@ -49,33 +55,35 @@ graph TD
     │   Auto-detects Map Nodes (N) -> Latent Dim (32/64/128/256), Heads (2/4/8/16)│
     └────────────────────────────────────┬────────────────────────────────────┘
                                          │
-    ┌─────────────────────────┐   ┌──────┴──────────────────┐   ┌───────────────────────────┐
-    │     LOCAL AGENT TCN     │   │   ST-GATv2 LITE GRAPH   │   │   GLOBAL CONSULTANT PAE   │
-    │ (Edge AI Real-Time 0.5ms)│   │ (Green Wave Coordinator)│   │ (Background Predictive 128ch)│
-    └────────────┬────────────┘   └────────────┬────────────┘   └─────────────┬─────────────┘
-                 │                             │                              │
-                 └──────────────────────┬──────┴──────────────────────────────┘
-                                        │
-                         ┌──────────────┴──────────────┐
-                         │   CROSS-ATTENTION FUSION    │
-                         │ Dual Mode:                  │
-                         │ - LocalAgent: Adaptive PBT  │
-                         │ - Guardian: Fixed Weights   │
-                         └──────────────┬──────────────┘
-                                        │
-                         ┌──────────────┴──────────────┐
-                         │  UNIVERSAL AMP & TENSORCORE │
-                         │ (torch.amp.autocast FP16)   │
-                         └─────────────────────────────┘
+                    ┌────────────────────┴────────────────────┐
+                    ▼                                         ▼
+     ┌─────────────────────────────┐           ┌─────────────────────────────┐
+     │     LOCAL AGENT (PPO)       │           │   STRATEGIST AGENT (GRAPH)  │
+     │  Tactical TCN Backbone      │           │   ST-GATv2 Lite Coordinator │
+     │  (Sub-second Actuation)     │◄──────────┤   (Arterial Green Waves)    │
+     └──────────────┬──────────────┘Context Vec└──────────────┬──────────────┘
+                    │                                         │
+                    │ Proposed Action                         │ Network Context
+                    ▼                                         ▼
+     ┌───────────────────────────────────────────────────────────────────────┐
+     │                      GUARDIAN AGENT (D3QN + CTB)                      │
+     │   Neuro-Symbolic Safety Shield, Spillback Prevention & Traffic Veto   │
+     └───────────────────────────────────┬───────────────────────────────────┘
+                                         │
+                          ┌──────────────┴──────────────┐
+                          │  UNIVERSAL AMP & TENSORCORE │
+                          │ (torch.amp.autocast FP16)   │
+                          └─────────────────────────────┘
 ```
 
 ### 2.1 ST-GATv2 Lite Module (`src/models/st_gatv2_lite.py`)
 - **Purpose:** Spatial synchronization of arterial "Green Waves" across neighboring intersections in the urban road network graph.
 - **Dynamic Weighting:** While the physical road topology is static, dynamic spatial attention coefficients $\alpha_{ij}(t)$ are recomputed in real time based on incoming vehicle densities and velocity gradients.
+- **Decentralized Coordination:** The Strategist periodically computes the spatiotemporal context tensor across the network and feeds it to Local and Guardian agents, enabling emergent green waves without centralized single-point-of-failure commands.
 
-### 2.2 Global Consultant Agent (`src/agents/consultant_agent.py`)
-- **Purpose:** Operating as a background microservice triggered by telemetry events, the Consultant projects future network states ($t + \Delta t$) using a high-capacity Predictive Autoencoder (PAE with 64 to 128 channels).
-- **Targeted Mentorship:** Generates individualized predictive latent vectors $Z$ per event to enrich the contextual decision space of local PPO agents.
+### 2.2 Universal Predictive Autoencoder (`src/models/pae.py`)
+- **Purpose:** Shared high-capacity physical representation engine compressing multi-step sequential dynamics into invariant latent spaces ($Z \in \mathbb{R}^{16\dots 128}$).
+- **Targeted Enrichment:** Provides compact temporal-predictive latent state representations to empower both LocalAgent policy decisions and GuardianAgent spillback auditing.
 
 ### 2.3 $O(1)$ Topological Auto-Scaler (`src/utils/topo_scaler.py`)
 - **Algorithmic Scaling:** Auto-detects network density ($N$ intersections) and autonomously adjusts neural dimensions in powers of 2 optimized for NVIDIA TensorCores:
@@ -84,11 +92,7 @@ graph TD
   - $80 < N \le 250 \implies \text{dim} = 128, \text{heads} = 8$ (e.g., Londrina Metropolitan Grid)
   - $N > 250 \implies \text{dim} = 256, \text{heads} = 16$ (Megalopolis Grid)
 
-### 2.4 Cross-Attention Duality (`src/models/cross_attention.py`)
-- **`LocalAgent` (PPO-TCN):** Operates cross-attention with **Population-Based Training (PBT)**, dynamically adapting Softmax temperature ($\tau$) during online execution.
-- **`GuardianAgent` (D3QN):** Enforces cross-attention with **Fixed Deterministic Weights** (`is_fixed=True`) to maintain an invariant, unyielding safety baseline.
-
-### 2.5 Universal AMP & TensorCore Acceleration
+### 2.4 Universal AMP & TensorCore Acceleration
 - All neural network forward passes are enveloped in `torch.amp.autocast`, enabling native FP16/TF32 hardware acceleration across NVIDIA TensorCores and restricting total VRAM consumption to only **~20 MB** for the core models.
 
 ---
@@ -263,9 +267,91 @@ CARINA incorporates **F.E.N.I.X.** (Fault-tolerant Engine for Networked Intellig
 
 ---
 
+## 8. Agent Lifecycle, Intra-Phase PBT & Promotion Engine (`src/maturity/`, `src/promotion/`, `src/core/`)
+
+CARINA structures reinforcement learning policies as an evolving organism undergoing a 3-stage developmental curriculum:
+
+```text
+  ┌──────────────────┐        Entropy Drop & Pacing       ┌──────────────────┐       Entropy & Fluid Margin (delta*)     ┌──────────────────┐
+  │   CHILD STAGE    │ ─────────────────────────────────> │    TEEN STAGE    │ ───────────────────────────────────────>  │   ADULT STAGE    │
+  │  (Shadow Mode)   │                                    │(Off-Peak Autonomy│                                           │ (Full Autonomy)  │
+  └────────┬─────────┘                                    └────────┬─────────┘                                           └────────┬─────────┘
+           │                                                       │                                                              │
+           ▼                                                       ▼                                                              ▼
+  [Shielded from PBT]                                     [Intra-Phase PBT]                                             [Intra-Phase PBT]
+  [Observes Fluid Dynamics]                               (TEEN <-> TEEN only)                                          (ADULT <-> ADULT only)
+  [1-Week Safety Floor]                                   [Peak Gated Shadow Mode]                                      [24/7 Full Actuation]
+```
+
+- **`MaturityManager` (`src/maturity/maturity_manager.py`):** Central Application Service and Facade orchestrating agent maturity evaluations, supported by the rich entity `AgentMaturity`, `MaturityConfig`, and `MaturityPromotionService`.
+- **`PopulationManager` (`src/core/population_manager.py`):** Executes **Intra-Phase Population-Based Training**. Agents clone and mutate strictly within their peer cohort (`TEEN` with `TEEN`, `ADULT` with `ADULT`), while `CHILD` agents remain completely shielded. Includes tensor dimension verification to prevent crashes across heterogeneous intersections.
+- **`PromotionEvaluator` (`src/promotion/promotion_evaluator.py`):** Rigorously checks Shannon policy entropy, minimum episode durations, and performance targets.
+- **`EpisodeStepCalculator` (`src/utils/episode_step_calculator.py`):** Dynamically scales episode step horizons from network graph topology (collapsing bidirectional two-way corridors, filtering internal connectors `:`, and applying sub-linear $\sqrt{N}$ and $D_{\text{km}}$ scaling), determining the inviolable 1-week safety floor ($E_{\text{week}}$ episodes at $\Delta t = 250\text{ ms}$).
+- **`WeeklyCoverageTracker` (`src/core/weekly_coverage_tracker.py`):** Tracks and atomically persists coverage across all 168 calendar hours of the real week ($7\text{ days} \times 24\text{ hours}$), ensuring tolerance to process pauses and server maintenance without progress reset.
+- **`ActionAuthorizer` (`src/core/action_authorizer.py`):** Restricts physical signal control for `TEEN` stage agents, forcing shadow mode during classical urban peak hours (06:30-09:00 & 17:00-19:30 Monday-Friday) or Synapse dynamic schedules.
+- **`MaturityPacingCalculator` (`src/promotion/maturity_pacing_calculator.py`):** Orchestrates dynamic pacing integrating `EpisodeStepCalculator` and enforcing the inviolable 1-week floor ($t_{\min} = \max(E_{\text{week}}, \text{user\_config})$).
+- **`PerformanceMarginCalculator` (`src/promotion/performance_margin_calculator.py`):** Continuously calculates required graduation margins $\delta^* \in [3.0\%, 25.0\%]$ using empirical childhood speed and occupancy telemetry from `synapse_fluid_dynamics`.
+
+---
+
+## 9. Physical Reward Balancing Subsystem (`src/engine/reward_weights_calculator.py`)
+
+To eliminate gradient distortion where cumulative waiting times dwarf vehicle throughput by orders of magnitude, CARINA balances the reward equation according to Highway Capacity Manual (HCM) link traversal physics:
+
+$$\tau = \frac{\bar{L}_{\text{links}}}{\bar{v}_{\text{limit}}}$$
+$$w_{\text{wait}} = -1.0, \quad w_{\text{flow}} = \text{clamp}(2.0, 25.0, \text{round}(\tau \times \alpha, 2))$$
+
+- **`RewardWeightsCalculator` (`src/engine/reward_weights_calculator.py`):** Computes normalized reward weights upon network topology loading (`TopologyManager.load_topology`).
+- **`RewardCalculator` (`src/engine/reward_calculator.py`):** Ingests dynamic weights via `set_reward_weights`, establishing an equilibrium where vehicle discharge incentives match the scale of accumulated queue delay.
+
+---
+
+## 10. Nighttime Yellow Flashing Schedule Subsystem (`src/controller/yellow_schedule_manager.py`)
+
+For traffic safety and legal compliance during low-volume overnight hours, CARINA integrates an autonomous flashing yellow schedule subsystem:
+- **`YellowScheduleManager` (`src/controller/yellow_schedule_manager.py`):** Evaluates scheduled time windows (e.g., 23:00 to 05:00) against current system time, autonomously commanding physical controllers into flashing yellow mode or transitioning back to adaptive AI control at window boundaries.
+- **`YellowScheduleCard` (`ui/cards/yellow_schedule_card.py`):** UI interface enabling operators to enable/disable schedules, customize time ranges, and selectively assign individual intersections or entire metropolitan networks.
+
+## 11. Emergency Vehicle Preemption (EVP) Subsystem (`src/evp/`, `src_go/evp_go/`)
+
+To grant instantaneous Green Corridors for emergency response vehicles (SAMU, Fire Department, Police) in compliance with Brazilian CONTRAN Resolution nº 960 and CTB Art. 29, CARINA incorporates a dedicated Emergency Vehicle Preemption subsystem:
+
+```text
+ GPS Antenna / Beacon       Go Web Gateway (:2201 / :8085)        EVPService (src/evp/)
+          │                             │                                   │
+          │── POST /api/v1/evp/telemetry ─>│                                   │
+          │   (HTTP 204 No Content)     │── NDJSON / In-Memory Stream ─────>│
+          │                             │                                   ├── Kinematics (Haversine WGS84)
+          │                             │                                   ├── Block Entry (60m <= d <= 160m)
+          │                             │                                   └── Siren Active Verification
+          │                             │                                           │
+          │                             │                                           ▼
+          │                             │                                 SafetyAuditor (Rule #0)
+          │                             │                                 (Clearance -> ACTION_HOLD)
+          │                             │                                           │
+          │<───── Green Corridor ───────┼── SNMP ascPhaseHold (Go Dispatcher) <─────┘
+```
+
+- **Two-Factor Trigger:** Preemption requires simultaneous approach block entry ($60\text{ m} \le d \le 160\text{ m}$) AND active siren (`siren_active = True`).
+- **SafetyAuditor Priority Intercept:** Rule #0 intercepts proposed actions, respects clearance intervals (yellow and all-red), and holds green (`ACTION_HOLD = 1`).
+- **CONTRAN Watchdog Limit ($45\text{ s}$):** Aborts holds unconditionally after 45 seconds to prevent cross-arterial gridlock.
+- **Immediate Checkout:** As soon as the vehicle crosses the stop line ($d \le 15\text{ m}$), preemption is released immediately.
+
+For full technical specifications, see [Emergency Vehicle Preemption (EVP)](EVP_AND_PREEMPTION.md).
+
+---
+
+## 12. Central Control Operator (CCO) Web Architecture (`src_go/web_gateway/`, `src_tsx/src_cco/`)
+
+CARINA provides a web-based operations center for municipal videowalls and remote monitoring:
+- **`WebGatewayServer` (`src_go/web_gateway/server.go`):** Embedded Go HTTP server running on port 2201 (or configured port) providing SSE event streaming (`/cco/stream`), topology endpoints (`/cco/topology`), and Tailscale Funnel encrypted remote tunneling.
+- **`CCO Web Application` (`src_tsx/src_cco/`):** Modern React 18, TypeScript, Tailwind CSS, SVG map layer renderer, and Apache ECharts dashboard displaying real-time vehicle positions, signal timings, and preemption alert toasts.
+
+---
+
 <div align="center">
   <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Controlled Artificial Road-traffic Intelligence Network Architecture • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3 ou posterior (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

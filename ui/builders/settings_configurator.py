@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/views/settings_configurator.py
-# Author: Gabriel Moraes
-# Date: 2026-06-10
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import flet as ft
 
@@ -32,9 +16,14 @@ from ui.cards.hardware_connection_card import HardwareConnectionCard
 from ui.cards.monitor_settings_card import MonitorSettingsCard
 from ui.cards.piloting_school_card import PilotingSchoolCard
 from ui.cards.report_formatting_card import ReportFormattingCard
+from src.evp.evp_service import EVPService
 from ui.cards.reward_weights_card import RewardWeightsCard
 from ui.cards.traffic_rules_card import TrafficRulesCard
+from ui.cards.yellow_schedule_card import YellowScheduleCard
+from ui.cards.evp_fleet_connection_card import EVPFleetConnectionCard
+from ui.cards.remote_gateway_card import RemoteGatewayCard
 from ui.handlers.account_settings_handler import AccountSettingsHandler
+from ui.handlers.evp_settings_handler import EVPSettingsHandler
 from ui.handlers.hardware_settings_handler import HardwareSettingsHandler
 from ui.handlers.monitor_settings_handler import MonitorSettingsHandler
 from ui.handlers.settings_handler import SettingsHandler
@@ -55,6 +44,11 @@ def build_settings_view(locale_manager, settings_client):
         settings_client,
         locale_manager=locale_manager,
     )
+    evp_handler = EVPSettingsHandler(
+        EVPService.get_instance(),
+        settings_client,
+        locale_manager=locale_manager,
+    )
     account_handler = AccountSettingsHandler(settings_client)
     monitor_handler = MonitorSettingsHandler(settings_client)
 
@@ -62,6 +56,7 @@ def build_settings_view(locale_manager, settings_client):
     formatting_card = ReportFormattingCard(initial_settings)
     general_card = GeneralSettingsCard(initial_settings)
     traffic_rules_card = TrafficRulesCard(initial_settings)
+    yellow_schedule_card = YellowScheduleCard(initial_settings, locale_manager=locale_manager)
     dashboard_card = DashboardSettingsCard(initial_settings)
     advanced_ppo_card = AdvancedPPOCard(initial_settings)
     advanced_dqn_card = AdvancedDQNCard(initial_settings)
@@ -69,9 +64,14 @@ def build_settings_view(locale_manager, settings_client):
     piloting_school_card = PilotingSchoolCard(initial_settings)
     reward_weights_card = RewardWeightsCard(initial_settings)
 
+    def _on_monitor_connection_toggle(enabled: bool, host: str):
+        monitor_handler.on_monitor_toggle(enabled, host)
+        payload = {"monitor_enabled": str(enabled), "monitor_mqtt_host": host}
+        handler.prepare_settings_for_save(payload)
+
     monitor_card = MonitorSettingsCard(
         initial_values=initial_settings,
-        on_toggle_connection=monitor_handler.on_monitor_toggle,
+        on_toggle_connection=_on_monitor_connection_toggle,
         locale_manager=locale_manager,
     )
 
@@ -89,9 +89,29 @@ def build_settings_view(locale_manager, settings_client):
         on_request_list=account_handler.on_request_users_list,
     )
 
+    def _on_db_connection_toggle(connected: bool):
+        payload = {
+            "db_connected": str(connected),
+            "db_type": db_card.db_type_dropdown.value,
+        }
+        handler.prepare_settings_for_save(payload)
+
     db_card = DatabaseSettingsCard(
         initial_values=initial_settings,
-        on_toggle_connection=None,  # Wired up via lambda below
+        on_toggle_connection=_on_db_connection_toggle,
+        locale_manager=locale_manager,
+    )
+
+    def _on_gateway_connection_toggle(connected: bool, values: dict):
+        handler.prepare_settings_for_save(values)
+
+    evp_connection_card = EVPFleetConnectionCard(
+        locale_manager=locale_manager,
+        handler=evp_handler,
+    )
+    remote_gateway_card = RemoteGatewayCard(
+        initial_settings,
+        on_toggle_connection=_on_gateway_connection_toggle,
         locale_manager=locale_manager,
     )
 
@@ -102,7 +122,7 @@ def build_settings_view(locale_manager, settings_client):
             "icon": ft.Icons.TUNE_ROUNDED,
             "title_key": "settings_view.tab_general",
             "default_title": "General",
-            "cards": [general_card, db_card, traffic_rules_card, dashboard_card],
+            "cards": [general_card, db_card, traffic_rules_card, yellow_schedule_card, dashboard_card],
         },
         {
             "icon": ft.Icons.HUB_ROUNDED,
@@ -131,11 +151,24 @@ def build_settings_view(locale_manager, settings_client):
             "cards": [hardware_card],
         },
         {
+            "icon": ft.Icons.EMERGENCY_ROUNDED,
+            "title_key": "settings_view.tab_evp",
+            "default_title": "Preempção (EVP)",
+            "cards": [evp_connection_card],
+        },
+        {
             "icon": ft.Icons.MONITOR_HEART_ROUNDED,
             "title_key": "settings_view.tab_monitor",
             "default_title": "Monitor",
             "is_dynamic_fallback": True,
             "cards": [monitor_card],
+        },
+        {
+            "icon": ft.Icons.ROUTER_ROUNDED,
+            "title_key": "settings_view.tab_remote_gateway",
+            "default_title": "Acesso Remoto",
+            "is_dynamic_fallback": True,
+            "cards": [remote_gateway_card],
         },
         {
             "icon": ft.Icons.MANAGE_ACCOUNTS_ROUNDED,
@@ -156,10 +189,13 @@ def build_settings_view(locale_manager, settings_client):
         settings_client=settings_client,
         tab_definitions=tab_definitions,
         warning_text_ref=warning_text,
+        handler=handler,
     )
 
     view.hardware_handler = hardware_handler
     view.hardware_card = hardware_card
+    view.evp_handler = evp_handler
+    view.evp_card = evp_connection_card
     view.account_card = account_card
 
     return view

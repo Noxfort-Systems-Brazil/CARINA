@@ -59,7 +59,7 @@ O CARINA estrutura laudos periciais de auditoria utilizando o padrão **Registry
 | Renderizador de Bloco | Classe / Módulo | Finalidade |
 | :--- | :--- | :--- |
 | **Sumário Executivo** | `ReportExecutiveSummaryRenderer` | Síntese de alto nível de desempenho da malha, redução média de atraso e vazão. |
-| **Equações Formais** | `ReportEquationsRenderer` | Renderiza as 5 equações formais da IA (TCN, GATv2, Cross-Attention, D3QN, Captum). |
+| **Equações Formais** | `ReportEquationsRenderer` | Renderiza as equações formais da IA (TCN, GATv2, PAE, D3QN, Captum). |
 | **Cartões de Atribuição** | `ReportAnnexCardsRenderer` | Ranqueamento de importância de atributos por cruzamento (fila, ocupação, velocidade). |
 | **Auditoria de Vetos do Guardião** | `ReportGuardianTableRenderer` | Tabela pericial consultando no PostgreSQL todos os vetos de segurança simbólicos e neurais. |
 | **Resumo Consolidado** | `ReportConsolidatedSummaryRenderer` | Visão estatística comparando métricas de referência (baseline) vs IA autônoma. |
@@ -68,11 +68,15 @@ O CARINA estrutura laudos periciais de auditoria utilizando o padrão **Registry
 
 ## 4. Templates Multilíngues de Laudos
 
-Templates e seções padronizadas ficam centralizados em `config/templates/`:
-- `config/templates/xai/xai_report_sections.json`: Definições estruturadas de seções do relatório.
-- `config/templates/xai/xai_categories.json`: Rótulos categorizados localizados.
-- `config/templates/omml_equation_templates.json`: Templates base para equações OMML.
-- `config/templates/xai/xai_table_templates.json`: Cabeçalhos e definições de formatação de tabelas.
+Templates e seções padronizadas ficam centralizados por domínio em `config/templates/`:
+- **Equações Matemáticas Base:**
+  - `config/templates/omml_equation_templates.json`: Modelos de equações em OMML nativo (PPO, TCN, ST-GATv2, PAE, D3QN, Captum).
+- **Templates de IA Explicável (XAI) (`config/templates/xai/`):**
+  - `xai_report_sections.json`, `xai_categories.json`, `xai_equations.json`, `xai_card_templates.json`, `xai_table_templates.json`.
+- **Templates de Diagrama Fundamental Macroscópico (MFD) (`config/templates/mfd/`):**
+  - `mfd_report_sections.json`, `mfd_table_templates.json`, `mfd_audit_sheet_templates.json`, `mfd_classification_thresholds.json`, `mfd_prompts.json`, `mfd_summary_directives.json`, `mfd_fallback_defaults.json`.
+- **Templates do Smart Analysis System (SAS) (`config/templates/sas/`):**
+  - `sas_report_sections.json`, `sas_intersection_templates.json`, `sas_recommendation_labels.json`, `sas_summary_directives.json`.
 
 ---
 

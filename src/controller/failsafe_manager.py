@@ -1,27 +1,11 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/failsafe_manager.py
-# Author: Gabriel Moraes
-# Date: April 15, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import time
 from multiprocessing.connection import Connection
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +14,21 @@ class FailsafeManager:
     """
     Responsible for managing the global operation mode of CARINA:
         - AUTOMATIC: AI Neural Network controls traffic signals
-        - WATCHDOG: Fixed-time fallback (Synapse connection lost)
-        - MANUAL: Operator override (future)
+        - SEMI_AUTOMATIC: Assisted operation mode
+        - WATCHDOG: Fixed-time hardware fallback (Synapse connection lost)
+        - MANUAL: Operator override
 
-    Owns the FixedTimeController and coordinates the transition between
-    AI-controlled and fixed-time modes with strict safety guarantees.
+    Coordinates the transition between AI-controlled and failsafe modes
+    with strict real-time safety guarantees.
     """
 
     def __init__(
-        self, ai_pipe_conn: Connection, monitor_client: Optional[Any] = None, locale_manager: Optional[Any] = None
+        self,
+        ai_pipe_conn: Connection,
+        monitor_client: Optional[Any] = None,
+        locale_manager: Optional[Any] = None,
+        on_failsafe_triggered: Optional[Callable[[], None]] = None,
+        on_failsafe_recovered: Optional[Callable[[], None]] = None,
     ):
         self.current_operation_mode = "AUTOMATIC"
         self.failsafe_active = False
@@ -46,6 +36,8 @@ class FailsafeManager:
         self.ai_pipe_conn = ai_pipe_conn
         self.monitor_client = monitor_client
         self.locale_manager = monitor_client.locale_manager if monitor_client else locale_manager
+        self.on_failsafe_triggered = on_failsafe_triggered
+        self.on_failsafe_recovered = on_failsafe_recovered
 
         # --- Frame Timing Monitor ---
         # Tracks the last time a TrafficFrame was received.
@@ -60,13 +52,6 @@ class FailsafeManager:
     def set_failsafe_timeout(self, timeout_seconds: float):
         """Set the Synapse silence timeout (from settings.ini WATCHDOG section)."""
         self._failsafe_timeout = timeout_seconds
-
-    def load_topology(self, net_file_path: str):
-        """
-        No-op since local Fixed-Time control was removed to keep CARINA agnostic.
-        Hardware controllers should handle their own topology for fallbacks.
-        """
-        pass
 
     def record_frame_received(self):
         """
@@ -115,7 +100,14 @@ class FailsafeManager:
             self.failsafe_active = True
             self.current_operation_mode = "WATCHDOG"
 
-            # TODO: Emit command to hardware controller to activate ALL_RED then local fixed-plans
+            # Dispatch command to hardware controller to activate emergency release and revert to local plans
+            self._notify_hardware_failsafe()
+            if self.on_failsafe_triggered:
+                try:
+                    self.on_failsafe_triggered()
+                except Exception as cb_err:
+                    logger.error(f"[FailsafeManager] Error in on_failsafe_triggered callback: {cb_err}", exc_info=True)
+
             logger.critical(
                 self._get_string(
                     "failsafe_manager.commanding_all_red",
@@ -143,7 +135,7 @@ class FailsafeManager:
                             default="Error reporting failsafe incident via MQTT: {error}",
                             error=e,
                         )
-                    )
+                    , exc_info=True)
 
     def attempt_recovery(self) -> bool:
         """
@@ -163,7 +155,14 @@ class FailsafeManager:
                 )
             )
 
-            # TODO: Emit command to hardware controller to resume remote control
+            # Dispatch command to hardware controller to resume remote control
+            self._notify_hardware_recovery()
+            if self.on_failsafe_recovered:
+                try:
+                    self.on_failsafe_recovered()
+                except Exception as cb_err:
+                    logger.error(f"[FailsafeManager] Error in on_failsafe_recovered callback: {cb_err}", exc_info=True)
+
             logger.info(
                 self._get_string(
                     "failsafe_manager.commanding_resume",
@@ -193,12 +192,12 @@ class FailsafeManager:
                             default="Error reporting recovery incident via MQTT: {error}",
                             error=e,
                         )
-                    )
+                    , exc_info=True)
 
             # Wake up AI process
             try:
                 self.ai_pipe_conn.send(("system", "wakeup", (), {}))
-            except Exception as e:
+            except (OSError, EOFError, BrokenPipeError, RuntimeError, ValueError, AttributeError) as e:
                 logger.error(
                     self._get_string(
                         "failsafe_manager.wakeup_error", default="Error sending wakeup signal to AI: {error}", error=e
@@ -224,3 +223,41 @@ class FailsafeManager:
             "total_failsafe_events": self._total_failsafe_events,
             "fixed_time": {},  # Kept for dashboard compatibility
         }
+
+    def _notify_hardware_failsafe(self):
+        """Dispatches emergency release commands to Go Hardware Gateway and active drivers."""
+        try:
+            from drivers.go_gateway_client import GoGatewayClient
+
+            go_client = GoGatewayClient.get_instance()
+            if go_client.is_running():
+                go_client.send_command("emergency_release")
+        except Exception as e:
+            logger.warning(f"[FailsafeManager] Go Gateway emergency release notification error: {e}", exc_info=True)
+
+        try:
+            from controller.connection_manager import HardwareConnectionManager
+
+            hw_mgr = HardwareConnectionManager.get_instance(locale_manager=self.locale_manager)
+            if hw_mgr and getattr(hw_mgr, "active_connections", None):
+                for pid, driver in hw_mgr.active_connections.items():
+                    try:
+                        if hasattr(driver, "release_control"):
+                            driver.release_control()
+                    except Exception as driver_err:
+                        logger.error(
+                            f"[FailsafeManager] Failed to release hardware control for intersection {pid}: {driver_err}"
+                        , exc_info=True)
+        except Exception as e:
+            logger.warning(f"[FailsafeManager] Hardware connection manager release error: {e}", exc_info=True)
+
+    def _notify_hardware_recovery(self):
+        """Verifies hardware connectivity upon recovering from Watchdog failsafe."""
+        try:
+            from drivers.go_gateway_client import GoGatewayClient
+
+            go_client = GoGatewayClient.get_instance()
+            if go_client.is_running():
+                go_client.ping(timeout=1.0)
+        except Exception as e:
+            logger.warning(f"[FailsafeManager] Go Gateway resume notification error: {e}", exc_info=True)

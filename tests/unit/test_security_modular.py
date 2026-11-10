@@ -1,27 +1,19 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: tests/unit/test_security_modular.py
-# Author: Gabriel Moraes
-# Date: September 05, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 import tempfile
 
 import pytest
 
-from src.utils.security.auth_service import AuthService
-from src.utils.security.config import SecurityConfig
-from src.utils.security.hasher import PBKDF2PasswordHasher
-from src.utils.security.lockdown import FileLockdownManager, InMemoryLockdownManager
-from src.utils.security.user_repository import InMemoryUserRepository, JsonUserRepository
-from src.utils.security.user_service import UserManagementService
-from src.utils.security_manager import SecurityManager
+from src.security.authenticate_service import AuthenticateService as AuthService
+from src.security.config import SecurityConfig
+from src.security.crypto import PBKDF2PasswordHasher
+from src.security.lockdown_manager import FileLockdownManager, InMemoryLockdownManager
+from src.security.json_user_repo import InMemoryUserRepository, JsonUserRepository
+from src.security.account_manager import UserAccountManager as UserManagementService
+from src.security.security_manager import SecurityManager
 
 
 def test_hasher_pbkdf2_generates_unique_salts_and_verifies():

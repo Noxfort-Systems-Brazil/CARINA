@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_security_manager.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import hashlib
 import os
@@ -25,7 +9,7 @@ import tempfile
 
 import pytest
 
-from src.utils.security_manager import SecurityManager
+from src.security.security_manager import SecurityManager
 
 
 @pytest.fixture
@@ -36,7 +20,7 @@ def temp_security_dir():
 
 
 def test_production_mode_strictly_blocks_admin_admin(temp_security_dir, monkeypatch):
-    """Garante que em ambiente de produção admin:admin é terminantemente bloqueado."""
+    """Ensures admin:admin is strictly blocked in production environment."""
     monkeypatch.setenv("CARINA_ENV", "production")
     monkeypatch.setenv("CARINA_SUPERUSER_USER", "prod_superuser")
     monkeypatch.setenv("CARINA_SUPERUSER_PASSWORD", "SuperSecurePassword123!")
@@ -49,19 +33,19 @@ def test_production_mode_strictly_blocks_admin_admin(temp_security_dir, monkeypa
     assert sm.is_production is True
     assert sm.master_user == "prod_superuser"
 
-    # Tentativa com admin:admin DEVE FALHAR
+    # Attempt with admin:admin MUST FAIL
     success, msg = sm.authenticate("admin", "admin")
     assert success is False
     assert "Invalid credentials" in msg or "invalid" in msg.lower()
 
-    # Tentativa com superusuário real DEVE SUCEDER
+    # Attempt with real superuser MUST SUCCEED
     success_prod, role = sm.authenticate("prod_superuser", "SuperSecurePassword123!")
     assert success_prod is True
     assert role == "MASTER"
 
 
-def test_development_mode_allows_admin_admin_for_github(temp_security_dir, monkeypatch):
-    """Garante que no ambiente de desenvolvimento (clone do GitHub) admin:admin funciona normalmente."""
+def test_development_mode_allows_github_default_credentials(temp_security_dir, monkeypatch):
+    """Ensures secure default credentials work normally in development environment (GitHub clone)."""
     monkeypatch.setenv("CARINA_ENV", "development")
     monkeypatch.delenv("CARINA_SUPERUSER_USER", raising=False)
     monkeypatch.delenv("CARINA_SUPERUSER_PASSWORD", raising=False)
@@ -70,7 +54,7 @@ def test_development_mode_allows_admin_admin_for_github(temp_security_dir, monke
     sm = SecurityManager()
     sm.is_production = False
     sm.master_user = "admin"
-    sm.master_hash = hashlib.sha256("admin".encode("utf-8")).hexdigest()
+    sm.master_hash = hashlib.sha256("Admin@Carina2026!".encode("utf-8")).hexdigest()
     sm.security_file = os.path.join(temp_security_dir, "security.json")
     sm.lockdown_file = os.path.join(temp_security_dir, "lockdown.flag")
     sm._ensure_files()
@@ -78,14 +62,31 @@ def test_development_mode_allows_admin_admin_for_github(temp_security_dir, monke
     assert sm.is_production is False
     assert sm.master_user == "admin"
 
-    # admin:admin DEVE SUCEDER no modo de teste
-    success, role = sm.authenticate("admin", "admin")
+    # admin with default GitHub password MUST SUCCEED in development mode
+    success, role = sm.authenticate("admin", "Admin@Carina2026!")
     assert success is True
     assert role in ["SUPERUSER", "MASTER"]
 
 
+def test_local_superuser_noxfort_credentials(temp_security_dir, monkeypatch):
+    """Ensures local superuser_noxfort credentials work and authenticate as MASTER."""
+    monkeypatch.setenv("CARINA_ENV", "development")
+    monkeypatch.setenv("CARINA_SUPERUSER_USER", "superuser_noxfort")
+    monkeypatch.setenv("CARINA_SUPERUSER_PASSWORD", "7K2%,3a&C-KJDqh%jFN37^{v")
+
+    sm = SecurityManager()
+    sm.security_file = os.path.join(temp_security_dir, "security.json")
+    sm.lockdown_file = os.path.join(temp_security_dir, "lockdown.flag")
+    sm._ensure_files()
+
+    assert sm.master_user == "superuser_noxfort"
+    success, role = sm.authenticate("superuser_noxfort", "7K2%,3a&C-KJDqh%jFN37^{v")
+    assert success is True
+    assert role == "MASTER"
+
+
 def test_add_user_allows_update_and_blocks_insecure_pwd_in_prod(temp_security_dir, monkeypatch):
-    """Garante atualização de senhas e bloqueio de senha 'admin' em produção."""
+    """Ensures password updates work and 'admin' password is blocked in production."""
     monkeypatch.setenv("CARINA_ENV", "production")
     monkeypatch.setenv("CARINA_SUPERUSER_USER", "prod_master")
     monkeypatch.setenv("CARINA_SUPERUSER_PASSWORD", "Secret123!")
@@ -95,14 +96,55 @@ def test_add_user_allows_update_and_blocks_insecure_pwd_in_prod(temp_security_di
     sm.lockdown_file = os.path.join(temp_security_dir, "lockdown.flag")
     sm._ensure_files()
 
-    # Em produção, adicionar ou alterar senha para 'admin' deve ser rejeitado
+    # In production, adding or changing password to 'admin' must be rejected
     assert sm.add_user("testuser", "admin", "SUPERUSER") is False
 
-    # Adicionar com senha forte deve funcionar
+    # Adding with strong password should succeed
     assert sm.add_user("testuser", "StrongPass456!", "SUPERUSER") is True
 
-    # Atualizar senha existente deve funcionar
+    # Updating existing password should succeed
     assert sm.add_user("testuser", "NewStrongPass789!", "SUPERUSER") is True
     success, role = sm.authenticate("testuser", "NewStrongPass789!")
     assert success is True
     assert role == "SUPERUSER"
+
+
+def test_security_manager_with_sql_engine(temp_security_dir, monkeypatch):
+    """Ensures SecurityManager operates seamlessly using SqlUserRepository and field_encryptor."""
+    import sqlite3
+    from src.security.field_encryptor import FieldEncryptor
+
+    class MockEngine:
+        def __init__(self):
+            self.db_type = "sqlite"
+            self.is_shared_connection = True
+            self._conn = sqlite3.connect(":memory:")
+
+        def get_connection(self):
+            return self._conn
+
+    engine = MockEngine()
+    key = FieldEncryptor.generate_key()
+    monkeypatch.setenv("CARINA_SECRET_KEY", key)
+
+    sm = SecurityManager(db_engine=engine)
+    sm.lockdown_file = os.path.join(temp_security_dir, "lockdown.flag")
+    sm._ensure_files()
+
+    # Authenticate default dev admin
+    success, role = sm.authenticate("admin", "Admin@Carina2026!")
+    assert success is True
+    assert role in ["SUPERUSER", "MASTER"]
+
+    # Add a user via SQL repo
+    assert sm.add_user("sql_op", "Operator@2026!Sec", "OPERATOR") is True
+    success_op, role_op = sm.authenticate("sql_op", "Operator@2026!Sec")
+    assert success_op is True
+    assert role_op == "OPERATOR"
+
+    # FieldEncryptor integration
+    token = "EVP_FLEET_VEHICLE_TOKEN_999"
+    crypted = sm.field_encryptor.encrypt(token)
+    assert crypted != token
+    assert sm.field_encryptor.decrypt(crypted) == token
+

@@ -1,22 +1,6 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/fenix/recovery_policy.py
-# Author: Gabriel Moraes
-# Date: September 25, 2026
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Crash Recovery and Anti-Loop Resilience Policy for CARINA F.E.N.I.X. (SOLID Architecture).
@@ -49,11 +33,15 @@ class WindowedCrashRecoveryPolicy(IRecoveryPolicy):
         crash_window_seconds: float = 60.0,
         restart_backoff_seconds: float = 1.5,
         time_provider: Optional[Callable[[], float]] = None,
+        exponential: bool = True,
+        max_backoff_seconds: float = 30.0,
     ):
         self.max_consecutive_crashes = max_consecutive_crashes
         self.crash_window_seconds = crash_window_seconds
         self.restart_backoff_seconds = restart_backoff_seconds
         self._time_provider = time_provider or time.time
+        self.exponential = exponential
+        self.max_backoff_seconds = max_backoff_seconds
         self._crash_timestamps: List[float] = []
         self._lock = threading.Lock()
 
@@ -97,8 +85,14 @@ class WindowedCrashRecoveryPolicy(IRecoveryPolicy):
             return len(self._crash_timestamps) <= self.max_consecutive_crashes
 
     def get_backoff_seconds(self) -> float:
-        """Returns the configured restart backoff delay in seconds."""
-        return self.restart_backoff_seconds
+        """Returns the configured restart backoff delay in seconds, supporting exponential scaling."""
+        with self._lock:
+            self._prune_expired_crashes()
+            count = len(self._crash_timestamps)
+            if not self.exponential or count <= 1:
+                return self.restart_backoff_seconds
+            calculated = self.restart_backoff_seconds * (2 ** (count - 1))
+            return min(calculated, self.max_backoff_seconds)
 
     def reset(self) -> None:
         """Clears all recorded crash history."""

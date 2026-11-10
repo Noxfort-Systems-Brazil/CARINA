@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sds/edge_data_processor.py
-# Author: Gabriel Moraes
-# Date: April 25, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import statistics
@@ -136,11 +120,11 @@ class EdgeDataProcessor:
             speed_ratio = 0.0
 
         # Base congestion on velocity loss (using harmonic mean for space-mean precision)
-        # Se a velocidade cai para menos de 30% do limite (ex: 15km/h numa via de 50km/h), é 100% congestionado.
+        # If speed drops below 30% of the limit (e.g., 15km/h on a 50km/h road), it is 100% congested.
         if speed_ratio < 0.3:
             velocity_congestion = 1.0
         else:
-            # Escala suavemente de 0.3 até 1.0
+            # Scales smoothly from 0.3 to 1.0
             velocity_congestion = (1.0 - speed_ratio) / 0.7
 
         # Improved queue saturation calculation

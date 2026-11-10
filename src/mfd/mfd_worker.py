@@ -1,36 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/mfd/mfd_worker.py
-# Author: Gabriel Moraes
-# Date: August 6, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import logging
 import os
-import sys
+import queue
 import time
-from typing import Any, Dict
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-from mfd.mfd_history_reconstructor import MFDHistoryReconstructor
+from mfd.mfd_processor import MFDHistoryReconstructor
 from mfd.mfd_report_generator import MFDReportGenerator
 
 
@@ -71,7 +49,7 @@ class MFDOrchestrator:
                 self.mfd_result_queue.put(response_data)
                 logging.info(f"[MFD_ORCHESTRATOR] MFD job result delivered to in-memory IPC queue: {req_id}.")
             else:
-                logging.warning(f"[MFD_ORCHESTRATOR] MFD job finished but mfd_result_queue is NULL.")
+                logging.warning("[MFD_ORCHESTRATOR] MFD job finished but mfd_result_queue is NULL.")
 
     def generate_mfd_report(self, mfd_history_data: dict) -> dict:
         return MFDReportGenerator.generate_report(mfd_history_data, scenario_results_dir=self.scenario_results_dir)
@@ -92,7 +70,7 @@ class MFDOrchestrator:
                         )
                         self.process_mfd_job()
                     except Exception as trig_err:
-                        logging.error(f"[MFD_ORCHESTRATOR] Error processing MFD trigger packet: {trig_err}")
+                        logging.error(f"[MFD_ORCHESTRATOR] Error processing MFD trigger packet: {trig_err}", exc_info=True)
 
                 time.sleep(1)
             except (KeyboardInterrupt, SystemExit):
@@ -108,10 +86,6 @@ def run_mfd_worker(
     settings: configparser.ConfigParser, scenario_results_dir: str, mfd_result_queue=None, mfd_trigger_queue=None
 ):
     """Entry point for multiprocessing MFD Worker."""
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    src_path = os.path.join(project_root, "src")
-    if src_path not in sys.path:
-        sys.path.insert(0, src_path)
 
     from utils.logging_setup import setup_logging
     from utils.paths import get_base_output_dir
@@ -126,8 +100,8 @@ def run_mfd_worker(
         )
         orchestrator.run_forever()
     except (KeyboardInterrupt, SystemExit):
-        pass
+        logging.info("[MFD_WORKER] Terminated via interrupt/exit signal.")
     except Exception as e:
-        logging.error(f"[MFD_WORKER] Error: {e}")
+        logging.error(f"[MFD_WORKER] Error: {e}", exc_info=True)
     finally:
         os._exit(0)

@@ -1,23 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/xai/mfd_baseline_manager.py
-# Author: Gabriel Moraes
-# Date: July 03, 2026
-
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import json
 import logging
 import os
@@ -44,7 +27,7 @@ class MFDReportBaselineManager:
                 if db_first:
                     first_data = db_first
             except Exception as e:
-                logging.warning(f"[MFD_BASELINE_MANAGER] Failed to load baselines from database: {e}")
+                logging.warning(f"[MFD_BASELINE_MANAGER] Failed to load baselines from database: {e}", exc_info=True)
 
         # Fallback to local files if not fully loaded from database
         if scenario_results_dir:
@@ -56,14 +39,14 @@ class MFDReportBaselineManager:
                     with open(last_analysis_path, "r", encoding="utf-8") as f:
                         last_data = json.load(f)
                 except Exception as e:
-                    logging.warning(f"[MFD_BASELINE_MANAGER] Failed to load previous analysis: {e}")
+                    logging.warning(f"[MFD_BASELINE_MANAGER] Failed to load previous analysis: {e}", exc_info=True)
 
             if not first_data and os.path.exists(first_analysis_path):
                 try:
                     with open(first_analysis_path, "r", encoding="utf-8") as f:
                         first_data = json.load(f)
                 except Exception as e:
-                    logging.warning(f"[MFD_BASELINE_MANAGER] Failed to load first analysis baseline: {e}")
+                    logging.warning(f"[MFD_BASELINE_MANAGER] Failed to load first analysis baseline: {e}", exc_info=True)
 
         return last_data, first_data
 
@@ -85,7 +68,7 @@ class MFDReportBaselineManager:
             try:
                 db_manager.save_mfd_analysis_baselines(scenario_name, current_analysis_snapshot)
             except Exception as e:
-                logging.error(f"[MFD_BASELINE_MANAGER] Failed to save baselines in database: {e}")
+                logging.error(f"[MFD_BASELINE_MANAGER] Failed to save baselines in database: {e}", exc_info=True)
 
         # Save local JSON file backups
         if scenario_results_dir:
@@ -97,7 +80,7 @@ class MFDReportBaselineManager:
                 with open(last_analysis_path, "w", encoding="utf-8") as f:
                     json.dump(current_analysis_snapshot, f, indent=4)
             except Exception as e:
-                logging.error(f"[MFD_BASELINE_MANAGER] Failed to save current analysis: {e}")
+                logging.error(f"[MFD_BASELINE_MANAGER] Failed to save current analysis: {e}", exc_info=True)
 
             # Save first analysis ONLY if it does not exist locally
             if not os.path.exists(first_analysis_path):
@@ -106,4 +89,4 @@ class MFDReportBaselineManager:
                         json.dump(current_analysis_snapshot, f, indent=4)
                     logging.info("[MFD_BASELINE_MANAGER] First analysis baseline saved.")
                 except Exception as e:
-                    logging.error(f"[MFD_BASELINE_MANAGER] Failed to save first analysis baseline: {e}")
+                    logging.error(f"[MFD_BASELINE_MANAGER] Failed to save first analysis baseline: {e}", exc_info=True)

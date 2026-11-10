@@ -1,0 +1,42 @@
+#!/bin/bash
+set -e
+
+# CARINA Post-Installation Script
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+case "$1" in
+    configure)
+        # Ensure executable permissions for core binaries and entrypoints
+        chmod 755 /usr/bin/carina || true
+        if [ -d "/opt/carina" ]; then
+            chmod 755 /opt/carina/bin/carina-go || true
+            chmod -R 755 /opt/carina/venv/bin || true
+        fi
+
+        # Update Desktop MIME and icon caches
+        if which update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q || true
+        fi
+        if which gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+        fi
+
+        # Reload systemd configuration if systemd is active
+        if [ -d /run/systemd/system ] && which systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload || true
+        fi
+
+        echo "================================================================="
+        echo " CARINA (Core & CCO) instalado com sucesso em /opt/carina"
+        echo " Executável disponível: carina (ou no menu de aplicativos do SO)"
+        echo " Interface Web CCO pronta na porta 2201: http://localhost:2201"
+        echo "================================================================="
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        ;;
+esac
+
+exit 0

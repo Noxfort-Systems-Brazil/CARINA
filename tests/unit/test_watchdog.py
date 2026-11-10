@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# File: tests/unit/test_watchdog.py
-# Author: Gabriel Moraes
-# Date: 2026-04-16
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import time
 
@@ -84,3 +68,18 @@ def test_watchdog_recovery(watchdog_instance):
     # New heartbeat must reset the system
     wd.register_heartbeat()
     assert wd.is_in_failsafe is False
+
+
+@pytest.mark.unit
+def test_watchdog_update_timeout(watchdog_instance):
+    """
+    Tests dynamic timeout reconfiguration and 300ms safety floor enforcement.
+    """
+    wd = watchdog_instance
+    wd.update_timeout(800)
+    assert wd._timeout_seconds == pytest.approx(0.8)
+
+    # Below 300ms floor should clamp to 300ms (0.3s)
+    wd.update_timeout(100)
+    assert wd._timeout_seconds == pytest.approx(0.3)
+

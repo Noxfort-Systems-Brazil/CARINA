@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/manager/agent_manager.py
-# Author: Gabriel Moraes
-# Date: February 19, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 from typing import Any, Dict, Optional, Tuple
@@ -24,8 +8,8 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from agents.strategist_agent import StrategistAgent
-from src.manager.agent_checkpoint_repository import AgentCheckpointRepository
-from src.manager.agent_factory import AgentFactory
+from manager.agent_checkpoint_repository import AgentCheckpointRepository
+from manager.agent_factory import AgentFactory
 
 # Re-exports for backward compatibility
 __all__ = ["AgentManager", "AgentFactory", "AgentCheckpointRepository"]
@@ -60,14 +44,14 @@ class AgentManager:
         """Orchestrates the creation and initialization of the AI environment for a specific map."""
         logging.info(f"[AgentManager] Setting up environment for map: {map_path}")
 
-        # Initialize StateExtractor with map topology if supported
+        max_obs_size = 0
+        num_nodes = 0
         try:
             if hasattr(state_extractor, "load_topology"):
                 state_extractor.load_topology(map_path)
                 logging.info("[AgentManager] StateExtractor topology initialized.")
 
-                # Re-initialize PAE dynamically with correct augmented dimension
-                max_obs_size = 0
+                num_nodes = len(getattr(state_extractor, "tl_incoming_edges", {}))
                 for tl_id in state_extractor.tl_incoming_edges.keys():
                     obs_size = state_extractor.get_observation_space_size(tl_id)
                     if obs_size > max_obs_size:
@@ -76,9 +60,11 @@ class AgentManager:
                 if max_obs_size > 0:
                     logging.info(
                         f"[AgentManager] Adjusting PAE input_dim dynamically from "
-                        f"{self.shared_pae.input_dim} to {max_obs_size}"
+                        f"{self.shared_pae.input_dim} to {max_obs_size} (nodes={num_nodes})"
                     )
-                    self.shared_pae = AgentFactory.create_pae(self.settings, self.device, input_dim=max_obs_size)
+                    self.shared_pae = AgentFactory.create_pae(
+                        self.settings, self.device, input_dim=max_obs_size, num_nodes=num_nodes
+                    )
         except Exception as e:
             logging.error(f"[AgentManager] Failed to initialize StateExtractor: {e}", exc_info=True)
 
@@ -87,8 +73,14 @@ class AgentManager:
             map_path, state_extractor, maturity_manager, self.shared_pae
         )
 
-        # 2. Instantiate Strategist Agent (Global Brain)
-        strategist = self._create_strategist(map_path)
+        # 2. Instantiate Strategist Agent (Global Brain) aligned to real map observation space
+        if max_obs_size <= 0 and agents:
+            max_obs_size = max((getattr(a, "n_observations", 0) for a in agents.values()), default=0)
+        if num_nodes <= 0:
+            num_nodes = len(agents)
+        strategist = self._create_strategist(
+            map_path, input_dim=max_obs_size if max_obs_size > 0 else None, num_nodes=num_nodes
+        )
 
         # 3. Instantiate Guardian Agents synchronously
         guardians = AgentFactory.create_guardians(self.settings, agents, self.shared_pae)
@@ -98,9 +90,13 @@ class AgentManager:
 
         return agents, current_stages, strategist, guardians
 
-    def _create_strategist(self, map_path: str) -> Optional[StrategistAgent]:
+    def _create_strategist(
+        self, map_path: str, input_dim: Optional[int] = None, num_nodes: int = 0
+    ) -> Optional[StrategistAgent]:
         """Factory delegate method for the Strategist Agent."""
-        return AgentFactory.create_strategist(self.settings, map_path, self.device)
+        return AgentFactory.create_strategist(
+            self.settings, map_path, self.device, input_dim=input_dim, num_nodes=num_nodes
+        )
 
     def save_system_state(
         self,

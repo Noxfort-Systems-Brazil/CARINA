@@ -1,35 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/main_ui.py (Refactored to Pure UI Orchestrator)
-# Author: Gabriel Moraes
-# Date: July 19, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
 import sys
+import threading
 import traceback
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 import flet as ft
 
@@ -71,6 +50,20 @@ def main(page: ft.Page):
 
         logging.info("--- O PROGRAMA DA UI INICIOU COM SUCESSO ---")
 
+        try:
+            from src.controller.map_discoverer import MapTopologyDiscoverer
+            from src.utils.episode_step_calculator import EpisodeStepCalculator
+
+            map_file = MapTopologyDiscoverer.get_map_file()
+            if map_file and os.path.exists(map_file):
+                pacing = EpisodeStepCalculator.calculate(map_file)
+                logging.info(
+                    f"[UI PACING] 1 episódio = {pacing.episode_steps} passos ({pacing.duration_seconds:.1f}s). "
+                    f"Piso de segurança (1 semana): {pacing.child_episodes_1_week} episódios."
+                )
+        except Exception as e_ui_pacing:
+            logging.debug(f"[UI PACING] Detecção de pacing inicial ignorada: {e_ui_pacing}")
+
         locale_manager = LocaleManager()
 
         # 2. Background Hardware Initialization
@@ -80,7 +73,16 @@ def main(page: ft.Page):
 
             hw_manager = HardwareConnectionManager.get_instance(locale_manager=locale_manager)
         except Exception as err:
-            logging.warning(f"[main_ui] Non-critical warning initializing HardwareConnectionManager: {err}")
+            logging.warning(f"[main_ui] Non-critical warning initializing HardwareConnectionManager: {err}", exc_info=True)
+
+        # 2.1 Background EVP Emergency Fleet Initialization & DB Restoration
+        try:
+            from src.evp.evp_service import EVPService
+
+            evp_service = EVPService.get_instance()
+            evp_service.restore_saved_fleet_async()
+        except Exception as err:
+            logging.warning(f"[main_ui] Non-critical warning initializing EVPService fleet: {err}", exc_info=True)
 
         # 3. Window Manager Configuration
         current_module = sys.modules[__name__]
@@ -114,11 +116,53 @@ def main(page: ft.Page):
         dashboard_view = DashboardView(
             control_client=control_client, locale_manager=locale_manager, security_ui=security_ui
         )
+        page.dashboard_view = dashboard_view
         planning_view = PlanningView(
             locale_manager=locale_manager, control_client=control_client, sas_result_queue=sas_result_queue
         )
         diagnostics_view = DiagnosticsView(locale_manager=locale_manager, control_client=control_client)
         settings_view = build_settings_view(locale_manager, settings_client)
+
+        # 5.1 Auto-start Go Hardware & Web Gateway (Port 2201) and Tailscale Funnel in background
+        def _auto_start_go_gateway():
+            try:
+                from src.drivers.go_gateway_client import GoGatewayClient
+                client = GoGatewayClient.get_instance()
+                client.start()
+
+                try:
+                    from src.utils.settings_manager import SettingsManager
+                    settings_mgr = SettingsManager()
+                    is_enabled_bool = settings_mgr.get_bool("gateway_enabled", default=False)
+
+                    if is_enabled_bool:
+                        client.send_command("tailscale_enable", timeout=10.0, port=2201)
+
+                    res = client.send_command(
+                        "gateway_set_enabled",
+                        timeout=8.0,
+                        enabled=is_enabled_bool,
+                    )
+                    logging.info(f"[main_ui] Go Web Gateway estado inicial configurado: enabled={is_enabled_bool} (resp: {res.get('success')})")
+                except Exception as sync_ex:
+                    logging.warning(f"[main_ui] Tailscale/Gateway auto-sync ignorado/falhou: {sync_ex}", exc_info=True)
+            except Exception as ex:
+                logging.warning(f"[main_ui] Não foi possível auto-iniciar GoGatewayClient: {ex}", exc_info=True)
+
+        threading.Thread(target=_auto_start_go_gateway, daemon=True, name="GoGatewayAutoStartThread").start()
+
+        # 5.2 Auto-start SDS Process in background if not already running
+        def _auto_start_sds_cco():
+            try:
+                if ui_command_queue is not None:
+                    logging.info("[main_ui] SDS/CCO já orquestrado pelo ProcessManager. Ignorando auto-início standalone.")
+                    return
+                from src.sds.sds_process_starter import SDSProcessStarter
+                SDSProcessStarter.get_instance().start_if_not_running()
+            except Exception as ex:
+                logging.warning(f"[main_ui] Não foi possível auto-iniciar SDS/CCO: {ex}", exc_info=True)
+
+        threading.Thread(target=_auto_start_sds_cco, daemon=True, name="SDSAutoStartThread").start()
 
         # 6. Network Event Handler Setup
         net_event_handler = NetworkEventHandler(
@@ -162,12 +206,23 @@ def main(page: ft.Page):
             if live_data_provider:
                 live_data_provider.stop()
             try:
+                if evp_receiver:
+                    evp_receiver.stop()
+            except Exception:
+                pass
+            try:
                 from src.communication.monitor_client import MonitorClient
 
                 if MonitorClient._instance and MonitorClient._instance.enabled:
                     MonitorClient._instance.stop(shutdown_message="Operador encerrou a interface da CARINA_CORE")
             except Exception as err:
-                logging.error(f"[main_ui] Exception sending Monitor shutdown message: {err}")
+                logging.error(f"[main_ui] Exception sending Monitor shutdown message: {err}", exc_info=True)
+            try:
+                from src.sds.sds_process_starter import SDSProcessStarter
+
+                SDSProcessStarter.get_instance().stop()
+            except Exception:
+                pass
 
         page.on_disconnect = on_disconnect
         live_data_provider.start()
@@ -178,7 +233,7 @@ def main(page: ft.Page):
 
     except Exception as err:
         error_msg = traceback.format_exc()
-        logging.error(f"[main_ui] Erro crítico na inicialização da UI: {err}\n{error_msg}")
+        logging.error(f"[main_ui] Erro crítico na inicialização da UI: {err}\n{error_msg}", exc_info=True)
         ErrorView.render_error_card(
             page, error_msg, on_restart_callback=lambda e: main(page), locale_manager=locals().get("locale_manager")
         )

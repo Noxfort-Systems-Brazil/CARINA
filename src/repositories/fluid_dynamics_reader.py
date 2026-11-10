@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/repositories/fluid_dynamics_reader.py
-# Author: Gabriel Moraes
-# Date: August 12, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -64,7 +48,7 @@ class FluidDynamicsReader:
 
             return [dict(zip(self.sample_columns, row)) for row in cursor.fetchall()]
         except Exception as e:
-            logging.error(f"[DB_MANAGER] Error querying fluid dynamics history: {e}")
+            logging.error(f"[DB_MANAGER] Error querying fluid dynamics history: {e}", exc_info=True)
             return []
         finally:
             if conn:
@@ -126,7 +110,7 @@ class FluidDynamicsReader:
                         break
                     yield [dict(zip(self.sample_columns, row)) for row in rows]
         except Exception as e:
-            logging.error(f"[DB_MANAGER] Error querying fluid dynamics history in batches: {e}")
+            logging.error(f"[DB_MANAGER] Error querying fluid dynamics history in batches: {e}", exc_info=True)
         finally:
             if conn:
                 conn.close()
@@ -168,7 +152,7 @@ class FluidDynamicsReader:
                 results = [dict(zip(self.aggregated_columns, row)) for row in cursor.fetchall()]
             return results
         except Exception as e:
-            logging.error(f"[DB_MANAGER] Error querying aggregated fluid dynamics: {e}")
+            logging.error(f"[DB_MANAGER] Error querying aggregated fluid dynamics: {e}", exc_info=True)
             return []
         finally:
             if conn:

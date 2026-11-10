@@ -12,7 +12,12 @@
       "CREATE TABLE IF NOT EXISTS sas_analysis_cache (scenario_name VARCHAR(255) PRIMARY KEY, metrics_cache JSONB NOT NULL, updated_at TIMESTAMP DEFAULT NOW());",
       "CREATE TABLE IF NOT EXISTS mfd_analysis_cache (scenario_name VARCHAR(255) NOT NULL, cache_type VARCHAR(50) NOT NULL, metrics_cache JSONB NOT NULL, updated_at TIMESTAMP DEFAULT NOW(), PRIMARY KEY (scenario_name, cache_type));",
       "CREATE TABLE IF NOT EXISTS step_decisions (id BIGSERIAL PRIMARY KEY, simulation_time REAL NOT NULL, step_number INTEGER NOT NULL, agent_id VARCHAR(64) NOT NULL, maturity_stage SMALLINT NOT NULL DEFAULT 2, suggested_action SMALLINT NOT NULL DEFAULT 0, final_decision SMALLINT NOT NULL DEFAULT 0, veto_reason_code SMALLINT NOT NULL DEFAULT 0, step_count INTEGER NOT NULL DEFAULT 1, total_step_time_ms REAL, guardian_time_ms REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
-      "CREATE TABLE IF NOT EXISTS edge_dictionary (edge_int_id SERIAL PRIMARY KEY, edge_str_id VARCHAR(255) UNIQUE NOT NULL, created_at TIMESTAMP DEFAULT NOW());"
+      "CREATE TABLE IF NOT EXISTS edge_dictionary (edge_int_id SERIAL PRIMARY KEY, edge_str_id VARCHAR(255) UNIQUE NOT NULL, created_at TIMESTAMP DEFAULT NOW());",
+      "CREATE TABLE IF NOT EXISTS evp_telemetry_records (id BIGSERIAL PRIMARY KEY, vehicle_id VARCHAR(64) NOT NULL, corporation VARCHAR(32) NOT NULL, latitude DOUBLE PRECISION NOT NULL, longitude DOUBLE PRECISION NOT NULL, speed_kmh REAL NOT NULL, heading_deg REAL NOT NULL, siren_active BOOLEAN NOT NULL, evp_triggered BOOLEAN NOT NULL DEFAULT FALSE, intersection_id VARCHAR(64), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS evp_registered_fleet (vehicle_id VARCHAR(64) PRIMARY KEY, corporation VARCHAR(32) NOT NULL, plate VARCHAR(16), description VARCHAR(128), device_id VARCHAR(64), ip_address VARCHAR(45), port INT DEFAULT 8085, protocol VARCHAR(16) DEFAULT 'HTTP', auth_token VARCHAR(128), is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS evp_denied_fleet (vehicle_id VARCHAR(64) PRIMARY KEY, denied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS system_users (id SERIAL PRIMARY KEY, username VARCHAR(64) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(32) NOT NULL DEFAULT 'OPERATOR', is_active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS system_security_state (id VARCHAR(32) PRIMARY KEY, failed_attempts INTEGER NOT NULL DEFAULT 0, is_locked BOOLEAN NOT NULL DEFAULT FALSE, locked_until TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
     ],
     "indexes": [
       "CREATE INDEX IF NOT EXISTS idx_sfd_collected_at ON synapse_fluid_dynamics(collected_at);",
@@ -21,7 +26,9 @@
       "CREATE INDEX IF NOT EXISTS idx_sfd_scen_stage_time ON synapse_fluid_dynamics(scenario_name, maturity_stage, collected_at DESC);",
       "CREATE INDEX IF NOT EXISTS idx_sd_agent_time ON step_decisions(agent_id, created_at DESC);",
       "CREATE INDEX IF NOT EXISTS idx_sd_final_decision ON step_decisions(final_decision, veto_reason_code);",
-      "CREATE INDEX IF NOT EXISTS idx_edge_dict_str ON edge_dictionary(edge_str_id);"
+      "CREATE INDEX IF NOT EXISTS idx_edge_dict_str ON edge_dictionary(edge_str_id);",
+      "CREATE INDEX IF NOT EXISTS idx_evp_veh_time ON evp_telemetry_records(vehicle_id, created_at DESC);",
+      "CREATE INDEX IF NOT EXISTS idx_evp_fleet_active ON evp_registered_fleet(is_active);"
     ],
     "migrations": [
       {"column": "scenario_name", "sql": "ALTER TABLE synapse_fluid_dynamics ADD COLUMN scenario_name TEXT DEFAULT 'default';"},
@@ -46,7 +53,12 @@
       "CREATE TABLE IF NOT EXISTS sas_analysis_cache (scenario_name TEXT PRIMARY KEY, metrics_cache TEXT NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
       "CREATE TABLE IF NOT EXISTS mfd_analysis_cache (scenario_name TEXT NOT NULL, cache_type TEXT NOT NULL, metrics_cache TEXT NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (scenario_name, cache_type));",
       "CREATE TABLE IF NOT EXISTS step_decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, simulation_time REAL NOT NULL, step_number INTEGER NOT NULL, agent_id TEXT NOT NULL, maturity_stage INTEGER NOT NULL DEFAULT 2, suggested_action INTEGER NOT NULL DEFAULT 0, final_decision INTEGER NOT NULL DEFAULT 0, veto_reason_code INTEGER NOT NULL DEFAULT 0, step_count INTEGER NOT NULL DEFAULT 1, total_step_time_ms REAL, guardian_time_ms REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
-      "CREATE TABLE IF NOT EXISTS edge_dictionary (edge_int_id INTEGER PRIMARY KEY AUTOINCREMENT, edge_str_id TEXT UNIQUE NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+      "CREATE TABLE IF NOT EXISTS edge_dictionary (edge_int_id INTEGER PRIMARY KEY AUTOINCREMENT, edge_str_id TEXT UNIQUE NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS evp_telemetry_records (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id TEXT NOT NULL, corporation TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, speed_kmh REAL NOT NULL, heading_deg REAL NOT NULL, siren_active BOOLEAN NOT NULL, evp_triggered BOOLEAN NOT NULL DEFAULT 0, intersection_id TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS evp_registered_fleet (vehicle_id TEXT PRIMARY KEY, corporation TEXT NOT NULL, plate TEXT, description TEXT, device_id TEXT, ip_address TEXT, port INTEGER DEFAULT 8085, protocol TEXT DEFAULT 'HTTP', auth_token TEXT, is_active BOOLEAN DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS evp_denied_fleet (vehicle_id TEXT PRIMARY KEY, denied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS system_users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'OPERATOR', is_active BOOLEAN NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+      "CREATE TABLE IF NOT EXISTS system_security_state (id TEXT PRIMARY KEY, failed_attempts INTEGER NOT NULL DEFAULT 0, is_locked BOOLEAN NOT NULL DEFAULT 0, locked_until TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
     ],
     "indexes": [
       "CREATE INDEX IF NOT EXISTS idx_sfd_collected_at ON synapse_fluid_dynamics(collected_at);",
@@ -55,7 +67,9 @@
       "CREATE INDEX IF NOT EXISTS idx_sfd_scen_stage_time ON synapse_fluid_dynamics(scenario_name, maturity_stage, collected_at DESC);",
       "CREATE INDEX IF NOT EXISTS idx_sd_agent_time ON step_decisions(agent_id, created_at DESC);",
       "CREATE INDEX IF NOT EXISTS idx_sd_final_decision ON step_decisions(final_decision, veto_reason_code);",
-      "CREATE INDEX IF NOT EXISTS idx_edge_dict_str ON edge_dictionary(edge_str_id);"
+      "CREATE INDEX IF NOT EXISTS idx_edge_dict_str ON edge_dictionary(edge_str_id);",
+      "CREATE INDEX IF NOT EXISTS idx_evp_veh_time ON evp_telemetry_records(vehicle_id, created_at DESC);",
+      "CREATE INDEX IF NOT EXISTS idx_evp_fleet_active ON evp_registered_fleet(is_active);"
     ],
     "migrations": [
       "ALTER TABLE synapse_fluid_dynamics ADD COLUMN scenario_name TEXT DEFAULT 'default';",

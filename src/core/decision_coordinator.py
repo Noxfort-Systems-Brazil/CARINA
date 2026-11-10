@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/core/decision_coordinator.py
-# Author: Gabriel Moraes
-# Date: 02/18/2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the DecisionCoordinator class.
@@ -46,17 +30,8 @@ if TYPE_CHECKING:
 try:
     from traci.exceptions import TraCIException
 except (ImportError, ModuleNotFoundError):
-    import os
-    import sys
-
-    if "SUMO_HOME" in os.environ:
-        tools = os.path.join(os.environ["SUMO_HOME"], "tools")
-        if tools not in sys.path:
-            sys.path.append(tools)
-        from traci.exceptions import TraCIException
-    else:
-        logging.warning("SUMO_HOME não definido, a importação de TraCIException pode falhar.")
-        TraCIException = Exception
+    logging.warning("SUMO_HOME/traci not available, TraCIException fallback active.")
+    TraCIException = RuntimeError
 
 
 class DecisionCoordinator:
@@ -73,7 +48,7 @@ class DecisionCoordinator:
         db_manager=None,
     ):
         """
-        Inicializa o Coordenador de Decisões.
+        Initializes the Decision Coordinator.
         """
         self.agents = agents
         self.neighborhoods = neighborhoods
@@ -207,7 +182,8 @@ class DecisionCoordinator:
                 )
 
                 if was_vetoed:
-                    vetos_applied[tl_id] = "Safety Veto"
+                    reason = getattr(self.auditor, "last_veto_reasons", {}).get(tl_id, "Safety Veto")
+                    vetos_applied[tl_id] = reason
 
                 # Record the final action
                 actions_to_apply[tl_id] = final_action
@@ -232,8 +208,12 @@ class DecisionCoordinator:
                         code = 3
                     elif "MIN_RED" in reason_str or "VERMELHO" in reason_str:
                         code = 4
-                    elif "SPILLBACK" in reason_str or "D3QN" in reason_str:
-                        code = 5
+                    elif "EXPLORAT" in reason_str or "RANDOM" in reason_str or "SORTEIO" in reason_str:
+                        code = 7  # Exploratory Veto during training
+                    elif "SPILLBACK" in reason_str or "D3QN" in reason_str or "NEURAL" in reason_str:
+                        code = 5  # Neural Spillback Veto
+                    elif "EVP" in reason_str or "EMERGÊNCIA" in reason_str or "EMERGENCY" in reason_str:
+                        code = 6  # Emergency Vehicle Preemption
                     else:
                         code = 1  # Min Green CTB
 

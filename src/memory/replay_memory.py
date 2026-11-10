@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/memory/replay_memory.py (NEW FILE)
-# Author: Gabriel Moraes
-# Date: August 19, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the ReplayMemory class and its Transition data structure.
@@ -26,6 +10,8 @@ a crucial data structure for "off-policy" reinforcement learning algorithms like
 It stores the agent's experiences and allows the sampling of random batches to break
 the temporal correlation between samples, stabilizing the training process.
 """
+from typing import Any
+
 import torch
 
 
@@ -36,13 +22,24 @@ class ReplayMemory:
     Provides O(1) device-side sampling and zero Python-side looping.
     """
 
-    def __init__(self, capacity: int, state_shape: tuple, device: torch.device, alpha: float = 0.6, beta: float = 0.4):
+    def __init__(
+        self,
+        capacity: int,
+        state_shape: tuple,
+        device: Any,
+        alpha: float = 0.6,
+        beta: float = 0.4,
+        action_shape: tuple = (1,),
+        action_dtype: Any = None,
+    ):
         """
         Initializes the buffer pre-allocating contiguous memory chunks with Prioritized Experience Replay (PER).
         """
         self.capacity = capacity
         self.device = device
         self.state_shape = state_shape
+        self.action_shape = tuple(action_shape)
+        self.action_dtype = action_dtype if action_dtype is not None else getattr(torch, "long", "long")
 
         # PER Parameters
         self.alpha = alpha
@@ -52,8 +49,8 @@ class ReplayMemory:
 
         # Precompute massive tensors mapping directly into GPU Memory (VRAM)
         self.states = torch.zeros((capacity, *state_shape), device=self.device, dtype=torch.float32)
-        # Assuming action is a scalar integer (wrapped in tensor natively)
-        self.actions = torch.zeros((capacity, 1), device=self.device, dtype=torch.long)
+        # Configurable action tensor dimensions and precision
+        self.actions = torch.zeros((capacity, *self.action_shape), device=self.device, dtype=self.action_dtype)
         self.next_states = torch.zeros((capacity, *state_shape), device=self.device, dtype=torch.float32)
         self.rewards = torch.zeros((capacity, 1), device=self.device, dtype=torch.float32)
 
@@ -66,6 +63,45 @@ class ReplayMemory:
         self.ptr = 0
         self.size = 0
 
+    def __setstate__(self, state: dict) -> None:
+        """
+        Ensures backward compatibility when deserializing older ReplayMemory checkpoints.
+        """
+        self.__dict__.update(state)
+        if "action_dtype" not in self.__dict__:
+            if hasattr(self, "actions") and isinstance(self.actions, torch.Tensor):
+                self.action_dtype = self.actions.dtype
+            else:
+                self.action_dtype = getattr(torch, "long", "long")
+        if "action_shape" not in self.__dict__:
+            if hasattr(self, "actions") and isinstance(self.actions, torch.Tensor):
+                self.action_shape = tuple(self.actions.shape[1:]) if self.actions.ndim > 1 else (1,)
+            else:
+                self.action_shape = (1,)
+        if "beta_increment" not in self.__dict__:
+            self.beta_increment = 0.001
+        if "eps" not in self.__dict__:
+            self.eps = 1e-6
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "action_dtype":
+            dtype = (
+                self.actions.dtype
+                if hasattr(self, "actions") and isinstance(self.actions, torch.Tensor)
+                else getattr(torch, "long", "long")
+            )
+            self.action_dtype = dtype
+            return dtype
+        if name == "action_shape":
+            shape = (
+                tuple(self.actions.shape[1:])
+                if hasattr(self, "actions") and isinstance(self.actions, torch.Tensor) and self.actions.ndim > 1
+                else (1,)
+            )
+            self.action_shape = shape
+            return shape
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
     def push(self, state, action, next_state, reward):
         """
         Inserts a transition at the current pointer natively into VRAM with max priority.
@@ -74,17 +110,51 @@ class ReplayMemory:
         state_t = (
             state if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device, dtype=torch.float32)
         )
-        action_t = (
-            action if isinstance(action, torch.Tensor) else torch.tensor([action], device=self.device, dtype=torch.long)
-        )
+        action_dtype = getattr(self, "action_dtype", None)
+        if action_dtype is None:
+            action_dtype = (
+                self.actions.dtype
+                if hasattr(self, "actions") and isinstance(self.actions, torch.Tensor)
+                else getattr(torch, "long", "long")
+            )
+            self.action_dtype = action_dtype
+
+        action_shape = getattr(self, "action_shape", None)
+        if action_shape is None:
+            action_shape = (
+                tuple(self.actions.shape[1:])
+                if hasattr(self, "actions") and isinstance(self.actions, torch.Tensor) and self.actions.ndim > 1
+                else (1,)
+            )
+            self.action_shape = action_shape
+
+        if isinstance(action, torch.Tensor):
+            action_t = action.to(device=self.device, dtype=action_dtype)
+        else:
+            action_t = torch.as_tensor(action, device=self.device, dtype=action_dtype)
         reward_t = (
             reward
             if isinstance(reward, torch.Tensor)
             else torch.tensor([reward], device=self.device, dtype=torch.float32)
         )
 
+        if (
+            isinstance(state_t, torch.Tensor)
+            and hasattr(state_t, "ndim")
+            and state_t.ndim == 2
+            and len(self.state_shape) == 2
+            and state_t.shape[1] == self.state_shape[1]
+            and state_t.shape[0] != self.state_shape[0]
+        ):
+            tgt_len = self.state_shape[0]
+            if state_t.shape[0] < tgt_len:
+                pad = state_t[:1].repeat(tgt_len - state_t.shape[0], 1)
+                state_t = torch.cat([pad, state_t], dim=0)
+            else:
+                state_t = state_t[-tgt_len:]
+
         self.states[self.ptr] = state_t
-        self.actions[self.ptr] = action_t.view(1)
+        self.actions[self.ptr] = action_t.reshape(action_shape)
         self.rewards[self.ptr] = reward_t.view(1)
 
         if next_state is not None:
@@ -93,6 +163,20 @@ class ReplayMemory:
                 if isinstance(next_state, torch.Tensor)
                 else torch.tensor(next_state, device=self.device, dtype=torch.float32)
             )
+            if (
+                isinstance(next_state_t, torch.Tensor)
+                and hasattr(next_state_t, "ndim")
+                and next_state_t.ndim == 2
+                and len(self.state_shape) == 2
+                and next_state_t.shape[1] == self.state_shape[1]
+                and next_state_t.shape[0] != self.state_shape[0]
+            ):
+                tgt_len = self.state_shape[0]
+                if next_state_t.shape[0] < tgt_len:
+                    pad = next_state_t[:1].repeat(tgt_len - next_state_t.shape[0], 1)
+                    next_state_t = torch.cat([pad, next_state_t], dim=0)
+                else:
+                    next_state_t = next_state_t[-tgt_len:]
             self.next_states[self.ptr] = next_state_t
             self.non_final_mask[self.ptr] = True
         else:

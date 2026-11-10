@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_engine_coordinators_and_reporters.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import queue
 from unittest.mock import MagicMock, patch
@@ -24,11 +8,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.enums import Maturity
-from engine.asset_manager import AssetManager
-from engine.episode_reporter import EpisodeReporter
-from engine.guardian_communicator import GuardianCommunicator
-from engine.service_manager import ServiceManager
-from engine.state_history_manager import StateHistoryManager
+from core.episode_reporter import EpisodeReporter
+from manager.asset_manager import AssetManager
+from manager.service_manager import ServiceManager
+from manager.state_history_manager import StateHistoryManager
+from safety.guardian_communicator import GuardianCommunicator
 
 
 @pytest.fixture
@@ -119,3 +103,44 @@ def test_service_manager(mock_locale):
     service_mgr.stop_all_services()
     assert mock_guardian_p.terminate.called
     assert mock_xai_p.terminate.called
+
+
+def test_system_reporter_evp_override_with_vehicle(mock_locale):
+    """SystemReporter formats EVP preemption suffix with vehicle ID correctly."""
+    from core.system_reporter import SystemReporter
+    import logging
+
+    with patch.object(logging, "info") as mock_log_info:
+        SystemReporter.report_agent_decision(
+            lm=mock_locale,
+            tl_id="1193472473",
+            maturity_level="TEEN",
+            action_str="MANTER ESTÁGIO",
+            is_authorized=True,
+            reason="Controle permitido",
+            override_state="EVP:POLICIA-01",
+        )
+        assert mock_log_info.called
+        last_call_arg = mock_log_info.call_args[0][0]
+        assert "Preempção EVP (POLICIA-01)" in last_call_arg
+
+
+def test_system_reporter_evp_override_generic(mock_locale):
+    """SystemReporter formats generic EVP preemption suffix without vehicle ID."""
+    from core.system_reporter import SystemReporter
+    import logging
+
+    with patch.object(logging, "info") as mock_log_info:
+        SystemReporter.report_agent_decision(
+            lm=mock_locale,
+            tl_id="1193472473",
+            maturity_level="TEEN",
+            action_str="MANTER ESTÁGIO",
+            is_authorized=True,
+            reason="Controle permitido",
+            override_state="EVP",
+        )
+        assert mock_log_info.called
+        last_call_arg = mock_log_info.call_args[0][0]
+        assert "Preempção EVP" in last_call_arg
+

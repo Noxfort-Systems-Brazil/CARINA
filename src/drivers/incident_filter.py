@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/drivers/incident_filter.py
-# Author: Gabriel Moraes
-# Date: 2026-07-31
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Incident Filter Intermediary Module.
@@ -37,8 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 def _log_filter_debug(intersection_id: str, message_text: str, is_duplicate: bool, action: str) -> None:
-    """Disabled temporary debug logging."""
-    pass
+    """Logs incident filter deduplication decisions at debug level."""
+    logger.debug(
+        "[IncidentFilter] id=%s | duplicate=%s | action=%s | msg=%s",
+        intersection_id,
+        is_duplicate,
+        action,
+        message_text,
+    )
 
 
 class IncidentFilter:
@@ -89,8 +79,8 @@ class IncidentFilter:
                                 if last_key == current_key:
                                     file_time_diff = now - last_time_str
                                     time_diff = min(time_diff, file_time_diff)
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    logger.debug("[drivers] Ignored recoverable error: %s", _exc)
 
             # Cross-process comparison: if identical message arrived < 1.0s ago anywhere -> DUPLICATE!
             if time_diff < 1.0:
@@ -108,10 +98,10 @@ class IncidentFilter:
             try:
                 with open(stamp_file, "w", encoding="utf-8") as f:
                     f.write(f"{current_key}|||{now}")
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("[drivers] Ignored recoverable error: %s", _exc)
 
             _log_filter_debug(resolved_id, msg_text, False, f"FORWARDED TO INCIDENT_REPORTER (diff: {time_diff:.4f}s)")
             IncidentReporter.report_trap(intersection_id, level, trap_data)
         except Exception as err:
-            logger.error(f"[IncidentFilter] Error in incident filter: {err}")
+            logger.error(f"[IncidentFilter] Error in incident filter: {err}", exc_info=True)

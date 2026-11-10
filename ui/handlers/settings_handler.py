@@ -1,27 +1,10 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/handlers/settings_handler.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the SettingsHandler.
 
-In this version, the responsibility of saving the .ini file has been removed.
 The 'save_settings' method now only collects and validates UI data,
 returning a dictionary ready to be sent to the backend via SettingsClient.
 """
@@ -29,7 +12,14 @@ returning a dictionary ready to be sent to the backend via SettingsClient.
 import configparser
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+from ui.handlers.settings_defaults import (
+    DEFAULT_SETTINGS_MAP,
+    KEY_TO_SECTION_MAP,
+    apply_env_overrides,
+    sync_env_overrides,
+)
 
 
 class SettingsHandler:
@@ -37,87 +27,14 @@ class SettingsHandler:
     Manages the logic to load and validate UI settings.
     """
 
-    # The map of keys to sections is still useful for initial reading
-    _KEY_TO_SECTION_MAP = {
-        "language": "UI",
-        "theme_dark": "UI",
-        "min_green_time": "TRAFFIC_RULES",
-        "yellow_time_seconds": "TRAFFIC_RULES",
-        "heatmap_strategy": "HEATMAP_SCALING",
-        "heatmap_saturation": "HEATMAP_SCALING",
-        "performance_margin": "MATURITY",
-        "child_phase_episodes": "MATURITY",
-        "teen_phase_min_episodes": "MATURITY",
-        "child_promotion_max_entropy": "MATURITY",
-        "performance_check_window": "MATURITY",
-        "calibration_window_size": "CALIBRATION",
-        "ppo_gamma": "AI_TRAINING",
-        "ppo_k_epochs": "AI_TRAINING",
-        "ppo_eps_clip": "AI_TRAINING",
-        "dqn_epsilon_decay": "GUARDIAN_AGENT",
-        "dqn_batch_size": "GUARDIAN_AGENT",
-        "pbt_frequency": "PBT",
-        "pbt_exploitation": "PBT",
-        "watchdog_grace": "WATCHDOG",
-        "analysis_interval_value": "ANALYSIS_SCHEDULE",
-        "analysis_interval_unit": "ANALYSIS_SCHEDULE",
-        "weight_waiting_time": "REWARD_WEIGHTS",
-        "weight_flow": "REWARD_WEIGHTS",
-        "monitor_enabled": "EXTERNAL_MONITOR",
-        "monitor_mqtt_host": "EXTERNAL_MONITOR",
-        "db_type": "DATABASE",
-        "db_host": "DATABASE",
-        "db_port": "DATABASE",
-        "db_user": "DATABASE",
-        "db_password": "DATABASE",
-        "db_name": "DATABASE",
-        "db_connected": "DATABASE",
-        "tensorboard_enabled": "TENSORBOARD",
-        "tensorboard_log_dir": "TENSORBOARD",
-        "report_logo_path": "REPORT_FORMATTING",
-        "report_city": "REPORT_FORMATTING",
-        "report_state_uf": "REPORT_FORMATTING",
-        "report_secretary_name": "REPORT_FORMATTING",
-        "report_secretary_title": "REPORT_FORMATTING",
-        "report_agency_name": "REPORT_FORMATTING",
-        "report_department_name": "REPORT_FORMATTING",
-        "report_title": "REPORT_FORMATTING",
-        "report_block_order": "REPORT_FORMATTING",
-        "report_font_name": "REPORT_FORMATTING",
-        "report_font_size": "REPORT_FORMATTING",
-        "report_margin_top": "REPORT_FORMATTING",
-        "report_margin_bottom": "REPORT_FORMATTING",
-        "report_margin_left": "REPORT_FORMATTING",
-        "report_margin_right": "REPORT_FORMATTING",
-        "report_line_spacing": "REPORT_FORMATTING",
-        "report_alignment": "REPORT_FORMATTING",
-        "report_speed_unit": "REPORT_FORMATTING",
-        "report_ordinance_enabled": "REPORT_FORMATTING",
-        "report_ordinance_number": "REPORT_FORMATTING",
-        "report_slm_device": "REPORT_FORMATTING",
-        "report_slm_gpu_layers": "REPORT_FORMATTING",
-        # Legacy XAI key aliases mapped to REPORT_FORMATTING section
-        "xai_logo_path": "REPORT_FORMATTING",
-        "xai_secretary_name": "REPORT_FORMATTING",
-        "xai_secretary_title": "REPORT_FORMATTING",
-        "xai_agency_name": "REPORT_FORMATTING",
-        "xai_department_name": "REPORT_FORMATTING",
-        "xai_report_title": "REPORT_FORMATTING",
-        "xai_block_order": "REPORT_FORMATTING",
-        "xai_font_name": "REPORT_FORMATTING",
-        "xai_font_size": "REPORT_FORMATTING",
-        "report_margin_top": "REPORT_FORMATTING",
-        "xai_margin_bottom": "REPORT_FORMATTING",
-        "xai_margin_left": "REPORT_FORMATTING",
-        "xai_margin_right": "REPORT_FORMATTING",
-        "xai_line_spacing": "REPORT_FORMATTING",
-        "xai_alignment": "REPORT_FORMATTING",
-        "xai_speed_unit": "REPORT_FORMATTING",
-    }
+    _KEY_TO_SECTION_MAP = KEY_TO_SECTION_MAP
 
-    def __init__(self):
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        self.config_path = os.path.join(project_root, "config", "settings.ini")
+    def __init__(self, config_path: Optional[str] = None):
+        if config_path:
+            self.config_path = config_path
+        else:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            self.config_path = os.path.join(project_root, "config", "settings.ini")
         self.config = configparser.ConfigParser()
         self._defaults = self._get_default_settings_map()
         self._current_settings = self.load_settings()
@@ -130,6 +47,7 @@ class SettingsHandler:
                 logging.warning(f"[SettingsHandler] File {self.config_path} not found. Using defaults.")
                 return self.get_default_settings()
 
+            self.config = configparser.ConfigParser()
             self.config.read(self.config_path, encoding="utf-8")
             loaded_settings = {}
             for key, section in self._KEY_TO_SECTION_MAP.items():
@@ -154,63 +72,52 @@ class SettingsHandler:
                 if key not in loaded_settings:
                     loaded_settings[key] = value
 
-            # Apply .env overrides if present
-            try:
-                from dotenv import load_dotenv
-
-                load_dotenv()
-            except ImportError:
-                pass
-            project_root = os.path.dirname(os.path.dirname(self.config_path))
-            env_file_path = os.path.join(project_root, ".env")
-            if os.path.isfile(env_file_path):
-                try:
-                    with open(env_file_path, "r", encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if not line or line.startswith("#") or "=" not in line:
-                                continue
-                            k, v = line.split("=", 1)
-                            k = k.strip()
-                            v = v.strip().strip("'\"")
-                            if k and k not in os.environ:
-                                os.environ[k] = v
-                except Exception:
-                    pass
-
-            env_map = {
-                "CARINA_DB_USER": "db_user",
-                "CARINA_DB_PASSWORD": "db_password",
-                "CARINA_DB_HOST": "db_host",
-                "CARINA_DB_PORT": "db_port",
-                "CARINA_DB_NAME": "db_name",
-                "CARINA_DB_SCHEMA": "db_schema",
-                "CARINA_DB_TYPE": "db_type",
-            }
-            for env_k, set_k in env_map.items():
-                val = os.getenv(env_k)
-                if val is not None and val != "":
-                    loaded_settings[set_k] = val
+            apply_env_overrides(loaded_settings, self.config_path)
 
             return loaded_settings
         except Exception as e:
-            logging.error(f"[SettingsHandler] Error loading settings: {e}. Using defaults.")
+            logging.error(f"[SettingsHandler] Error loading settings: {e}. Using defaults.", exc_info=True)
             return self.get_default_settings()
 
-    # --- MAIN CHANGE HERE ---
-    # This method no longer writes to the file. It just prepares the data.
+    def save_to_file(self, new_settings: Dict[str, Any]) -> bool:
+        """
+        Persists the provided settings directly to config/settings.ini.
+        """
+        try:
+            self.config = configparser.ConfigParser()
+            if os.path.exists(self.config_path):
+                self.config.read(self.config_path, encoding="utf-8")
+
+            for key, value in new_settings.items():
+                section = self._KEY_TO_SECTION_MAP.get(key)
+                if section:
+                    if not self.config.has_section(section):
+                        self.config.add_section(section)
+                    self.config.set(section, key, str(value))
+
+            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                self.config.write(f)
+
+            sync_env_overrides(new_settings, self.config_path)
+
+            logging.info(f"[SettingsHandler] Settings saved successfully to {self.config_path}")
+            return True
+        except Exception as e:
+            logging.error(f"[SettingsHandler] Error saving settings to {self.config_path}: {e}", exc_info=True)
+            return False
+
     def prepare_settings_for_save(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Validates and prepares the new settings to be sent to the backend.
-        For now, validation is simple (just collection), but can be expanded here.
+        Validates, saves to disk, and updates memory ready for backend IPC.
         """
-        # Updates current settings in UI memory
+        self.save_to_file(new_settings)
         self._current_settings.update(new_settings)
-        logging.info("[SettingsHandler] New settings prepared for sending to the backend.")
-        # Returns the complete payload, ready to be sent
+        logging.info("[SettingsHandler] New settings saved to disk and prepared for sending to the backend.")
         return new_settings
 
     def get_current_settings(self) -> Dict[str, Any]:
+        self._current_settings = self.load_settings()
         return self._current_settings.copy()
 
     def get_default_settings(self) -> Dict[str, Any]:
@@ -218,56 +125,4 @@ class SettingsHandler:
 
     def _get_default_settings_map(self) -> Dict[str, Any]:
         """Returns the default settings dictionary."""
-        return {
-            "theme_dark": True,
-            "language": "pt_br",
-            "min_green_time": "10",
-            "yellow_time_seconds": "3",
-            "heatmap_strategy": "max",
-            "heatmap_saturation": "100.0",
-            "performance_margin": "-100.0",
-            "child_phase_episodes": "1",
-            "teen_phase_min_episodes": "1",
-            "child_promotion_max_entropy": "2.0",
-            "performance_check_window": "1",
-            "calibration_window_size": "10",
-            "ppo_gamma": "0.99",
-            "ppo_k_epochs": "4",
-            "ppo_eps_clip": "0.2",
-            "dqn_epsilon_decay": "30000",
-            "dqn_batch_size": "128",
-            "pbt_frequency": "10",
-            "pbt_exploitation": "25",
-            "watchdog_grace": "30",
-            "analysis_interval_value": "7",
-            "analysis_interval_unit": "days",
-            "weight_waiting_time": "-2.0",
-            "weight_flow": "2.0",
-            "monitor_enabled": "False",
-            "monitor_mqtt_host": "localhost",
-            "db_type": "sqlite",
-            "db_host": "localhost",
-            "db_port": "5432",
-            "db_user": "admin",
-            "db_password": "admin",
-            "db_name": "carina_data",
-            "db_connected": "False",
-            "tensorboard_enabled": "False",
-            "tensorboard_log_dir": "results/tensorboard",
-            "xai_logo_path": "",
-            "xai_secretary_name": "Dr. Gabriel Moraes",
-            "xai_secretary_title": "Secretário de Mobilidade e Trânsito",
-            "xai_agency_name": "Prefeitura Municipal / Secretaria de Trânsito",
-            "xai_department_name": "Departamento de Mobilidade Inteligente",
-            "xai_report_title": "LAUDO TÉCNICO DE EXPLICABILIDADE DE IA (XAI)",
-            "xai_block_order": "header,title,metadata,chart,content,signature",
-            "xai_font_name": "Arial",
-            "xai_font_size": "11",
-            "xai_margin_top": "3.0",
-            "xai_margin_bottom": "2.0",
-            "xai_margin_left": "3.0",
-            "xai_margin_right": "2.0",
-            "xai_line_spacing": "1.15",
-            "xai_alignment": "justify",
-            "xai_speed_unit": "m/s",
-        }
+        return DEFAULT_SETTINGS_MAP.copy()

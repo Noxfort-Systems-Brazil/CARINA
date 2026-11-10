@@ -1,33 +1,10 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/database/database_manager.py
-# Author: Gabriel Moraes
-# Date: May 31, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
-import os
-import sys
+import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-# Add 'src' directory to path to allow absolute imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 from src.database.db_engine import DatabaseEngine
 from src.database.step_decision_worker import StepDecisionWorker
@@ -48,11 +25,34 @@ class DatabaseManager:
     to respect the Single Responsibility Principle (SRP).
     """
 
-    def __init__(self, locale_manager: "LocaleManagerBackend", db_name: str = "carina_data.db"):
+    _instance: Optional["DatabaseManager"] = None
+    _lock = threading.RLock()
+
+    @classmethod
+    def get_instance(
+        cls,
+        locale_manager: Optional["LocaleManagerBackend"] = None,
+        db_name: str = "carina_data.db",
+        run_migrations: bool = False,
+    ) -> "DatabaseManager":
+        """Returns the shared process-level DatabaseManager instance."""
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls(locale_manager=locale_manager, db_name=db_name, run_migrations=run_migrations)
+            elif locale_manager is not None and cls._instance.locale_manager is None:
+                cls._instance.locale_manager = locale_manager
+            return cls._instance
+
+    def __init__(
+        self,
+        locale_manager: "LocaleManagerBackend",
+        db_name: str = "carina_data.db",
+        run_migrations: bool = False,
+    ):
         self.locale_manager = locale_manager
 
         # Initializes the Central Engine (Infrastructure/Connection)
-        self.engine = DatabaseEngine(locale_manager=locale_manager, db_name=db_name)
+        self.engine = DatabaseEngine(locale_manager=locale_manager, db_name=db_name, run_migrations=run_migrations)
 
         # Initializes the Specialized Repositories (Business Logic)
         self.simulation_repo = SimulationRepository(self.engine, locale_manager)
@@ -64,6 +64,18 @@ class DatabaseManager:
         self.step_decision_worker = StepDecisionWorker(self.step_decision_repo)
         self.step_decision_worker.start()
         self.current_session_id: Optional[int] = None
+
+        with self.__class__._lock:
+            if self.__class__._instance is None:
+                self.__class__._instance = self
+
+    def close(self):
+        """Stops the async telemetry worker and cleans up connections."""
+        if hasattr(self, "step_decision_worker") and self.step_decision_worker:
+            try:
+                self.step_decision_worker.stop()
+            except Exception:
+                pass
 
     def start_operation_session(self) -> Optional[int]:
         """Registers an operational session start_time in PostgreSQL."""

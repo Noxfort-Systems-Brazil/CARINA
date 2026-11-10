@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sas/sas_historical_data_processor.py
-# Author: Gabriel Moraes
-# Date: August 12, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import gc
 import logging
@@ -49,7 +33,7 @@ class SASHistoricalDataProcessor:
             except Exception as e:
                 logging.warning(
                     f"[SAS_HISTORICAL_PROCESSOR] Failed to parse net file topology ({e}). Will fallback to synthetic topology."
-                )
+                , exc_info=True)
 
         true_traffic_light_ids = [j_id for j_id, j_type in junction_types.items() if j_type == "traffic_light"]
 
@@ -85,7 +69,7 @@ class SASHistoricalDataProcessor:
                         }
                         total_samples += int(row.get("total_samples") or 0)
         except Exception as e:
-            logging.warning(f"[SAS_HISTORICAL_PROCESSOR] Pushdown query failed ({e}), falling back to batch iteration.")
+            logging.warning(f"[SAS_HISTORICAL_PROCESSOR] Pushdown query failed ({e}), falling back to batch iteration.", exc_info=True)
             edge_summaries = {}
             total_samples = 0
 

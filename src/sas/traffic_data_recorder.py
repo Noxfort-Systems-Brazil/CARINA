@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sas/traffic_data_recorder.py
-# Author: Gabriel Moraes
-# Date: April 22, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 TrafficDataRecorder — Records Synapse TrafficFrame data into the database.
@@ -83,8 +67,39 @@ class TrafficDataRecorder:
         import queue
 
         self._flush_queue = queue.Queue(maxsize=1000)
-        self._worker_thread = threading.Thread(target=self._db_worker_loop, daemon=True)
+        self._worker_thread = threading.Thread(target=self._db_worker_loop, daemon=True, name="TrafficDataRecorderWorker")
         self._worker_thread.start()
+
+    def _get_string(self, key: str, default: str = "", **kwargs) -> str:
+        if self.locale_manager and hasattr(self.locale_manager, "get_string"):
+            return self.locale_manager.get_string(key, default=default, **kwargs)
+        if kwargs:
+            try:
+                return default.format(**kwargs)
+            except Exception:
+                pass
+        return default
+
+    def _db_worker_loop(self):
+        """Background thread loop to process database inserts sequentially."""
+        while True:
+            try:
+                samples = self._flush_queue.get()
+                if samples is None:
+                    break
+                count_val = len(samples)
+                if self.db and hasattr(self.db, "insert_synapse_fluid_dynamics"):
+                    self.db.insert_synapse_fluid_dynamics(samples)
+                self._total_recorded += count_val
+            except Exception as e:
+                logger.error(f"[TrafficDataRecorder] Async flush failed: {e}", exc_info=True)
+
+    def close(self):
+        """Stops the background worker thread gracefully."""
+        try:
+            self._flush_queue.put(None, timeout=0.5)
+        except Exception:
+            pass
 
     def set_scenario_name(self, scenario_name: str):
         """Sets the scenario_name for telemetry tagging."""
@@ -192,9 +207,6 @@ class TrafficDataRecorder:
 
         self._ram_60s_buffer.clear()
         self._last_ram_flush = timestamp
-
-        if len(self._batch_buffer) >= self._batch_size:
-            self.flush()
 
         if len(self._batch_buffer) >= self._batch_size:
             self.flush()

@@ -30,46 +30,60 @@ Before deploying or adjusting traffic signals, municipal engineers are legally r
   │  (Warrant Strategies)│      │(Volume & Speed Math) │
   └──────────┬───────────┘      └──────────────────────┘
              │
-             ├──> Warrant 1: Eight-Hour Vehicular Volume
-             ├──> Warrant 2: Four-Hour Vehicular Volume
-             ├──> Warrant 3: Peak Hour Delay & Volume
-             ├──> Warrant 7: Crash Experience & Critical Rate
-             └──> Warrant 8: Roadway Network Coordination
+             ├──> Warrant 1: VolumeWarrant (MUTCD Table 4C-1 Volumes)
+             ├──> Warrant 2: DelayWarrant (Unacceptable Delay D)
+             ├──> Warrant 3: QueueWarrant (P95 Statistical Queue)
+             └──> Warrant 4: SaturationWarrant (Degree of Saturation X = v/c)
 ```
 
 ---
 
-## 2. Implemented MUTCD Warrants in `src/analysis/`
+## 2. Implemented Traffic Engineering Warrant Strategies (`src/analysis/warrant_strategies.py`)
 
-### 2.1 Warrant 1: Eight-Hour Vehicular Volume (`warrant_strategies.py`)
-Evaluates whether traffic volume on intersecting streets meets minimum vehicular volume thresholds for any 8 hours of an average day:
-- **Condition A (Minimum Vehicular Volume):** Major and minor street approach volumes exceed critical hourly volumes $V_{major} \ge 500\text{ veh/h}$ and $V_{minor} \ge 150\text{ veh/h}$.
-- **Condition B (Interruption of Continuous Traffic):** Traffic volume on a major street is so heavy that traffic on a minor intersecting street suffers excessive delay ($V_{major} \ge 750\text{ veh/h}$ and $V_{minor} \ge 75\text{ veh/h}$).
+CARINA structures its engineering analysis using the **Strategy Pattern** registered in [`WarrantEvaluator`](../src/analysis/warrant_evaluator.py):
 
-### 2.2 Warrant 2: Four-Hour Vehicular Volume
-Applies when volume on major and minor streets satisfies the MUTCD 4-hour curves plotted in [`src/analysis/warrant_math.py`](../src/analysis/warrant_math.py).
+### 2.1 Warrant 1: Volume Warrant (`VolumeWarrant`)
+Evaluates approach traffic volumes using the fundamental traffic flow equation:
+$$q = k \times (v \times 3.6)$$
+- **MUTCD Table 4C-1 Thresholds:** Evaluates approach lanes and speed limits:
+  - **1 Lane Major / 1 Lane Minor:** Condition A: $V_{major} \ge 500\text{ veh/h}$, $V_{minor} \ge 150\text{ veh/h}$. Condition B: $V_{major} \ge 750\text{ veh/h}$, $V_{minor} \ge 75\text{ veh/h}$.
+  - **2+ Lanes Major / 2+ Lanes Minor:** Condition A: $V_{major} \ge 600\text{ veh/h}$, $V_{minor} \ge 200\text{ veh/h}$. Condition B: $V_{major} \ge 900\text{ veh/h}$, $V_{minor} \ge 100\text{ veh/h}$.
+- **High-Speed 70% Reduction Factor:** If the posted major street speed exceeds $70\text{ km/h}$ ($19.44\text{ m/s}$), all volume thresholds are scaled by $0.70$ (e.g., $500 \to 350\text{ veh/h}$, $150 \to 105\text{ veh/h}$).
 
-### 2.3 Warrant 3: Peak Hour Volume & Delay
-Evaluates whether traffic conditions during the single highest-volume hour of the day cause extreme delay or hazard:
-- Total stopped time delay experienced by traffic on one minor-street approach equals or exceeds 4 vehicle-hours for a one-lane approach.
-- Volume on the approach equals or exceeds 100 vehicles per hour.
+### 2.2 Warrant 2: Delay Warrant (`DelayWarrant`)
+Quantifies operational delay experienced on secondary intersecting approaches relative to free-flow travel time:
+$$D = \frac{L}{v_{\text{real}}} - \frac{L}{v_{\text{limit}}}$$
+- Evaluates whether average delay exceeds the unacceptable delay threshold:
+$$D_{avg} > D_{\text{threshold}}$$
+- Default threshold: `unacceptable_delay = 90.0 s`.
 
-### 2.4 Warrant 7: Crash Experience
-Evaluates whether a traffic signal will reduce accident rates:
-- An adequate trial of alternative measures with satisfactory compliance has failed to reduce the crash frequency.
-- Five or more reported crashes of types susceptible to relief by a traffic signal (e.g., right-angle collisions) have occurred within a 12-month period.
+### 2.3 Warrant 3: Queue P95 Warrant (`QueueWarrant`)
+Audits queue buildup using 95th-percentile statistical distributions to prevent arterial spillback:
+- Calculates the empirical 95th-percentile queue length $P95(Q)$ across accumulated sensor samples.
+- Warrant is satisfied if:
+$$P95(Q) > Q_{\text{threshold}}$$
+- Default threshold: `max_queue_p95 = 15` vehicles.
 
-### 2.5 Warrant 8: Roadway Network
-Justifies signal installation to encourage concentration and organization of traffic flow on a coordinated arterial network.
+### 2.4 Warrant 4: Degree of Saturation Warrant (`SaturationWarrant`)
+Evaluates the volume-to-capacity ($v/c$) ratio across all approach lanes:
+$$X = \frac{q}{N \times f_{\text{ideal}}}$$
+Where:
+- $q$: Space-mean vehicle volume ($\text{veh/h}$).
+- $N$: Number of approach lanes.
+- $f_{\text{ideal}}$: Ideal saturation flow per lane ($1800\text{ veh/h/lane}$).
+- Warrant is satisfied if the maximum lane saturation ratio exceeds critical capacity:
+$$X_{\max} > X_{\text{critical}}$$
+- Default threshold: `saturation_critical = 0.85` ($85\%$ capacity).
 
 ---
 
 ## 3. Mathematical Utilities (`warrant_math.py`)
 
 Located in [`src/analysis/warrant_math.py`](../src/analysis/warrant_math.py):
-- **85th-Percentile Speed Calculation:** Evaluates if posted speed limits should scale warrant threshold volumes down by 70% (applicable when major street speed exceeds $70\text{ km/h}$ or in isolated rural communities).
-- **Critical Flow Ratio:** Computes lane-by-lane saturation flows and degree of saturation ($X = v/c$).
-- **Moving-Window Accumulation:** Aggregates time-series samples into robust hourly volume bins.
+- **`compute_volume_q(density, speed)`:** Computes space-mean flow volume $q = k \times (v \times 3.6)$.
+- **`compute_delay(length, v_real, v_limit)`:** Computes real vehicular travel delay relative to posted speed limits.
+- **`compute_p95(values)`:** Computes the empirical 95th-percentile queue length.
+- **`compute_saturation_ratio(volume, num_lanes, ideal_flow)`:** Calculates the degree of saturation ($X = v/c$).
 
 ---
 
@@ -77,5 +91,5 @@ Located in [`src/analysis/warrant_math.py`](../src/analysis/warrant_math.py):
   <img src="assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3 or later (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

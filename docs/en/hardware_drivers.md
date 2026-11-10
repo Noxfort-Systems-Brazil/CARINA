@@ -7,28 +7,33 @@ aliases: [Hardware Drivers, Physical Controllers, NTCIP 1202, UTMC Integration]
 
 This document specifies CARINA's physical hardware integration layer located in [`src/drivers/`](../../src/drivers) and [`src/controller/`](../../src/controller). It details communication protocols (**NTCIP 1202**, **UTMC / UTMC2**, **SNMP v2c/v3**), connection lifecycle management, hardware telemetry acquisition, and deterministic fail-safe handoff.
 
-⬅️ Back to [Main Documentation Hub](../CARINA_MOC.md) | 🏛️ See [Multiprocessing Architecture](architecture.md) | 🛡️ See [Safety & Watchdog](safety_and_watchdog.md)
+⬅️ Back to [Main Documentation Hub](../CARINA_MOC.md) | 🏛️ See [Multiprocessing Architecture](architecture.md) | 🛡️ See [Safety & Watchdog](safety_and_watchdog.md) | 🚑 See [EVP Preemption](evp_and_preemption.md)
 
 ---
 
 ## 1. Architectural Overview
 
-CARINA interfaces with real-world traffic signal controllers (e.g., Econolite, Siemens, Peek, SWARCO, Yunex) using a high-performance **Go Hardware Gateway** (`bin/carina-go` built from [`src_go/`](../../src_go)). Communication between the CARINA Python core and the Go Gateway runs strictly through **operating system standard pipes (`stdin`/`stdout`)** using Line-Delimited JSON (NDJSON). This ensures **zero network ports opened on the host machine**, sub-millisecond execution, and total freedom from Python GIL overhead.
+CARINA interfaces with real-world traffic signal controllers (e.g., Econolite, Siemens, Peek, SWARCO, Yunex) using a high-performance **Go Hardware Gateway** (`bin/carina-go` built from [`src_go/`](../../src_go)). Communication between the CARINA Python core and the Go Gateway runs strictly through **operating system standard pipes (`stdin`/`stdout`)** using Line-Delimited JSON (NDJSON). This ensures **zero network ports opened on the host machine** for local IPC, sub-millisecond execution, and total freedom from Python GIL overhead.
+
+In addition to standard NTCIP/UTMC control, the Go gateway includes an **EVP Preemption Dispatcher** (`src_go/evp_go/dispatcher.go`) for microsecond phase hold assertions and a standalone **Remote Web Gateway** (`src_go/web_gateway/server.go`) providing Tailscale mesh connectivity, HTTP telemetry ingestion (port `2201`), and Server-Sent Events (SSE) streaming for CCO videowalls.
 
 ```text
        ┌────────────────────────────────────────────────────────┐
        │                   CentralController                    │
        └──────────────────────────┬─────────────────────────────┘
                                   │
-                  ┌───────────────┴───────────────┐
-                  ▼                               ▼
-       ┌──────────────────────┐        ┌──────────────────────┐
-       │  ConnectionManager   │        │ FailsafeManager      │
-       │  (State & Pooling)   │        │ (Heartbeat Watchdog) │
-       └──────────┬───────────┘        └──────────┬───────────┘
-                  │                               │
-                  └───────────────┬───────────────┘
-                                  │
+                  ┌───────────────┼───────────────┐
+                  ▼               ▼               ▼
+       ┌──────────────────────┐   │   ┌──────────────────────┐
+       │  ConnectionManager   │   │   │ FailsafeManager      │
+       │  (State & Pooling)   │   │   │ (Heartbeat Watchdog) │
+       └──────────┬───────────┘   │   └──────────┬───────────┘
+                  │               │              │
+                  │   ┌───────────┴──────────┐   │
+                  │   │      EVPService      │   │
+                  │   │(Preemption Dispatch) │   │
+                  │   └───────────┬──────────┘   │
+                  └───────────────┼──────────────┘
                                   ▼
                      ┌─────────────────────────┐
                      │     GoGatewayClient     │ (src/drivers/go_gateway_client.py)
@@ -36,24 +41,32 @@ CARINA interfaces with real-world traffic signal controllers (e.g., Econolite, S
                      └────────────┬────────────┘
                                   │ stdin / stdout (NDJSON IPC - Zero Host Ports)
                                   ▼
-      ┌───────────────────────────────────────────────────────┐
-      │          CARINA HARDWARE GATEWAY (Go Binary)          │
-      │                    (bin/carina-go)                    │
-      │                                                       │
-      │   ┌────────────────────┐     ┌────────────────────┐   │
-      │   │    NTCIP Driver    │     │    UTMC Driver     │   │
-      │   │ (NTCIP 1202 v02)   │     │ (UTMC2 UK Standard)│   │
-      │   └─────────┬──────────┘     └─────────┬──────────┘   │
-      │             │                          │              │
-      │             └─────────────┬────────────┘              │
-      │                           │                           │
-      │             ┌─────────────┴─────────────┐             │
-      │             ▼                           ▼             │
-      │  ┌──────────────────────┐    ┌─────────────────────┐  │
-      │  │    GoSNMP Client     │    │  TrapListener UDP   │  │
-      │  │    (UDP Port 161)    │    │      (Port 162)     │  │
-      │  └──────────────────────┘    └─────────────────────┘  │
-      └───────────────────────────────────────────────────────┘
+      ┌───────────────────────────────────────────────────────────┐
+      │            CARINA HARDWARE GATEWAY (Go Binary)            │
+      │                      (bin/carina-go)                      │
+      │                                                           │
+      │   ┌────────────────────┐         ┌────────────────────┐   │
+      │   │    NTCIP Driver    │         │    UTMC Driver     │   │
+      │   │ (NTCIP 1202 v02)   │         │ (UTMC2 UK Standard)│   │
+      │   └─────────┬──────────┘         └─────────┬──────────┘   │
+      │             │                             │               │
+      │             └──────────────┬──────────────┘               │
+      │                            │                              │
+      │             ┌──────────────┼──────────────┐               │
+      │             ▼              ▼              ▼               │
+      │  ┌──────────────────┐ ┌──────────┐ ┌──────────────────┐   │
+      │  │  EVP Dispatcher  │ │  GoSNMP  │ │ TrapListener UDP │   │
+      │  │ (Direct OID Hold)│ │UDP Pt 161│ │    (Port 162)    │   │
+      │  └──────────────────┘ └──────────┘ └──────────────────┘   │
+      └────────────────────────────┬──────────────────────────────┘
+                                   │ Remote Web Ingestion & Mesh
+                                   ▼
+      ┌───────────────────────────────────────────────────────────┐
+      │          Web Gateway & Tailscale Mesh (Port 2201)         │
+      │  - POST /api/v1/evp/telemetry (HTTP 204 GPS Ingestion)    │
+      │  - GET /cco/stream (Real-Time SSE Hub for Videowall)      │
+      │  - Tailscale Funnel / Encrypted Peer Mesh Networking      │
+      └───────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -102,26 +115,51 @@ For intersections utilizing the UK **Urban Traffic Management and Control (UTMC)
 
 ---
 
-## 4. Hardware Management & Fail-Safe Architecture
+## 4. EVP Hardware Preemption Dispatcher (`src_go/evp_go/`)
 
-### 4.1 Connection Lifecycle & Pooling (`src/controller/`)
+The **EVP Preemption Dispatcher** ([`src_go/evp_go/dispatcher.go`](../../src_go/evp_go/dispatcher.go)) handles real-time emergency green corridor requests with sub-millisecond physical controller actuation:
+
+- **Bypasses Inference Cycle:** Preemption triggers bypass the standard neural network action selection and inter-intersection coordination cycles, directly asserting green holds on target signal phases.
+- **SNMP OID Hold Insertion:** Translates green stage indices to NTCIP `ascPhaseHold` (`1.3.6.1.4.1.1206.4.2.1.1.5`) bitmasks, holding conflicting traffic in red while granting uninterrupted right-of-way.
+- **Microsecond IPC Protocol:** Activated via the `evp_preempt` NDJSON command over OS pipes:
+  ```json
+  {"cmd": "evp_preempt", "intersection_id": "cruzamento_av_jk_01", "action_type": "activate_preempt", "target_stage": 1, "vehicle_id": "SAMU-01"}
+  ```
+- **Failsafe Watchdog & Hold Release:** Holds are released either when the vehicle crosses the exit threshold ($\le 15\text{ m}$) or upon expiration of the maximum dwell watchdog timer ($45\text{ s}$). If the gateway crashes or disconnects, physical controllers automatically release holds after 3 dropped heartbeats.
+
+---
+
+## 5. Remote Web Gateway & Mesh Networking (`src_go/web_gateway/`)
+
+For distributed smart city architectures where emergency vehicles or central operators need remote connectivity without public IP exposure:
+
+- **Tailscale Encrypted Mesh:** Integrated via [`src_go/web_gateway/tailscale.go`](../../src_go/web_gateway/tailscale.go), enabling CARINA edge controllers to form secure, end-to-end encrypted zero-trust overlay networks.
+- **Tailscale Funnel (Port 2201):** Publicly exposes high-throughput ingestion endpoints over TLS without opening local firewall ports or configuring port forwarding.
+- **High-Throughput Telemetry Receiver:** Exposes `POST /api/v1/evp/telemetry` (HTTP 204 fire-and-forget) to ingest high-frequency vehicle GPS beacons with sub-millisecond response latency.
+- **Server-Sent Events (SSE) Broadcast Hub:** [`src_go/web_gateway/sse_hub.go`](../../src_go/web_gateway/sse_hub.go) streams real-time intersection telemetry, emergency vehicle tracks, and signal states to Central Control Operator (CCO) videowalls via `GET /cco/stream`.
+
+---
+
+## 6. Hardware Management & Fail-Safe Architecture
+
+### 6.1 Connection Lifecycle & Pooling (`src/controller/`)
 - [`src/controller/connection_manager.py`](../../src/controller/connection_manager.py): Manages connection state machines (`DISCONNECTED`, `CONNECTING`, `ONLINE`, `DEGRADED`, `FAILSAFE`).
 - [`src/controller/connection_config_repo.py`](../../src/controller/connection_config_repo.py): Persists IP addresses, ports, protocols, and credentials in the `hardware_controller_connections` table.
 - [`src/controller/failsafe_manager.py`](../../src/controller/failsafe_manager.py): Executes emergency reversion.
 
-### 4.2 Fail-Safe Determinism
+### 6.2 Fail-Safe Determinism
 1. **Heartbeat Loss (< 500 ms):** If communication with an active controller drops for more than 3 consecutive polling intervals, CARINA releases all Phase Holds and Force-Off commands.
 2. **Local Controller Reversion:** The physical controller immediately reverts to its local internal coordinated fixed-time plan (Time-of-Day / Flash Mode), guaranteeing uninterrupted intersection safety.
 3. **Safety Conflict Intercept:** All outgoing actions pass through [`src/controller/stage_validator.py`](../../src/controller/stage_validator.py) before dispatch, verifying intergreen clearance and conflict matrices.
 
-### 4.3 Hardware Incident Reporting & Deduplication (`src/drivers/`)
+### 6.3 Hardware Incident Reporting & Deduplication (`src/drivers/`)
 - [`src/drivers/incident_reporter.py`](../../src/drivers/incident_reporter.py): Intercepts controller hardware status changes (`CONNECTING`, `ONLINE`, `DEGRADED`, `FAILSAFE`) and constructs standardized incident JSON messages.
 - [`src/drivers/incident_filter.py`](../../src/drivers/incident_filter.py): Prevents notification storms by caching active incident hashes with timestamp debouncing in `.carina_incident_filter_cache.json`.
 - Dispatches alerts dynamically via `MonitorClient` to the configured telemetry transport (local MQTT broker or remote HTTP/Ngrok endpoint).
 
 ---
 
-## 5. Security & Network Credentials
+## 7. Security & Network Credentials
 
 Hardware credentials must never be hardcoded. CARINA resolves SNMP and controller secrets through environment variables defined in [`.env`](../../.env.example):
 
@@ -139,5 +177,5 @@ For telemetry serialization schemas, see [API Reference](api_reference.md).
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3 or later (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

@@ -1,33 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/animators/map_animator.py
-# Author: Gabriel Moraes
-# Date: October 1, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the MapAnimator class.
 
-In this version, it is responsible for orchestrating the high-frequency visual
-updates of all interactive elements (map and details panel) within its
-controlled loop, to avoid overwhelming the UI thread.
+Orchestrates the high-frequency visual updates of interactive map and details panel elements.
 """
 
 import logging
-import queue
 import threading
 import time
 from typing import Any, Callable, Dict, List, Tuple
@@ -35,14 +16,14 @@ from typing import Any, Callable, Dict, List, Tuple
 import flet as ft
 import flet.canvas as cv
 
+from ui.animators.street_heatmap_updater import StreetHeatmapUpdater
 from ui.managers.override_state_manager import OverrideStateManager
-from ui.renderers.heatmap_color_resolver import HeatmapColorResolver
 
 
 class MapAnimator:
     """
     Manages a background thread to apply high-frequency visual updates.
-    Now adheres strictly to SRP and OCP.
+    Adheres strictly to SRP and OCP.
     """
 
     def __init__(
@@ -58,34 +39,18 @@ class MapAnimator:
         initial_panel_data: Dict[str, Any] = None,
         initial_street_overrides: Dict[str, str] = None,
         initial_semaphore_overrides: Dict[str, str] = None,
+        vehicle_markers: Dict[str, Any] = None,
     ):
         self.widget = widget_to_update
         self.get_panel_state_callback = get_panel_state_callback
         self.on_panel_update_callback = on_panel_update_callback
         self.edge_paths = edge_paths or {}
-
-        # OCP: We treat this as a generic list of interactive elements
         self.interactive_widgets = semaforo_widgets or {}
-
+        self.vehicle_markers = vehicle_markers if vehicle_markers is not None else {}
         self.interval = interval
 
-        # Build topological groupings for streets that share the same intersections
         self.topology_edges = topology_edges or []
-        self.edge_group_map = {}
-        topology_groups = {}
-
-        for edge_data in self.topology_edges:
-            from_n = edge_data.get("from")
-            to_n = edge_data.get("to")
-            if from_n and to_n:
-                group_key = tuple(sorted([from_n, to_n]))
-                if group_key not in topology_groups:
-                    topology_groups[group_key] = []
-                topology_groups[group_key].append(edge_data["id"])
-
-        for group, ids in topology_groups.items():
-            for eid in ids:
-                self.edge_group_map[eid] = ids
+        self.edge_group_map = StreetHeatmapUpdater.build_edge_group_map(self.topology_edges)
 
         self.thread = None
         self.is_running = False
@@ -100,14 +65,10 @@ class MapAnimator:
         if initial_semaphore_overrides:
             self.override_manager.semaphore_overrides.update(initial_semaphore_overrides)
 
-        # Proxy queue for backwards compatibility
         self.command_queue = self.override_manager.command_queue
-
         self.blink_toggle = False
-
-        # Adding throttling for congestion updates
         self.last_update_time = 0
-        self.throttle_interval = 0.1  # 100ms between updates
+        self.throttle_interval = 0.1
 
     def start(self):
         if not self.thread or not self.thread.is_alive():
@@ -147,7 +108,7 @@ class MapAnimator:
         return ({}, {})
 
     def _updater_loop(self):
-        """The main loop that reads the latest telemetry and applies ALL visual updates."""
+        """The main loop that reads the latest telemetry and applies visual updates."""
         while self.is_running:
             try:
                 self.blink_toggle = not self.blink_toggle
@@ -156,69 +117,46 @@ class MapAnimator:
                     congestion_to_render = self.latest_congestion_data.copy()
                     panel_data_to_render = self.latest_panel_data.copy()
 
-                # Process command queue for overrides
                 self.override_manager.process_queue()
                 street_overrides = self.override_manager.get_street_overrides()
                 semaphore_overrides = self.override_manager.get_semaphore_overrides()
 
-                # Apply throttling for congestion heatmap rendering
                 current_time = time.time()
                 should_update_congestion = (current_time - self.last_update_time) >= self.throttle_interval
 
                 if should_update_congestion and self.edge_paths and congestion_to_render:
-                    for edge_id, path_object in self.edge_paths.items():
-
-                        is_blocked = False
-
-                        siblings = self.edge_group_map.get(edge_id, [edge_id])
-                        max_congestion = None
-
-                        for sibling in siblings:
-                            if street_overrides.get(sibling) == "BLOCKED":
-                                is_blocked = True
-
-                            base_sibling = sibling[1:] if sibling.startswith("-") else sibling
-                            reverse_sibling = "-" + base_sibling if not sibling.startswith("-") else base_sibling
-
-                            val = None
-                            if sibling in congestion_to_render:
-                                val = congestion_to_render[sibling]
-                            elif base_sibling in congestion_to_render:
-                                val = congestion_to_render[base_sibling]
-                            elif reverse_sibling in congestion_to_render:
-                                val = congestion_to_render[reverse_sibling]
-
-                            if val is not None:
-                                if isinstance(val, dict):
-                                    val = val.get("congestion", 0.0)
-                                if max_congestion is None or val > max_congestion:
-                                    max_congestion = val
-
-                        if is_blocked:
-                            new_color = "#000000"  # Black for blocked streets
-                        elif max_congestion is not None:
-                            new_color = HeatmapColorResolver.get_color_for_congestion(max_congestion)
-                        else:
-                            new_color = "#2ecc71"  # Base map color for empty streets (Emerald Green)
-
-                        if path_object.paint.color != new_color:
-                            path_object.paint = ft.Paint(
-                                stroke_width=path_object.paint.stroke_width,
-                                color=new_color,
-                                style=path_object.paint.style,
-                                stroke_cap=path_object.paint.stroke_cap,
-                            )
-
-                    # Update the time of the last execution
+                    StreetHeatmapUpdater.update_edge_paths(
+                        edge_paths=self.edge_paths,
+                        edge_group_map=self.edge_group_map,
+                        congestion_data=congestion_to_render,
+                        street_overrides=street_overrides,
+                    )
                     self.last_update_time = current_time
 
-                # OCP: Delegate updates to the widget itself instead of using conditional statements
                 if self.interactive_widgets and panel_data_to_render:
                     for widget_id, widget in self.interactive_widgets.items():
                         if hasattr(widget, "apply_telemetry"):
                             widget.apply_telemetry(panel_data_to_render, semaphore_overrides, self.blink_toggle)
 
-                # --- Update details pane via Callbacks ---
+                if self.vehicle_markers:
+                    for marker in list(self.vehicle_markers.values()):
+                        is_alert = getattr(marker, "siren_active", False) or getattr(marker, "is_evp_triggered", False)
+                        if is_alert:
+                            marker.update_state(
+                                marker.latitude,
+                                marker.longitude,
+                                marker.speed_kmh,
+                                marker.heading_deg,
+                                marker.siren_active,
+                                self.blink_toggle,
+                                is_evp_triggered=getattr(marker, "is_evp_triggered", False),
+                            )
+                            try:
+                                if getattr(marker, "page", None):
+                                    marker.update()
+                            except Exception:
+                                pass
+
                 if self.get_panel_state_callback and self.on_panel_update_callback:
                     panel_state = self.get_panel_state_callback()
                     selected_id = panel_state.get("selected_id")
@@ -226,11 +164,8 @@ class MapAnimator:
 
                     if selected_id and is_panel_visible:
                         semaphore_data = panel_data_to_render.get(selected_id, {})
-
-                        # Intercept data if the traffic light is manually overridden
                         override_state = semaphore_overrides.get(selected_id)
                         if override_state:
-                            # Copy to avoid mutating original dictionary in memory
                             semaphore_data = semaphore_data.copy() if semaphore_data else {}
                             lanes_state = semaphore_data.get("lanes_state", {}).copy()
 
@@ -248,11 +183,8 @@ class MapAnimator:
 
                         phase = panel_state.get("phase", "UNKNOWN")
                         mode = panel_state.get("mode", "UNKNOWN")
-
-                        # Command update of the details panel via callback
                         self.on_panel_update_callback(selected_id, semaphore_data, phase, mode)
 
-                # Major map update still required
                 if self.widget and getattr(self.widget, "page", None):
                     try:
                         self.widget.update()
@@ -262,12 +194,11 @@ class MapAnimator:
                         if hasattr(self.widget, "canvas") and getattr(self.widget.canvas, "page", None):
                             self.widget.canvas.update()
                     except AssertionError:
-                        pass  # Ignore if still not fully mounted
+                        pass
 
                 time.sleep(self.interval)
 
             except RuntimeError as e:
-                # Protection against "Event loop is closed"
                 if "Event loop is closed" in str(e) or "shutdown" in str(e):
                     logging.info("[MapAnimator Thread] Flet Event Loop closed. Stopping animations.")
                     self.is_running = False

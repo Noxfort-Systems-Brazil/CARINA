@@ -1,34 +1,17 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/drivers/incident_reporter.py
-# Author: Gabriel Moraes
-# Date: 2026-06-16
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Publishes hardware incidents and connection state changes to MQTT.
 Extracts monitoring and reporting concerns to satisfy SRP.
 """
 
-import json
 import logging
-import os
-import time
 from datetime import datetime
 from typing import Any, Dict
+
+from src.drivers.fallback_telemetry_dispatcher import FallbackTelemetryDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +27,19 @@ def _log_incident_reporter_debug(
     mon_enabled: bool,
     extra_info: str = "",
 ):
-    """Disabled temporary debug logging."""
-    pass
+    """Logs incident reporter dispatch diagnostic details at debug level."""
+    logger.debug(
+        "[IncidentReporter] status=%s | id=%s | cat=%s | level=%s | active=%s | connected=%s | enabled=%s | msg=%s %s",
+        status,
+        intersection_id,
+        category,
+        level,
+        is_active,
+        mon_connected,
+        mon_enabled,
+        message_text,
+        extra_info,
+    )
 
 
 class IncidentReporter:
@@ -95,38 +89,14 @@ class IncidentReporter:
                     "message": msg_text,
                     "occurred_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                 }
-
-                try:
-                    from communication.monitor_transport import is_http_endpoint, normalize_http_url
-                except Exception:
-                    from src.communication.monitor_transport import is_http_endpoint, normalize_http_url
-
-                if is_http_endpoint(host_str):
-                    import requests
-
-                    url = normalize_http_url(host_str)
-                    requests.post(url, json=payload, timeout=3.0)
-                else:
-                    try:
-                        from communication.monitor_transport import MonitorMqttTransport
-                    except Exception:
-                        from src.communication.monitor_transport import MonitorMqttTransport
-                    host, port = MonitorMqttTransport.parse_host_port(host_str)
-
-                    try:
-                        import paho.mqtt.client as mqtt
-
-                        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="carina_incident_reporter")
-                        client.connect(host, port, 60)
-                        client.loop_start()
-                        info = client.publish("noxfort/telemetry/", json.dumps(payload), qos=1)
-                        info.wait_for_publish(timeout=2.0)
-                        client.loop_stop()
-                        client.disconnect()
-                    except Exception as mqtt_err:
-                        logger.warning(f"Fallback MQTT dispatch error: {mqtt_err}")
+                FallbackTelemetryDispatcher.dispatch(
+                    host_str=host_str,
+                    payload=payload,
+                    client_id="carina_incident_reporter",
+                    intersection_id=intersection_id,
+                )
         except Exception as e:
-            logger.error(f"[{intersection_id}] Failed to emit incident: {e}")
+            logger.error(f"[{intersection_id}] Failed to emit incident: {e}", exc_info=True)
 
     @staticmethod
     def report_trap(intersection_id: str, level: str, trap_data: dict) -> None:
@@ -212,39 +182,12 @@ class IncidentReporter:
                         "message": message_text,
                         "occurred_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                     }
-
-                    try:
-                        from communication.monitor_transport import is_http_endpoint, normalize_http_url
-                    except Exception:
-                        from src.communication.monitor_transport import is_http_endpoint, normalize_http_url
-
-                    if is_http_endpoint(host_str):
-                        import requests
-
-                        url = normalize_http_url(host_str)
-                        requests.post(url, json=monitor_payload, timeout=3.0)
-                        logger.info(
-                            f"[{intersection_id}] Successfully emitted structured {level_str} hardware trap to HTTP Monitor at {url}"
-                        )
-                    else:
-                        try:
-                            from communication.monitor_transport import MonitorMqttTransport
-                        except Exception:
-                            from src.communication.monitor_transport import MonitorMqttTransport
-                        host, port = MonitorMqttTransport.parse_host_port(host_str)
-
-                        import paho.mqtt.client as mqtt
-
-                        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="carina_trap_reporter")
-                        client.connect(host, port, 60)
-                        client.loop_start()
-                        info = client.publish("noxfort/telemetry/", json.dumps(monitor_payload), qos=1)
-                        info.wait_for_publish(timeout=2.0)
-                        client.loop_stop()
-                        client.disconnect()
-                        logger.info(
-                            f"[{intersection_id}] Successfully emitted structured {level_str} hardware trap to MQTT topic 'noxfort/telemetry/' at {host}:{port}"
-                        )
+                    FallbackTelemetryDispatcher.dispatch(
+                        host_str=host_str,
+                        payload=monitor_payload,
+                        client_id="carina_trap_reporter",
+                        intersection_id=intersection_id,
+                    )
 
                     _log_incident_reporter_debug(
                         status="EMITTED VIA FALLBACK MQTT SUCCESS",
@@ -255,7 +198,7 @@ class IncidentReporter:
                         is_active=is_active,
                         mon_connected=mon_conn,
                         mon_enabled=mon_en,
-                        extra_info=f"Published via fallback MQTT to {host}:{port} topic 'noxfort/telemetry/'",
+                        extra_info="Published via fallback MQTT",
                     )
             else:
                 logger.info(
@@ -273,7 +216,7 @@ class IncidentReporter:
                     extra_info="Skipped publishing because is_active is False",
                 )
         except Exception as e:
-            logger.error(f"[{intersection_id}] Failed to emit hardware trap to MQTT: {e}")
+            logger.error(f"[{intersection_id}] Failed to emit hardware trap to MQTT: {e}", exc_info=True)
             _log_incident_reporter_debug(
                 status="EXCEPTION ERROR",
                 intersection_id=intersection_id,

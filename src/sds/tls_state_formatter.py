@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sds/tls_state_formatter.py
-# Author: Gabriel Moraes
-# Date: 2026-02-24
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Description:
@@ -31,14 +15,7 @@ the real telemetry phase.
 import gzip
 import logging
 import os
-import sys
 import xml.etree.ElementTree as ET
-
-# Ensures the root directory and src are in the path to import utilities
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 from sds.tls_map_extractor import TlsMapExtractor
 from sds.tls_state_provider import TlsStateProvider
@@ -130,7 +107,7 @@ class TlsStateFormatter:
 
             if not brand or brand in ["Não informado", "Desconectado"]:
                 try:
-                    from src.controller.connection_manager import HardwareConnectionManager
+                    from controller.connection_manager import HardwareConnectionManager
 
                     conn_hw = HardwareConnectionManager.get_global_hardware_info(str_tl_id)
                     if conn_hw:

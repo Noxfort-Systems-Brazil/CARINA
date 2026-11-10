@@ -1,26 +1,8 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/state_extractor.py
-# Author: Gabriel Moraes
-# Date: February 19, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
-import os
-import sys
 from typing import TYPE_CHECKING, Any, Dict, List
 
 import numpy as np
@@ -30,12 +12,6 @@ from utils.historical_aggregator import HistoricalAggregator
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
-
-# Add 'src' directory to path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 
 class StateExtractor:
@@ -78,7 +54,7 @@ class StateExtractor:
         """
         logging.info(f"Carregando topologia do mapa: {net_file_path}")
         try:
-            net = sumolib.net.readNet(net_file_path, withInternal=False)
+            net = sumolib.net.readNet(net_file_path, withPrograms=True, withInternal=False)
 
             self.tl_incoming_edges.clear()
             self.tl_green_stages.clear()
@@ -121,7 +97,7 @@ class StateExtractor:
                         controlled_lanes_by_index.append(lanes_for_this_index)
 
                 except Exception as e_conn:
-                    logging.warning(f"Erro ao extrair conexões para TLS {tl_id}: {e_conn}")
+                    logging.warning(f"Erro ao extrair conexões para TLS {tl_id}: {e_conn}", exc_info=True)
 
                 self.tl_incoming_edges[tl_id] = sorted(list(incoming_edges))
                 self.tl_controlled_lanes_map[tl_id] = controlled_lanes_by_index

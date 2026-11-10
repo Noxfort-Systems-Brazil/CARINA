@@ -1,279 +1,336 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/models/pae.py
-# Author: Gabriel Moraes
-# Date: July 18, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Predictive Autoencoder (PAE) Universal — Shared Physics Engine (iTransformer Backbone).
+Predictive Autoencoder (PAE) Universal — Action-Conditioned World Model (iTransformer Backbone).
 
-This model is the core of CARINA's predictive HFT paradigm. It is
-instantiated ONLY ONCE by the AgentManager and shared by reference
-among all LocalAgents and GuardianAgents.
-
-Objective: Learn the fluid dynamics of the streets in real-time (250ms
-telemetry) via predictive reconstruction — given a temporal sequence of states,
-predict the NEXT state. The compressed latent space is then injected as a
-context vector into the decision networks of each agent.
-
-Design Decisions:
-    - iTRANSFORMER ARCHITECTURE: Inverts the sequence representation. Instead of
-      applying self-attention over the time dimension, we embed each variable's history
-      independently and apply self-attention over the variables. This captures correlations
-      between traffic features (e.g. queue vs speed vs signal phase).
-    - CONSTANT Learning Rate (default 5e-4): Allows continuous learning
-      with new agents without individual maturation penalizing the collective.
-      Balances plasticity (concept drift in the road network) and stability.
-    - INTERNAL Optimizer (AdamW): Total encapsulation — the optimization step
-      is self-contained in `training_step()`, eliminating external coupling.
-    - STANDARDIZED TEMPORAL SHAPING: Accepts 2D or 3D tensors of any sequence length,
-      internally padding or slicing them to a fixed history_len.
+Shared by reference across all LocalAgents, GuardianAgents, and the StrategicCoordinator:
+- Per-Variable RevIN (Reversible Instance Normalization) + explicit scale statistics
+  embedding (`[mean, std]`) to decouple temporal dynamics from static saturation scale.
+- Cross-Attention Latent Pooling with Key Padding Mask (`valid_dims`) so intersections
+  with fewer lanes/edges never contaminate the latent space with zero-padded tokens.
+- Binary Action Conditioning (`0 = ADVANCE`, `1 = KEEP`) and Heteroscedastic Uncertainty
+  head (`decode_with_uncertainty -> (mean, log_var)`) for counterfactual world modeling.
 """
 
 import logging
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+from src.models.tcn_backbone import init_orthogonal
 
 
 class PredictiveAutoencoder(nn.Module):
     """
-    iTransformer Predictive Autoencoder for learning urban fluid dynamics.
-
-    The encoder projects the temporal sequence of states (inverted over variables)
-    into a compressed latent space.
-    The decoder predicts the NEXT state from this latent space.
-    Loss = MSE(decoder(encoder(state_seq_t)), state_t+1)
-
-    Attributes:
-        latent_dim (int): Latent space dimension (default 16).
-        input_dim (int): Input state vector dimension.
+    Universal Action-Conditioned iTransformer World Model for urban fluid dynamics.
+    Pure Neural Network architecture (Domain Entity), initialized in `.eval()` mode.
     """
 
     def __init__(
         self,
         input_dim: int,
         latent_dim: int = 16,
-        lr: float = 5e-4,
         history_len: int = 16,
         d_model: int = 32,
         nhead: int = 4,
         num_layers: int = 2,
         dropout: float = 0.1,
+        lr: Optional[float] = None,
+        n_actions: int = 2,
+        num_latent_queries: int = 4,
+        **kwargs: Any,
     ) -> None:
-        """
-        Initializes the iTransformer Predictive Autoencoder.
+        super().__init__()
 
-        Args:
-            input_dim (int): Size of the input state vector (n_observations).
-            latent_dim (int): Dimension of the compressed latent space.
-            lr (float): Constant learning rate for HFT equilibrium.
-            history_len (int): Internal target length for the input sequence history.
-            d_model (int): Hidden embedding dimension for the transformer.
-            nhead (int): Number of attention heads.
-            num_layers (int): Number of transformer encoder layers.
-            dropout (float): Dropout probability.
-        """
-        super(PredictiveAutoencoder, self).__init__()
+        self.input_dim = int(input_dim)
+        self.latent_dim = int(latent_dim)
+        self.history_len = int(history_len)
+        self.d_model = int(d_model)
+        self.n_actions = int(n_actions)
+        self.num_latent_queries = int(num_latent_queries)
 
-        self.input_dim = input_dim
-        self.latent_dim = latent_dim
-        self.lr = lr
-        self.history_len = history_len
-        self.d_model = d_model
+        # Ensure nhead divides d_model cleanly
+        effective_nhead = int(nhead)
+        while effective_nhead > 1 and (self.d_model % effective_nhead != 0):
+            effective_nhead -= 1
+        self.nhead = effective_nhead
 
-        # --- iTransformer Encoder Components ---
-        # 1. Temporal projection: Map history_len to d_model for each variable
-        self.value_embedding = nn.Linear(history_len, d_model)
+        # 1. Per-variable RevIN affine parameters + scale statistics embedding ([mean, std] -> d_model)
+        self.revin_gamma = nn.Parameter(torch.ones(1, 1, self.input_dim))
+        self.revin_beta = nn.Parameter(torch.zeros(1, 1, self.input_dim))
+        self.stats_proj = nn.Linear(2, self.d_model)
+        init_orthogonal(self.stats_proj, gain=0.5)
 
-        # 2. Variable/Channel embedding (learnable position-like bias for each variable)
-        self.var_embedding = nn.Parameter(torch.randn(1, input_dim, d_model) * 0.02)
+        # 2. Temporal projection per variable: [history_len] -> [d_model]
+        self.value_embedding = nn.Linear(self.history_len, self.d_model)
+        init_orthogonal(self.value_embedding, gain=1.0)
 
-        # 3. Transformer Encoder over the variables/channels
+        # 3. Variable/Channel positional embedding
+        self.var_embedding = nn.Parameter(torch.randn(1, self.input_dim, self.d_model) * 0.02)
+
+        # 4. Inverted Transformer Encoder over variable tokens
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=d_model * 4,
+            d_model=self.d_model,
+            nhead=self.nhead,
+            dim_feedforward=self.d_model * 4,
             dropout=dropout,
-            activation="relu",
+            activation="gelu",
             layer_norm_eps=1e-5,
             batch_first=True,
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-
-        # 4. Latent Space Projection (MLP projection from flattened transformer output to latent)
-        self.latent_proj = nn.Sequential(
-            nn.Linear(input_dim * d_model, 64), nn.LayerNorm(64), nn.ReLU(), nn.Linear(64, latent_dim)
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer, num_layers=num_layers, enable_nested_tensor=False
         )
 
-        # --- Decoder (Predictive): Reconstructs/predicts the NEXT state ---
-        self.decoder = nn.Sequential(nn.Linear(latent_dim, 64), nn.LayerNorm(64), nn.ReLU(), nn.Linear(64, input_dim))
+        # 5. Cross-Attention Latent Pooling with learnable query tokens (ignores zero-padded channels)
+        self.latent_queries = nn.Parameter(torch.randn(1, self.num_latent_queries, self.d_model) * 0.02)
+        self.cross_attn_pool = nn.MultiheadAttention(
+            embed_dim=self.d_model, num_heads=self.nhead, dropout=dropout, batch_first=True
+        )
+        self.pool_norm = nn.LayerNorm(self.d_model)
 
-        # Internal optimizer — total encapsulation
-        self.optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        self.loss_fn = nn.MSELoss()
+        self.latent_proj = nn.Sequential(
+            nn.Linear(self.num_latent_queries * self.d_model, 64),
+            nn.LayerNorm(64),
+            nn.SiLU(),
+            nn.Linear(64, self.latent_dim),
+        )
 
-        # Hardware Accel: Internal GradScaler for massive multi-agent batches
-        cuda_present = torch.cuda.is_available()
-        self.scaler = torch.amp.GradScaler(enabled=cuda_present)
+        # 6. Binary Action Conditioning (0 = ADVANCE, 1 = KEEP) + Probabilistic Next-State Decoder
+        self.action_embedding = nn.Embedding(self.n_actions, self.latent_dim)
+        if isinstance(getattr(self.action_embedding, "weight", None), torch.Tensor):
+            nn.init.normal_(self.action_embedding.weight, mean=0.0, std=0.02)
+
+        self.decoder = nn.Sequential(
+            nn.Linear(self.latent_dim, 64),
+            nn.LayerNorm(64),
+            nn.SiLU(),
+            nn.Linear(64, self.input_dim),
+        )
+        self.log_var_head = nn.Sequential(
+            nn.Linear(self.latent_dim, 64),
+            nn.LayerNorm(64),
+            nn.SiLU(),
+            nn.Linear(64, self.input_dim),
+        )
 
         logging.info(
-            f"[PAE] iTransformer Predictive Autoencoder instantiated "
-            f"(input={input_dim}, latent={latent_dim}, lr={lr}, history={history_len}, AMP_Enabled={self.scaler.is_enabled()})"
+            f"[PAE] Action-Conditioned iTransformer World Model instantiated "
+            f"(input={self.input_dim}, latent={self.latent_dim}, history={self.history_len}, "
+            f"d_model={self.d_model}, n_actions={self.n_actions})"
         )
+        self.eval()
 
-    def _pad_to_input_dim(self, x: torch.Tensor) -> torch.Tensor:
+    @property
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
+
+    def pad_to_input_dim(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Pads or truncates agent local state vectors to the universal PAE input_dim.
-        This enables agents with different intersection sizes (e.g. 3 edges vs 5 edges)
-        to share the same Physics Engine without shape multiplier crashes.
+        Pads or truncates agent local state vectors to the universal PAE `input_dim`.
         """
         current_dim = x.size(-1)
+        if not isinstance(current_dim, int):
+            return x
         if current_dim < self.input_dim:
             pad_size = self.input_dim - current_dim
-            return torch.nn.functional.pad(x, (0, pad_size))
+            return F.pad(x, (0, pad_size))
         elif current_dim > self.input_dim:
             return x[..., : self.input_dim]
         return x
 
-    def _standardize_sequence(self, x: torch.Tensor) -> torch.Tensor:
+    def standardize_sequence(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Standardizes any input tensor (2D [batch, input_dim] or 3D [batch, seq_len, input_dim])
-        to a fixed 3D shape [batch, history_len, input_dim].
+        Standardizes 2D `[batch, dim]` or 3D `[batch, seq_len, dim]` inputs to `[batch, history_len, input_dim]`.
         """
-        x_padded = self._pad_to_input_dim(x)
+        x_padded = self.pad_to_input_dim(x)
 
         if x_padded.dim() == 2:
-            x_padded = x_padded.unsqueeze(1)  # [batch, 1, input_dim]
+            x_padded = x_padded.unsqueeze(1)
 
-        batch, seq_len, input_dim = x_padded.size()
+        size_t = x_padded.size()
+        if not isinstance(size_t, (tuple, list)) or len(size_t) != 3:
+            return x_padded
+        _, seq_len, _ = size_t
 
         if seq_len == self.history_len:
             return x_padded
         elif seq_len < self.history_len:
-            # Replicate the first frame to pad sequence to history_len
             pad_size = self.history_len - seq_len
             first_frame = x_padded[:, :1, :]
             padding = first_frame.repeat(1, pad_size, 1)
             return torch.cat([padding, x_padded], dim=1)
         else:
-            # Slice last history_len states
             return x_padded[:, -self.history_len :, :]
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def _build_key_padding_mask(
+        self, batch_size: int, orig_dim: int, valid_dims: Optional[torch.Tensor], device: Any
+    ) -> Optional[torch.Tensor]:
         """
-        Projects the state sequence into the latent space. Used by agents during INFERENCE.
-
-        Args:
-            x (torch.Tensor): State sequence [batch_size, seq_len, input_dim]
-                              or state vector [batch_size, input_dim].
-
-        Returns:
-            torch.Tensor: Latent vector [batch_size, latent_dim].
+        Builds boolean mask `[batch_size, input_dim]` where `True` marks zero-padded channels.
+        Only constructed on real PyTorch tensors when at least one channel is padded.
         """
-        x_std = self._standardize_sequence(x)  # [batch_size, history_len, input_dim]
+        if not isinstance(getattr(nn, "Linear", None), type):
+            return None
 
-        # Invert dimensions: variables become tokens
-        # [batch_size, history_len, input_dim] -> [batch_size, input_dim, history_len]
-        x_vars = x_std.transpose(1, 2)
+        if valid_dims is not None:
+            v_dims = valid_dims.to(device=device, dtype=torch.long).view(-1)
+            if v_dims.numel() == 1 and batch_size > 1:
+                v_dims = v_dims.expand(batch_size)
+            v_dims = torch.clamp(v_dims, min=1, max=self.input_dim)
+            if bool((v_dims >= self.input_dim).all()):
+                return None
+            col_idx = torch.arange(self.input_dim, device=device).unsqueeze(0)
+            return col_idx >= v_dims.unsqueeze(1)
 
-        # Temporal embedding for each variable: [batch_size, input_dim, d_model]
-        x_emb = self.value_embedding(x_vars)
+        if isinstance(orig_dim, int) and 0 < orig_dim < self.input_dim:
+            col_idx = torch.arange(self.input_dim, device=device).unsqueeze(0)
+            return (col_idx >= orig_dim).expand(batch_size, self.input_dim)
 
-        # Add variable positional encoding
-        x_emb = x_emb + self.var_embedding
+        return None
 
-        # Attention over variables: [batch_size, input_dim, d_model]
-        x_out = self.transformer_encoder(x_emb)
-
-        # Flatten and project to latent space: [batch_size, latent_dim]
-        x_flat = x_out.reshape(x_out.size(0), -1)
-        return self.latent_proj(x_flat)
-
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, valid_dims: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Reconstructs/predicts the state from the latent vector.
-
-        Args:
-            z (torch.Tensor): Latent vector [batch_size, latent_dim].
-
-        Returns:
-            torch.Tensor: Reconstructed/predicted next state [batch_size, input_dim].
+        Encodes `[batch_size, seq_len, dim]` or `[batch_size, dim]` into `[batch_size, latent_dim]`,
+        applying per-variable RevIN and masking padded variable tokens.
         """
-        return self.decoder(z)
+        if hasattr(x, "device") and hasattr(self, "device") and x.device != self.device:
+            x = x.to(self.device)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        orig_dim = x.size(-1) if hasattr(x, "size") else self.input_dim
+        x_std = self.standardize_sequence(x)  # [B, history_len, input_dim]
+        batch_size = x_std.size(0)
+
+        # 1. Per-variable RevIN across the temporal axis (dim=1)
+        var_mean = x_std.mean(dim=1, keepdim=True)
+        var_centered = x_std - var_mean
+        var_std = torch.sqrt((var_centered * var_centered).mean(dim=1, keepdim=True) + 1e-5)
+        x_norm = ((var_centered / var_std) * self.revin_gamma) + self.revin_beta
+
+        # Invert dimensions: variables become tokens [B, input_dim, history_len]
+        x_vars = x_norm.transpose(1, 2)
+
+        # 2. Temporal shape embedding + absolute scale statistics ([mean, std]) + variable identity
+        stats_pair = torch.cat([var_mean.transpose(1, 2), var_std.transpose(1, 2)], dim=-1)  # [B, input_dim, 2]
+        x_emb = self.value_embedding(x_vars) + self.stats_proj(stats_pair) + self.var_embedding
+
+        # 3. Masked Transformer self-attention over active variables
+        padding_mask = self._build_key_padding_mask(
+            batch_size=batch_size, orig_dim=orig_dim, valid_dims=valid_dims, device=getattr(x_std, "device", "cpu")
+        )
+        if padding_mask is not None:
+            x_out = self.transformer_encoder(x_emb, src_key_padding_mask=padding_mask)
+        else:
+            x_out = self.transformer_encoder(x_emb)
+
+        # 4. Cross-Attention Latent Pooling using learnable queries
+        queries = self.latent_queries.expand(batch_size, -1, -1)
+        if padding_mask is not None:
+            attn_res = self.cross_attn_pool(
+                queries, x_out, x_out, key_padding_mask=padding_mask, need_weights=False
+            )
+        else:
+            attn_res = self.cross_attn_pool(queries, x_out, x_out, need_weights=False)
+
+        pooled = attn_res[0] if isinstance(attn_res, tuple) else attn_res
+        pooled = self.pool_norm(pooled + queries)
+        flat = pooled.reshape(batch_size, -1)
+        return self.latent_proj(flat)
+
+    def _condition_latent(
+        self, z: torch.Tensor, action: Optional[Union[int, torch.Tensor]] = None
+    ) -> torch.Tensor:
+        """Injects binary action embedding (`0=ADVANCE`, `1=KEEP`) into the latent representation."""
+        if action is None:
+            return z
+        if not isinstance(getattr(nn, "Linear", None), type):
+            return z
+
+        batch_size = z.size(0)
+        if isinstance(action, int):
+            act_tensor = torch.full((batch_size,), action, dtype=torch.long, device=z.device)
+        elif isinstance(action, torch.Tensor):
+            act_tensor = action.to(device=z.device, dtype=torch.long).view(-1)
+            if act_tensor.numel() == 1 and batch_size > 1:
+                act_tensor = act_tensor.expand(batch_size)
+        else:
+            act_tensor = torch.as_tensor(action, dtype=torch.long, device=z.device).view(-1)
+            if act_tensor.numel() == 1 and batch_size > 1:
+                act_tensor = act_tensor.expand(batch_size)
+
+        act_tensor = torch.clamp(act_tensor, min=0, max=self.n_actions - 1)
+        return z + self.action_embedding(act_tensor)
+
+    def decode(
+        self, z: torch.Tensor, action: Optional[Union[int, torch.Tensor]] = None
+    ) -> torch.Tensor:
         """
-        Full encoder + decoder pass.
-
-        Args:
-            x (torch.Tensor): Input state sequence [batch_size, seq_len, input_dim]
-                              or state vector [batch_size, input_dim].
-
-        Returns:
-            torch.Tensor: Predicted next state [batch_size, input_dim].
+        Predicts the next state mean `[batch_size, input_dim]` from `z` (optionally conditioned on `action`).
         """
-        z = self.encode(x)
-        return self.decode(z)
+        if hasattr(z, "device") and hasattr(self, "device") and z.device != self.device:
+            z = z.to(self.device)
+        z_cond = self._condition_latent(z, action=action)
+        return self.decoder(z_cond)
 
-    def training_step(self, current_state: torch.Tensor, next_state: torch.Tensor) -> float:
+    def decode_with_uncertainty(
+        self, z: torch.Tensor, action: Optional[Union[int, torch.Tensor]] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Self-contained optimization step for predictive learning.
-
-        Trains the PAE to predict state t+1 from state sequence t.
-        This method is called by the agents during their learn() cycle,
-        allowing collective learning — all agents contribute
-        gradients to the same model.
-
-        Args:
-            current_state (torch.Tensor): State sequence at time t [batch, seq_len, input_dim]
-                                          or single state [batch, input_dim].
-            next_state (torch.Tensor): Actual state at time t+1 [batch, input_dim].
-
-        Returns:
-            float: Loss value for logging/monitoring.
+        Predicts `(next_state_mean, next_state_log_var)` for heteroscedastic uncertainty estimation
+        and counterfactual spillback risk assessment.
         """
-        self.train()
-        self.optimizer.zero_grad()
+        if hasattr(z, "device") and hasattr(self, "device") and z.device != self.device:
+            z = z.to(self.device)
+        z_cond = self._condition_latent(z, action=action)
+        mean = self.decoder(z_cond)
+        log_var = torch.clamp(self.log_var_head(z_cond), -6.0, 2.0)
+        return mean, log_var
 
-        # Dynamically infer computational device
-        device_type = "cuda" if current_state.is_cuda else "cpu"
+    def forward(
+        self,
+        x: torch.Tensor,
+        action: Optional[Union[int, torch.Tensor]] = None,
+        valid_dims: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Full world-model pass: `encode(x, valid_dims) -> decode(z, action)`.
+        """
+        z = self.encode(x, valid_dims=valid_dims)
+        return self.decode(z, action=action)
 
-        # Hardware Accel: AMP Precision Wrapper
-        with torch.amp.autocast(device_type=device_type, enabled=self.scaler.is_enabled()):
-            # Prediction: encoder(state_seq_t) → decoder → predicted_state_t+1
-            predicted_next = self.forward(current_state)
+    def optimize_engine(
+        self, enable_compile: bool = True, mode: str = "reduce-overhead", warmup_batch_size: int = 1
+    ) -> None:
+        """
+        Applies PyTorch 2.0+ `torch.compile` with synthetic warmup and safe eager fallback.
+        """
+        if not enable_compile:
+            return
+        if not hasattr(torch, "compile"):
+            logging.info("[PAE] torch.compile not available in this PyTorch version. Keeping eager mode.")
+            return
 
-            # Universal Loss: Pad actual next_state to match predicted dimension
-            next_state_padded = self._pad_to_input_dim(next_state)
-            if next_state_padded.dim() == 3:
-                # Target must be a single step (take the last frame if it's 3D)
-                next_state_padded = next_state_padded[:, -1, :]
+        try:
+            logging.info(f"[PAE] Compiling iTransformer modules with mode='{mode}'...")
+            compiled_encoder = torch.compile(self.transformer_encoder, mode=mode)
+            compiled_latent_proj = torch.compile(self.latent_proj, mode=mode)
+            compiled_decoder = torch.compile(self.decoder, mode=mode)
 
-            loss = self.loss_fn(predicted_next, next_state_padded.detach())
+            dev = self.device
+            dummy = torch.randn(warmup_batch_size, self.input_dim, self.d_model, device=dev)
+            dummy_pool = torch.randn(warmup_batch_size, self.num_latent_queries * self.d_model, device=dev)
+            with torch.no_grad():
+                _ = compiled_encoder(dummy)
+                z = compiled_latent_proj(dummy_pool)
+                _ = compiled_decoder(z)
 
-        self.scaler.scale(loss).backward()
-
-        # Gradient clipping for stability in collective training (must unscale first)
-        self.scaler.unscale_(self.optimizer)
-        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
-
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-
-        return loss.item()
+            self.transformer_encoder = compiled_encoder
+            self.latent_proj = compiled_latent_proj
+            self.decoder = compiled_decoder
+            logging.info(f"[PAE] Compilation successful with warmup (batch_size={warmup_batch_size}).")
+        except Exception as e:
+            logging.warning(f"[PAE] torch.compile fallback to eager mode: {e}", exc_info=True)

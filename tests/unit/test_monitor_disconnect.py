@@ -1,34 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: tests/unit/test_monitor_disconnect.py
-# Author: Gabriel Moraes
-# Date: September 2026
-
-import os
-import sys
 import unittest
 from unittest.mock import MagicMock, patch
-
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 from src.drivers.incident_reporter import IncidentReporter
 from src.handlers.ui_command_handler import UICommandHandler
@@ -89,7 +64,7 @@ class TestMonitorDisconnect(unittest.TestCase):
         cmd = {
             "type": "save_settings",
             "payload": {
-                "EXTERNAL_MONITOR": {"monitor_enabled": "False", "monitor_mqtt_host": "http://mycarina.duckdns.org"}
+                "EXTERNAL_MONITOR": {"monitor_enabled": "False", "monitor_mqtt_host": "http://mycarina.ts.net"}
             },
         }
 
@@ -115,7 +90,7 @@ class TestMonitorDisconnect(unittest.TestCase):
             sds_data_queue=MagicMock(),
         )
 
-        cmd = {"type": "set_monitor_connection", "payload": {"enabled": False, "host": "http://mycarina.duckdns.org"}}
+        cmd = {"type": "set_monitor_connection", "payload": {"enabled": False, "host": "http://mycarina.ts.net"}}
 
         handler.process(cmd, sumo_conn=None, override_commands_buffer=[])
         mock_monitor_client.disconnect_manual.assert_called_once()

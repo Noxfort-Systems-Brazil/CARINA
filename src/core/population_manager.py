@@ -1,37 +1,13 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/core/population_manager.py (Fixed: Initialize_population signature)
-# Author: Gabriel Moraes
-# Date: November 1, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
-import os
 import random
-import sys
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import numpy as np
-
-# Add 'src' directory to path to allow absolute imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     from core.lifecycle_manager import LifecycleManager
@@ -67,10 +43,30 @@ class PopulationManager:
             )
 
     def _load_pbt_config(self):
-        if self.settings.has_section("PBT"):
+        has_pbt = False
+        pbt_section = None
+        if hasattr(self.settings, "has_section") and self.settings.has_section("PBT"):
+            has_pbt = True
             pbt_section = self.settings["PBT"]
-            self.pbt_config["evolution_freq"] = pbt_section.getint("evolution_frequency_episodes", fallback=-1)
-            self.pbt_config["exploit_percentile"] = pbt_section.getint("exploitation_percentile", fallback=25)
+        elif isinstance(self.settings, dict) and "PBT" in self.settings:
+            has_pbt = True
+            pbt_section = self.settings["PBT"]
+
+        if has_pbt and pbt_section:
+            def _get_int(key, fallback):
+                if hasattr(pbt_section, "getint"):
+                    try:
+                        return pbt_section.getint(key, fallback=fallback)
+                    except Exception:
+                        return fallback
+                val = pbt_section.get(key, fallback) if hasattr(pbt_section, "get") else fallback
+                try:
+                    return int(val)
+                except Exception:
+                    return fallback
+
+            self.pbt_config["evolution_freq"] = _get_int("evolution_frequency_episodes", -1)
+            self.pbt_config["exploit_percentile"] = _get_int("exploitation_percentile", 25)
             self.pbt_config["hyperparam_ranges"] = {
                 "learning_rate": [float(v.strip()) for v in pbt_section.get("learning_rate_range").split(",")],
                 "dropout_p": [float(v.strip()) for v in pbt_section.get("dropout_p_range").split(",")],
@@ -122,7 +118,7 @@ class PopulationManager:
     def collect_episode_rewards(self, episode_rewards: dict):
         self.evolution_cycle_rewards.append(episode_rewards)
 
-    def evolve(self):
+    def evolve(self, maturity_map: Any = None):
         lm = self.locale_manager
         if not self.agents or self.pbt_config.get("evolution_freq", -1) <= 0:
             self.evolution_cycle_rewards.clear()
@@ -142,57 +138,96 @@ class PopulationManager:
             self.evolution_cycle_rewards.clear()
             return
 
-        sorted_agents = sorted(agent_scores.items(), key=lambda item: item[1], reverse=True)
-
         exploit_percentile = self.pbt_config.get("exploit_percentile", 25)
-        num_to_exploit = int(len(sorted_agents) * (exploit_percentile / 100))
-        if num_to_exploit == 0 and len(sorted_agents) > 1:
-            num_to_exploit = 1
 
-        best_agents_ids = [agent_id for agent_id, _ in sorted_agents[:num_to_exploit]]
-        worst_agents_ids = [agent_id for agent_id, _ in sorted_agents[-num_to_exploit:]]
+        def _evolve_cohort(cohort_agent_ids: list, cohort_name: str = ""):
+            cohort_scores = {aid: agent_scores[aid] for aid in cohort_agent_ids if aid in agent_scores}
+            if len(cohort_scores) < 2:
+                if cohort_name:
+                    logging.info(
+                        f"[PBT] Coorte '{cohort_name}' tem menos de 2 agentes avaliados ({len(cohort_scores)}). Pulando evolução da coorte."
+                    )
+                return
 
-        for worst_id in worst_agents_ids:
-            if not best_agents_ids or worst_id in best_agents_ids:
-                continue
+            sorted_cohort = sorted(cohort_scores.items(), key=lambda item: item[1], reverse=True)
+            num_to_exploit = int(len(sorted_cohort) * (exploit_percentile / 100))
+            if num_to_exploit == 0 and len(sorted_cohort) > 1:
+                num_to_exploit = 1
 
-            best_id = random.choice(best_agents_ids)
-            worst_agent = self.agents.get(worst_id)
-            best_agent = self.agents.get(best_id)
+            best_agents_ids = [agent_id for agent_id, _ in sorted_cohort[:num_to_exploit]]
+            worst_agents_ids = [agent_id for agent_id, _ in sorted_cohort[-num_to_exploit:]]
 
-            if not worst_agent or not best_agent:
-                continue
+            for worst_id in worst_agents_ids:
+                if not best_agents_ids or worst_id in best_agents_ids:
+                    continue
 
-            logging.info(
-                lm.get_string(
-                    "population_manager.evolve.agent_copy",
-                    worst_id=worst_id,
-                    worst_score=f"{agent_scores.get(worst_id, 0):.2f}",
-                    best_id=best_id,
-                    best_score=f"{agent_scores.get(best_id, 0):.2f}",
+                best_id = random.choice(best_agents_ids)
+                worst_agent = self.agents.get(worst_id)
+                best_agent = self.agents.get(best_id)
+
+                if not worst_agent or not best_agent:
+                    continue
+
+                prefix = f"[{cohort_name}] " if cohort_name else ""
+                logging.info(
+                    lm.get_string(
+                        "population_manager.evolve.agent_copy",
+                        worst_id=f"{prefix}{worst_id}",
+                        worst_score=f"{cohort_scores.get(worst_id, 0):.2f}",
+                        best_id=f"{prefix}{best_id}",
+                        best_score=f"{cohort_scores.get(best_id, 0):.2f}",
+                    )
                 )
-            )
 
-            worst_agent.policy_net.load_state_dict(best_agent.policy_net.state_dict())
-            new_hyperparams = best_agent.hyperparams.copy()
+                try:
+                    worst_agent.policy_net.load_state_dict(best_agent.policy_net.state_dict())
+                except (RuntimeError, Exception) as e_copy:
+                    logging.warning(
+                        f"[PBT] {prefix}Incompatibilidade ao copiar pesos de {best_id} para {worst_id}: {e_copy}. Pulando cópia."
+                    , exc_info=True)
+                    continue
 
-            param_to_mutate = random.choice(list(self.pbt_config["hyperparam_ranges"].keys()))
-            mutation_factor = random.uniform(0.8, 1.2)
-            current_value = float(new_hyperparams[param_to_mutate])
-            new_value = current_value * mutation_factor
+                new_hyperparams = best_agent.hyperparams.copy()
+                param_to_mutate = random.choice(list(self.pbt_config["hyperparam_ranges"].keys()))
+                mutation_factor = random.uniform(0.8, 1.2)
+                current_value = float(new_hyperparams[param_to_mutate])
+                new_value = current_value * mutation_factor
 
-            min_val, max_val = self.pbt_config["hyperparam_ranges"][param_to_mutate]
-            new_hyperparams[param_to_mutate] = np.clip(new_value, min_val, max_val)
+                min_val, max_val = self.pbt_config["hyperparam_ranges"][param_to_mutate]
+                new_hyperparams[param_to_mutate] = np.clip(new_value, min_val, max_val)
 
-            logging.info(
-                lm.get_string(
-                    "population_manager.evolve.mutating_param",
-                    param=param_to_mutate,
-                    old_value=f"{current_value:.6f}",
-                    new_value=f"{new_hyperparams[param_to_mutate]:.6f}",
+                logging.info(
+                    lm.get_string(
+                        "population_manager.evolve.mutating_param",
+                        param=param_to_mutate,
+                        old_value=f"{current_value:.6f}",
+                        new_value=f"{new_hyperparams[param_to_mutate]:.6f}",
+                    )
                 )
-            )
-            worst_agent.update_hyperparameters(new_hyperparams)
+                worst_agent.update_hyperparameters(new_hyperparams)
+
+        if maturity_map:
+            cohorts = defaultdict(list)
+            for tl_id in agent_scores.keys():
+                maturity_val = maturity_map.get(tl_id)
+                phase_name = (
+                    maturity_val.name
+                    if hasattr(maturity_val, "name")
+                    else str(maturity_val).upper()
+                    if maturity_val is not None
+                    else "UNKNOWN"
+                )
+                cohorts[phase_name].append(tl_id)
+
+            for phase_name, cohort_ids in cohorts.items():
+                if phase_name == "CHILD":
+                    logging.info(
+                        f"[PBT] Ignorando evolução para coorte CHILD ({len(cohort_ids)} agentes) - modo observação/passivo."
+                    )
+                    continue
+                _evolve_cohort(cohort_ids, cohort_name=phase_name)
+        else:
+            _evolve_cohort(list(agent_scores.keys()), cohort_name="")
 
         self.evolution_cycle_rewards.clear()
         logging.info(lm.get_string("population_manager.evolve.end_cycle"))

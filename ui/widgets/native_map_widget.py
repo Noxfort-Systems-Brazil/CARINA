@@ -1,29 +1,13 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/native_map_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o NativeMapWidget.
+Defines the NativeMapWidget.
 
-Nesta versão, a lógica de busca de arquivos foi extraída para o
-PlanningMapLoader, e o método de update foi corrigido para refletir a
-ligação direta dos objetos de transformação.
+In this version, file search logic was extracted to
+PlanningMapLoader, and the update method was fixed to reflect direct
+binding of transformation objects.
 """
 
 import base64
@@ -42,7 +26,7 @@ from ui.widgets.map_legend_widget import MapLegendWidget
 
 class NativeMapWidget(ft.Container):
     """
-    Widget de mapa interativo que exibe a imagem de rede e uma legenda flutuante.
+    Interactive map widget displaying the network image and a floating legend.
     """
 
     def __init__(self, locale_manager: LocaleManager):
@@ -123,19 +107,19 @@ class NativeMapWidget(ft.Container):
         self.did_mount = self.on_mount
 
     def on_mount(self):
-        """Chamado quando o widget é montado."""
+        """Called when the widget is mounted."""
         self.update_translations(self.locale_manager)
         self.loader.start_loading()
 
     def _on_map_path_found(self, map_path: str | None):
         """
-        Callback chamado pelo PlanningMapLoader quando a busca termina.
-        Chama o método de atualização da UI.
+        Callback called by PlanningMapLoader when search finishes.
+        Calls the UI update method.
         """
         self._update_map_display(map_path)
 
     def _update_map_display(self, map_path: str | None):
-        """Atualiza a UI com a imagem do mapa ou com uma mensagem de erro."""
+        """Updates the UI with the map image or an error message."""
         image_loaded = False
         if map_path and os.path.exists(map_path):
             try:
@@ -145,7 +129,7 @@ class NativeMapWidget(ft.Container):
                 self.content.controls = [self.interactive_map, self.legend_widget]
                 image_loaded = True
             except Exception as e:
-                logging.error(f"[NativeMapWidget] Falhou ao ler/codificar a imagem do mapa: {e}")
+                logging.error(f"[NativeMapWidget] Falhou ao ler/codificar a imagem do mapa: {e}", exc_info=True)
 
         if not image_loaded:
             self.content.controls = [self.error_message_column]
@@ -154,14 +138,14 @@ class NativeMapWidget(ft.Container):
             self.update()
 
     def refresh_map_image(self):
-        """Reinicia o processo de carregamento do mapa."""
+        """Restarts the map loading process."""
         self.content.controls = [ft.Container(self.loading_indicator, alignment=ft.alignment.center, expand=True)]
         if self.page:
             self.update()
         self.loader.start_loading()
 
     def update_translations(self, lm: LocaleManager):
-        """Atualiza os textos deste widget e de seus filhos."""
+        """Updates the texts of this widget and its children."""
         self.error_title.value = lm.get_string("planning_view.map_error_title")
         self.error_subtitle.value = lm.get_string("planning_view.map_error_subtitle")
         self.loading_text.value = lm.get_string("native_map.loading", default="Carregando mapa de planejamento...")
@@ -172,10 +156,10 @@ class NativeMapWidget(ft.Container):
     # --- MAIN CHANGE HERE ---
     def update(self):
         """
-        Aciona uma atualização visual do widget.
-        Este método é chamado como callback pelo MapInteractionHandler quando o utilizador
-        faz pan ou zoom. Como os objetos de scale/offset já estão ligados diretamente,
-        só precisamos de chamar o update() da superclasse.
+        Triggers a visual update of the widget.
+        This method is called as a callback by MapInteractionHandler when the user
+        pans or zooms. Since scale/offset objects are already directly bound,
+        we only need to call superclass update().
         """
         super().update()
 

@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# File: tests/unit/test_database_migrations_alembic.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 import sqlite3
@@ -56,6 +48,11 @@ def test_alembic_upgrade_and_downgrade_sqlite():
             "mfd_analysis_cache",
             "step_decisions",
             "edge_dictionary",
+            "operation_sessions",
+            "evp_telemetry_records",
+            "evp_registered_fleet",
+            "step_decision_counters",
+            "topology_dictionary",
             "alembic_version",
         }
         for table in expected_tables:
@@ -72,7 +69,7 @@ def test_alembic_upgrade_and_downgrade_sqlite():
         # Verify alembic_version has head revision
         cursor.execute("SELECT version_num FROM alembic_version;")
         version = cursor.fetchone()[0]
-        assert version == "001"
+        assert version == "002"
 
         conn.close()
 

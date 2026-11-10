@@ -1,38 +1,38 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# File: tests/conftest.py
-# Author: Gabriel Moraes
-# Date: 2026-04-16
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 import sys
 
 import pytest
 
-# Ensure we're running from CARINA_CORE root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Ensure we're running from CARINA_CORE root and src/proto/ui are discoverable
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+for _sub in ["", "src", "proto", "ui"]:
+    _p = os.path.join(project_root, _sub) if _sub else project_root
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from launcher.env_setup import install_src_alias_finder
+
+install_src_alias_finder(os.path.join(project_root, "src"))
 
 from tests.mocks.system_mocks import install_system_mocks
 
 # --- MOCK HEAVY IMPORTS BEFORE THEY HAPPEN ---
 from tests.mocks.torch_mock import DummyTensor, DummyTorch, install_dummy_torch
 
-install_dummy_torch()
-install_system_mocks()
+if os.environ.get("CARINA_USE_REAL_TORCH") != "1":
+    install_dummy_torch()
+    install_system_mocks()
+else:
+    # Running in real DL validation mode (if torch is installed)
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        install_dummy_torch()
+        install_system_mocks()
 
 # Re-export fixtures for pytest discovery
 from tests.fixtures.hardware_fixtures import mock_logger, mock_snmp_hardware
@@ -56,9 +56,40 @@ def setup_test_env():
     os.environ["PYTORCH_JIT"] = "0"
     os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
+    # Ensure EVP fleet table isolation across tests
+    try:
+        from src.database.db_engine import DatabaseEngine
+
+        _eng = DatabaseEngine(locale_manager=None)
+        _conn = _eng.get_connection()
+        if _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute("DELETE FROM evp_registered_fleet;")
+            if hasattr(_conn, "commit"):
+                _conn.commit()
+            if hasattr(_conn, "close"):
+                _conn.close()
+    except Exception:
+        pass
+
     yield
 
     # Cleanup after test
+    try:
+        from src.database.db_engine import DatabaseEngine
+
+        _eng = DatabaseEngine(locale_manager=None)
+        _conn = _eng.get_connection()
+        if _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute("DELETE FROM evp_registered_fleet;")
+            if hasattr(_conn, "commit"):
+                _conn.commit()
+            if hasattr(_conn, "close"):
+                _conn.close()
+    except Exception:
+        pass
+
     for key in [
         "CARINA_TEST_MODE",
         "QT_QPA_PLATFORM",

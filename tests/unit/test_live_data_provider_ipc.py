@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_live_data_provider_ipc.py
-# Author: Gabriel Moraes
-# Date: 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import queue
 import time
@@ -25,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from sds.dashboard_orchestrator import Orchestrator
+from ui.clients.control_client import ControlClient
 from ui.providers.live_data_provider import LiveDataProvider
 
 
@@ -44,12 +29,12 @@ def test_live_data_provider_command_dispatch():
 
     provider = LiveDataProvider(on_data_received=callback, ui_telemetry_queue=mock_telem_q, ui_command_queue=mock_cmd_q)
 
-    test_command = {"type": "set_global_mode", "payload": {"mode": "MANUAL"}}
-    provider.send_command_to_backend(test_command)
+    client = ControlClient(live_data_provider=provider)
+    client.set_global_mode("MANUAL")
 
     assert not mock_cmd_q.empty()
     received_cmd = mock_cmd_q.get_nowait()
-    assert received_cmd == test_command
+    assert received_cmd == {"type": "set_global_mode", "payload": {"mode": "MANUAL"}}
 
 
 def test_live_data_provider_receives_telemetry():

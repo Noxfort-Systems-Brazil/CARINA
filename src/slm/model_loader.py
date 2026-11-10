@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/slm/model_loader.py
-# Author: Gabriel Moraes
-# Date: July 29, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -55,7 +39,7 @@ class SLMModelLoader:
             except Exception as e:
                 logging.warning(
                     f"[SLMModelLoader] GPU load failed (gpu_layers={n_gpu_layers}): {e}. Attempting CPU fallback..."
-                )
+                , exc_info=True)
 
         if model is None:
             try:
@@ -66,5 +50,5 @@ class SLMModelLoader:
             except ImportError:
                 raise RuntimeError("llama-cpp-python is not installed. Please install it to use GGUF models.")
             except Exception as e:
-                logging.error(f"[SLMModelLoader] CPU model loading failed: {e}")
+                logging.error(f"[SLMModelLoader] CPU model loading failed: {e}", exc_info=True)
                 raise RuntimeError(f"Failed to load model resources: {e}")

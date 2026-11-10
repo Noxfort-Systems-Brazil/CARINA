@@ -1,22 +1,6 @@
-// CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-// Copyright (C) 2026 Noxfort Systems
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as
-// published by the Free Software Foundation, either version 3 of the
-// License, or (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-// File: src_go/cmd/gateway/router_test.go
-// Author: Gabriel Moraes
-// Date: September 2026
+// CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+// SPDX-FileCopyrightText: 2026 Noxfort Systems
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 package main
 
@@ -28,6 +12,7 @@ import (
 	"testing"
 
 	"carina/src_go/pkg/manager"
+	"carina/src_go/web_gateway"
 )
 
 func newTestStdoutWriter() (*stdoutWriter, *bytes.Buffer) {
@@ -61,7 +46,7 @@ func TestRouterPing(t *testing.T) {
 		Cmd: "ping",
 	}
 
-	handleCommand(req, mgr, out)
+	handleCommand(req, mgr, nil, out)
 
 	resp := readLastResponse(t, buf)
 	if resp.ID != 101 {
@@ -84,7 +69,7 @@ func TestRouterUnknownCommand(t *testing.T) {
 		Cmd: "non_existent_command",
 	}
 
-	handleCommand(req, mgr, out)
+	handleCommand(req, mgr, nil, out)
 
 	resp := readLastResponse(t, buf)
 	if resp.ID != 102 {
@@ -107,7 +92,7 @@ func TestRouterDisconnectedOperations(t *testing.T) {
 		ID:             201,
 		Cmd:            "disconnect",
 		IntersectionID: "unknown_id",
-	}, mgr, out)
+	}, mgr, nil, out)
 	resp := readLastResponse(t, buf)
 	if resp.ID != 201 || resp.Success {
 		t.Errorf("expected failure when disconnecting non-existent intersection, got: %+v", resp)
@@ -122,7 +107,7 @@ func TestRouterDisconnectedOperations(t *testing.T) {
 		Cmd:            "apply_action",
 		IntersectionID: "tl_none",
 		ActionData:     map[string]interface{}{"stage": 1},
-	}, mgr, out)
+	}, mgr, nil, out)
 	resp = readLastResponse(t, buf)
 	if resp.Success {
 		t.Errorf("expected apply_action to fail for disconnected intersection")
@@ -138,7 +123,7 @@ func TestRouterDisconnectedOperations(t *testing.T) {
 		IntersectionID:  "tl_none",
 		Action:          1,
 		CurrentStageIdx: 0,
-	}, mgr, out)
+	}, mgr, nil, out)
 	resp = readLastResponse(t, buf)
 	if resp.Success {
 		t.Errorf("expected apply_logical_action to fail for disconnected intersection")
@@ -150,7 +135,7 @@ func TestRouterDisconnectedOperations(t *testing.T) {
 		Cmd:            "decision",
 		IntersectionID: "tl_none",
 		Decision:       "ADVANCE",
-	}, mgr, out)
+	}, mgr, nil, out)
 	resp = readLastResponse(t, buf)
 	if resp.Success {
 		t.Errorf("expected decision to fail for disconnected intersection")
@@ -161,7 +146,7 @@ func TestRouterDisconnectedOperations(t *testing.T) {
 		ID:             205,
 		Cmd:            "get_telemetry",
 		IntersectionID: "tl_none",
-	}, mgr, out)
+	}, mgr, nil, out)
 	resp = readLastResponse(t, buf)
 	if !resp.Success {
 		t.Errorf("expected telemetry call to succeed even if offline")
@@ -175,9 +160,102 @@ func TestRouterDisconnectedOperations(t *testing.T) {
 	handleCommand(RequestEnvelope{
 		ID:  206,
 		Cmd: "emergency_release",
-	}, mgr, out)
+	}, mgr, nil, out)
 	resp = readLastResponse(t, buf)
 	if !resp.Success {
 		t.Errorf("expected emergency release to succeed")
 	}
 }
+
+func TestRouterCCOBroadcastAndTailscale(t *testing.T) {
+	out, buf := newTestStdoutWriter()
+	mgr := manager.NewHardwareManager(0, nil)
+
+	// Test CCO Broadcast command
+	handleCommand(RequestEnvelope{
+		ID:   301,
+		Cmd:  "cco_broadcast",
+		Data: map[string]interface{}{"subtitle": "Teste CCO", "category": "INFO"},
+	}, mgr, nil, out)
+
+	resp := readLastResponse(t, buf)
+	if resp.ID != 301 || !resp.Success {
+		t.Errorf("expected cco_broadcast to succeed, got %+v", resp)
+	}
+
+	// Test Tailscale status query
+	handleCommand(RequestEnvelope{
+		ID:  302,
+		Cmd: "tailscale_status",
+	}, mgr, nil, out)
+
+	resp = readLastResponse(t, buf)
+	if resp.ID != 302 {
+		t.Errorf("expected response ID 302 for tailscale_status, got %+v", resp)
+	}
+}
+
+func TestRouterGatewayEnableAndStatus(t *testing.T) {
+	out, buf := newTestStdoutWriter()
+	mgr := manager.NewHardwareManager(0, nil)
+	webSrv := web_gateway.NewWebGatewayServer(2209, nil)
+
+	// 1. Initial status -> disabled
+	handleCommand(RequestEnvelope{
+		ID:  401,
+		Cmd: "gateway_get_status",
+	}, mgr, webSrv, out)
+
+	resp := readLastResponse(t, buf)
+	if resp.ID != 401 || !resp.Success {
+		t.Fatalf("expected gateway_get_status success, got %+v", resp)
+	}
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok || data["enabled"] != false {
+		t.Errorf("expected gateway to be initially disabled, got %+v", data)
+	}
+
+	// 2. Enable gateway
+	enabled := true
+	handleCommand(RequestEnvelope{
+		ID:      402,
+		Cmd:     "gateway_set_enabled",
+		Enabled: &enabled,
+	}, mgr, webSrv, out)
+
+	resp = readLastResponse(t, buf)
+	if resp.ID != 402 || !resp.Success {
+		t.Fatalf("expected gateway_set_enabled success, got %+v", resp)
+	}
+	data, ok = resp.Data.(map[string]interface{})
+	if !ok || data["enabled"] != true {
+		t.Errorf("expected gateway to be enabled, got %+v", data)
+	}
+
+	// 3. Status confirms enabled
+	handleCommand(RequestEnvelope{
+		ID:  403,
+		Cmd: "gateway_get_status",
+	}, mgr, webSrv, out)
+
+	resp = readLastResponse(t, buf)
+	data, _ = resp.Data.(map[string]interface{})
+	if data["enabled"] != true {
+		t.Errorf("expected status to confirm enabled, got %+v", data)
+	}
+
+	// 4. Disable gateway
+	disabled := false
+	handleCommand(RequestEnvelope{
+		ID:      404,
+		Cmd:     "gateway_set_enabled",
+		Enabled: &disabled,
+	}, mgr, webSrv, out)
+
+	resp = readLastResponse(t, buf)
+	data, _ = resp.Data.(map[string]interface{})
+	if data["enabled"] != false {
+		t.Errorf("expected gateway to be disabled, got %+v", data)
+	}
+}
+

@@ -1,19 +1,98 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/mfd/__init__.py
-# Author: Gabriel Moraes
-# Date: 2026
+"""
+Macroscopic Fundamental Diagram (MFD) Package.
+
+Architected following SOLID, DDD, and Clean Architecture principles:
+- Orchestrators & Facades: mfd.py, mfd_processor.py, mfd_analyzer.py, mfd_report_generator.py, mfd_worker.py
+- Domain Layer (Value Objects, Entities, Services): snapshot, calculator, tracker, classifier, metrics, comparisons, impacts
+- Application Layer: data_normalizer, prompt_builder, section_builder, template_provider, neural_proofreader
+- Infrastructure Layer: network_parser, db_fetcher, baseline_manager, template_repository, subprocess_fallback
+"""
+
+from mfd.mfd import (
+    MacroscopicFundamentalDiagram,
+    MFDCalculator,
+    MFDClassifier,
+    MFDSnapshot,
+    MFDTracker,
+    NetworkState,
+)
+from mfd.mfd_analyzer import (
+    MFDAnalyzer,
+    MFDComparisonEngine,
+    MFDDataNormalizer,
+    MFDFallbackFactory,
+    MFDImpactCalculator,
+    MFDImpactLabels,
+    MFDIntersectionMetricsCalculator,
+    MFDMapResolver,
+    MFDMaturityEvaluator,
+    MFDMetricsCalculator,
+    MFDReportBaselineManager,
+    MFDStageAggregator,
+    MFDZoneCalculator,
+)
+from mfd.mfd_plotter import MFDPlotter
+from mfd.mfd_processor import (
+    MFDDataFetcher,
+    MFDHistoryReconstructor,
+    MFDMetricsProcessor,
+    MFDNetworkParser,
+    MFDProcessor,
+)
+from mfd.mfd_report_generator import (
+    MFDAuditSheetFormatter,
+    MFDJustificationResolver,
+    MFDNeuralProofreader,
+    MFDPromptBuilder,
+    MFDReportGenerator,
+    MFDSectionBuilder,
+    MFDSubprocessFallback,
+    MFDTableFormatter,
+    MFDTemplateProvider,
+    MFDTemplateRepository,
+)
+from mfd.mfd_worker import MFDOrchestrator, run_mfd_worker
+
+__all__ = [
+    "MacroscopicFundamentalDiagram",
+    "MFDCalculator",
+    "MFDClassifier",
+    "MFDSnapshot",
+    "MFDTracker",
+    "NetworkState",
+    "MFDAnalyzer",
+    "MFDComparisonEngine",
+    "MFDDataNormalizer",
+    "MFDFallbackFactory",
+    "MFDImpactCalculator",
+    "MFDImpactLabels",
+    "MFDIntersectionMetricsCalculator",
+    "MFDMapResolver",
+    "MFDMaturityEvaluator",
+    "MFDMetricsCalculator",
+    "MFDReportBaselineManager",
+    "MFDStageAggregator",
+    "MFDZoneCalculator",
+    "MFDPlotter",
+    "MFDDataFetcher",
+    "MFDHistoryReconstructor",
+    "MFDMetricsProcessor",
+    "MFDNetworkParser",
+    "MFDProcessor",
+    "MFDAuditSheetFormatter",
+    "MFDJustificationResolver",
+    "MFDNeuralProofreader",
+    "MFDPromptBuilder",
+    "MFDReportGenerator",
+    "MFDSectionBuilder",
+    "MFDSubprocessFallback",
+    "MFDTableFormatter",
+    "MFDTemplateProvider",
+    "MFDTemplateRepository",
+    "MFDOrchestrator",
+    "run_mfd_worker",
+]

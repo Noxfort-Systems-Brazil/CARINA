@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/manager/agent_checkpoint_repository.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -63,7 +47,7 @@ class AgentCheckpointRepository:
                     agent.save(path)
                     count_saved += 1
             except Exception as e:
-                logging.error(f"[AgentCheckpointRepository] Failed to save agent {tl_id}: {e}")
+                logging.error(f"[AgentCheckpointRepository] Failed to save agent {tl_id}: {e}", exc_info=True)
 
         # Save Strategist
         if strategist:
@@ -72,7 +56,7 @@ class AgentCheckpointRepository:
                 strategist.save_checkpoint(strat_path)
                 logging.info("[AgentCheckpointRepository] Strategist state saved.")
             except Exception as e:
-                logging.error(f"[AgentCheckpointRepository] Failed to save Strategist: {e}")
+                logging.error(f"[AgentCheckpointRepository] Failed to save Strategist: {e}", exc_info=True)
 
         logging.info(f"[AgentCheckpointRepository] System state saved to {ckpt_dir} ({count_saved} local agents).")
 
@@ -83,7 +67,7 @@ class AgentCheckpointRepository:
                 torch.save(shared_pae.state_dict(), pae_path)
                 logging.info("[AgentCheckpointRepository] PAE Universal state saved.")
             except Exception as e:
-                logging.error(f"[AgentCheckpointRepository] Failed to save PAE Universal: {e}")
+                logging.error(f"[AgentCheckpointRepository] Failed to save PAE Universal: {e}", exc_info=True)
 
         # Save Guardians
         if guardians:
@@ -93,7 +77,7 @@ class AgentCheckpointRepository:
                     path = os.path.join(ckpt_dir, f"guardian_{safe_id}.pth")
                     torch.save(guardian.policy_net.state_dict(), path)
                 except Exception as e:
-                    logging.error(f"[AgentCheckpointRepository] Failed to save guardian {tl_id}: {e}")
+                    logging.error(f"[AgentCheckpointRepository] Failed to save guardian {tl_id}: {e}", exc_info=True)
 
     @classmethod
     def restore_system_state(
@@ -123,7 +107,7 @@ class AgentCheckpointRepository:
                     if hasattr(agent, "load"):
                         agent.load(path)
                 except Exception as e:
-                    logging.warning(f"[AgentCheckpointRepository] Failed to load checkpoint for {tl_id}: {e}")
+                    logging.warning(f"[AgentCheckpointRepository] Failed to load checkpoint for {tl_id}: {e}", exc_info=True)
 
         # Load Strategist
         if strategist:
@@ -133,17 +117,21 @@ class AgentCheckpointRepository:
                     strategist.load_checkpoint(strat_path)
                     logging.info("[AgentCheckpointRepository] Strategist state restored.")
                 except Exception as e:
-                    logging.warning(f"[AgentCheckpointRepository] Failed to load Strategist checkpoint: {e}")
+                    logging.warning(f"[AgentCheckpointRepository] Failed to load Strategist checkpoint: {e}", exc_info=True)
 
         # Restore PAE Universal
         if shared_pae is not None:
             pae_path = os.path.join(ckpt_dir, "pae_universal.pth")
             if os.path.exists(pae_path):
                 try:
-                    shared_pae.load_state_dict(torch.load(pae_path, map_location=device, weights_only=True))
+                    try:
+                        pae_data = torch.load(pae_path, map_location=device, weights_only=True)
+                    except Exception:
+                        pae_data = torch.load(pae_path, map_location=device, weights_only=False)
+                    shared_pae.load_state_dict(pae_data)
                     logging.info("[AgentCheckpointRepository] PAE Universal state restored.")
                 except Exception as e:
-                    logging.warning(f"[AgentCheckpointRepository] Failed to load PAE Universal checkpoint: {e}")
+                    logging.warning(f"[AgentCheckpointRepository] Failed to load PAE Universal checkpoint: {e}", exc_info=True)
 
         # Restore Guardians
         if guardians:
@@ -152,9 +140,13 @@ class AgentCheckpointRepository:
                 path = os.path.join(ckpt_dir, f"guardian_{safe_id}.pth")
                 if os.path.exists(path):
                     try:
-                        guardian.policy_net.load_state_dict(torch.load(path, map_location=device, weights_only=True))
+                        try:
+                            g_data = torch.load(path, map_location=device, weights_only=True)
+                        except Exception:
+                            g_data = torch.load(path, map_location=device, weights_only=False)
+                        guardian.policy_net.load_state_dict(g_data)
                         guardian.target_net.load_state_dict(guardian.policy_net.state_dict())
                     except Exception as e:
                         logging.warning(
                             f"[AgentCheckpointRepository] Failed to load guardian checkpoint for {tl_id}: {e}"
-                        )
+                        , exc_info=True)

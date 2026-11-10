@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/rendering/async_heatmap_renderer.py
-# Author: Gabriel Moraes
-# Date: April 23, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import base64
 import io
@@ -27,9 +11,9 @@ from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 import matplotlib.pyplot as plt
 
-from src.rendering.congestion_color_scheme import CongestionColorScheme
-from src.rendering.render_buffer_manager import RenderBufferManager
-from src.rendering.update_throttler import UpdateThrottler
+from rendering.congestion_color_scheme import CongestionColorScheme
+from rendering.render_buffer_manager import RenderBufferManager
+from rendering.update_throttler import UpdateThrottler
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -59,8 +43,8 @@ class AsyncHeatmapRenderer:
         callback: Optional[Callable[[Optional[str]], None]] = None,
     ):
         """
-        Gera uma imagem de mapa com as ruas coloridas pelo nível de
-        congestionamento de forma assíncrona e chama o callback com o resultado.
+        Generates a map image with streets colored by congestion level
+        asynchronously and invokes the callback with the result.
         """
         future = self.executor.submit(
             self._create_heatmap_internal,
@@ -76,7 +60,7 @@ class AsyncHeatmapRenderer:
                     result = fut.result()
                     callback(result)
                 except Exception as e:
-                    logging.error(f"Erro no callback do heatmap: {e}")
+                    logging.error(f"Erro no callback do heatmap: {e}", exc_info=True)
                     callback(None)
 
             future.add_done_callback(handle_result)
@@ -84,13 +68,13 @@ class AsyncHeatmapRenderer:
     def get_precise_color_for_congestion(
         self, value: float, max_expected_value: float = 100.0
     ) -> Tuple[float, float, float]:
-        """Converte um valor de congestão em uma tupla RGB com alta precisão."""
+        """Converts a congestion value into an RGB tuple with high precision."""
         return CongestionColorScheme.get_precise_color_for_congestion(value, max_expected_value)
 
     def get_enhanced_color_for_congestion(
         self, value: float, max_expected_value: float = 100.0
     ) -> Tuple[float, float, float]:
-        """Converte um valor de congestão em uma tupla RGB com escala avançada."""
+        """Converts a congestion value into an RGB tuple with an advanced scale."""
         return CongestionColorScheme.get_enhanced_color_for_congestion(value, max_expected_value)
 
     def _create_heatmap_internal(
@@ -99,7 +83,7 @@ class AsyncHeatmapRenderer:
         congestion_data: dict,
         saturation_threshold: float,
     ) -> Optional[str]:
-        """Método interno que realiza a renderização do heatmap fora da thread UI."""
+        """Internal method that performs heatmap rendering off the UI thread."""
         lm = self.locale_manager
         try:
             nodes, edges = map_data

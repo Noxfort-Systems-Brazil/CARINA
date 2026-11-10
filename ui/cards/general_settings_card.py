@@ -1,25 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/general_settings_card.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o GeneralSettingsCard, um widget componente para a tela de Configurações.
+Defines the GeneralSettingsCard, a component widget for the Settings screen.
 """
 
 from typing import Any, Dict
@@ -32,12 +16,12 @@ from ui.handlers.locale_manager import LocaleManager
 
 class GeneralSettingsCard(ft.Card):
     """
-    Um Card que encapsula as configurações de aparência e gerais.
+    A Card encapsulating appearance and general settings.
     """
 
     def __init__(self, initial_values: Dict[str, Any]):
         """
-        Inicializa o Card com os valores fornecidos.
+        Initializes the Card with the provided values.
         """
         super().__init__()
 
@@ -86,7 +70,7 @@ class GeneralSettingsCard(ft.Card):
 
     def _theme_changed(self, e: ft.ControlEvent):
         """
-        Chamado quando o checkbox do modo escuro é alterado.
+        Called when the dark mode checkbox is toggled.
         """
         if self.page:
             self.page.theme_mode = ft.ThemeMode.DARK if e.control.value else ft.ThemeMode.LIGHT
@@ -94,7 +78,7 @@ class GeneralSettingsCard(ft.Card):
 
     def get_values(self) -> Dict[str, Any]:
         """
-        Retorna um dicionário com os valores atuais dos controles neste card.
+        Returns a dictionary with current control values in this card.
         """
         return {
             "theme_dark": self.check_theme.value,
@@ -103,7 +87,7 @@ class GeneralSettingsCard(ft.Card):
 
     def set_values(self, values: Dict[str, Any]):
         """
-        Atualiza os valores dos controles neste card com base no dicionário fornecido.
+        Updates control values in this card based on the provided dictionary.
         """
         theme_val = values.get("theme_dark", True)
         if isinstance(theme_val, str):
@@ -115,7 +99,7 @@ class GeneralSettingsCard(ft.Card):
 
     # --- CHANGE 2: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
-        """Atualiza os textos deste card com base no LocaleManager."""
+        """Updates texts in this card based on the LocaleManager."""
         self.title_text.value = lm.get_string("settings_view.general_card_title", default="Configurações Gerais")
         self.check_theme.label = lm.get_string("settings_view.dark_mode_label", default="Modo Escuro")
         self.dd_language.label = lm.get_string("settings_view.language_label", default="Idioma")

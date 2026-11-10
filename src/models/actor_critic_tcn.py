@@ -1,184 +1,181 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/models/actor_critic_tcn.py (NEW FILE - TCN Implementation)
-# Author: Gabriel Moraes
-# Date: November 22, 2025
-
-from typing import Any, List, Optional, Tuple
+import logging
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from torch.distributions import Categorical
-from torch.nn.utils import weight_norm
+import torch.nn.functional as F
 
+from src.models.tcn_backbone import (
+    Chomp1d,
+    TemporalAttentionPool,
+    TemporalBlock,
+    TemporalConvNet,
+    align_tcn_input_channels,
+    init_orthogonal,
+)
 
-class Chomp1d(nn.Module):
-    """
-    Removes extra right padding to ensure causality.
-    This ensures that the output at t depends only on inputs t, t-1, ...
-    """
-
-    def __init__(self, chomp_size: int) -> None:
-        super(Chomp1d, self).__init__()
-        self.chomp_size = chomp_size
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x[:, :, : -self.chomp_size].contiguous()
-
-
-class TemporalBlock(nn.Module):
-    """
-    Um bloco residual TCN padrão consistindo de duas convoluções dilatadas,
-    normalização de peso, ReLU, Dropout e corte (Chomp).
-    """
-
-    def __init__(
-        self,
-        n_inputs: int,
-        n_outputs: int,
-        kernel_size: int,
-        stride: int,
-        dilation: int,
-        padding: int,
-        dropout: float = 0.2,
-    ) -> None:
-        super(TemporalBlock, self).__init__()
-
-        # First convolutional layer
-        self.conv1 = weight_norm(
-            nn.Conv1d(n_inputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
-        )
-        self.chomp1 = Chomp1d(padding)
-        self.relu1 = nn.ReLU()
-        self.dropout1 = nn.Dropout(dropout)
-
-        # Second convolutional layer
-        self.conv2 = weight_norm(
-            nn.Conv1d(n_outputs, n_outputs, kernel_size, stride=stride, padding=padding, dilation=dilation)
-        )
-        self.chomp2 = Chomp1d(padding)
-        self.relu2 = nn.ReLU()
-        self.dropout2 = nn.Dropout(dropout)
-
-        self.net = nn.Sequential(
-            self.conv1, self.chomp1, self.relu1, self.dropout1, self.conv2, self.chomp2, self.relu2, self.dropout2
-        )
-
-        # Residual connection (downsample if dimensions change)
-        self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
-        self.relu = nn.ReLU()
-        self.init_weights()
-
-    def init_weights(self) -> None:
-        self.conv1.weight.data.normal_(0, 0.01)
-        self.conv2.weight.data.normal_(0, 0.01)
-        if self.downsample is not None:
-            self.downsample.weight.data.normal_(0, 0.01)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.net(x)
-        res = x if self.downsample is None else self.downsample(x)
-        return self.relu(out + res)
-
-
-class TemporalConvNet(nn.Module):
-    """
-    A rede TCN completa, composta por uma pilha de TemporalBlocks.
-    """
-
-    def __init__(self, num_inputs: int, num_channels: List[int], kernel_size: int = 2, dropout: float = 0.2) -> None:
-        super(TemporalConvNet, self).__init__()
-        layers: List[nn.Module] = []
-        num_levels = len(num_channels)
-        for i in range(num_levels):
-            dilation_size = 2**i
-            in_channels = num_inputs if i == 0 else num_channels[i - 1]
-            out_channels = num_channels[i]
-            layers += [
-                TemporalBlock(
-                    in_channels,
-                    out_channels,
-                    kernel_size,
-                    stride=1,
-                    dilation=dilation_size,
-                    padding=(kernel_size - 1) * dilation_size,
-                    dropout=dropout,
-                )
-            ]
-
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.network(x)
+__all__ = ["Chomp1d", "TemporalBlock", "TemporalConvNet", "ActorCriticNet"]
 
 
 class ActorCriticNet(nn.Module):
     """
-    Actor-Critic network using TCN as the base for temporal processing.
-    Replaces the LSTM-based version while maintaining I/O compatibility.
+    Modernized Tactical Actor-Critic Network for CARINA's binary stage controller:
+    - Binary action space (`n_actions = 2`: `0 = ADVANCE / CHANGE_STAGE`, `1 = KEEP / HOLD`).
+    - Unified causal TCN (`num_levels = 3` covering full `sequence_length = 12` horizon)
+      followed by `TemporalAttentionPool`.
+    - Decoupled Actor and Critic post-TCN trunks with orthogonal initialization
+      (`gain = 0.01` on the policy head, `gain = 1.0` on the value head).
+    - Emits raw FP32 logits via `forward_logits` (+ physical `action_mask`) for
+      AMP-safe `Categorical(logits=...)` without Softmax underflow.
     """
 
-    def __init__(self, n_observations: int, n_actions: int, hidden_size: int = 128, dropout_p: float = 0.1) -> None:
-        super(ActorCriticNet, self).__init__()
+    outputs_logits: bool = True
 
-        # TCN Configuration
-        # We define 2 levels with hidden_size channels each.
-        # This creates a reasonable receptive field for short/medium sequences.
-        num_channels = [hidden_size, hidden_size]
+    def __init__(
+        self,
+        n_observations: int,
+        n_actions: int = 2,
+        hidden_size: int = 128,
+        dropout_p: float = 0.1,
+        num_levels: int = 3,
+    ) -> None:
+        super().__init__()
+        self.n_observations = int(n_observations)
+        self.n_actions = int(n_actions)
+        self.hidden_size = int(hidden_size)
+        self.dropout_p = float(dropout_p)
+
+        num_channels = [self.hidden_size] * max(1, int(num_levels))
         kernel_size = 3
 
-        # TCN processes the temporal dimension
-        self.tcn = TemporalConvNet(n_observations, num_channels, kernel_size=kernel_size, dropout=dropout_p)
+        self.tcn = TemporalConvNet(
+            self.n_observations, num_channels, kernel_size=kernel_size, dropout=self.dropout_p
+        )
+        self.temporal_pool = TemporalAttentionPool(self.hidden_size, dropout=self.dropout_p)
 
-        # Processing layers after TCN
-        self.post_tcn_layer = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size), nn.LayerNorm(hidden_size), nn.ReLU(), nn.Dropout(dropout_p)
+        # Decoupled Actor and Critic feature trunks (prevents critic gradient interference)
+        actor_fc = nn.Linear(self.hidden_size, self.hidden_size)
+        critic_fc = nn.Linear(self.hidden_size, self.hidden_size)
+        init_orthogonal(actor_fc, gain=1.41421356)
+        init_orthogonal(critic_fc, gain=1.41421356)
+
+        self.actor_trunk = nn.Sequential(
+            actor_fc,
+            nn.LayerNorm(self.hidden_size),
+            nn.SiLU(),
+            nn.Dropout(self.dropout_p),
+        )
+        self.critic_trunk = nn.Sequential(
+            critic_fc,
+            nn.LayerNorm(self.hidden_size),
+            nn.SiLU(),
+            nn.Dropout(self.dropout_p),
         )
 
-        # Actor Head (Policy): Determines the probability of each action
-        self.actor_head = nn.Sequential(nn.Linear(hidden_size, n_actions), nn.Softmax(dim=-1))
+        # Raw logit Actor Head (no Softmax inside AMP!) and Value Critic Head
+        actor_out = nn.Linear(self.hidden_size, self.n_actions)
+        critic_out = nn.Linear(self.hidden_size, 1)
+        init_orthogonal(actor_out, gain=0.01)
+        init_orthogonal(critic_out, gain=1.0)
 
-        # Critical Head (Value): Estimates the value of the current state
-        self.critic_head = nn.Sequential(nn.Linear(hidden_size, 1))
+        self.actor_head = nn.Sequential(actor_out)
+        self.critic_head = nn.Sequential(critic_out)
 
-    def forward(self, state_sequence: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    @staticmethod
+    def apply_action_mask(logits: torch.Tensor, action_mask: Optional[torch.Tensor]) -> torch.Tensor:
         """
-        Args:
-            state_sequence: Tensor [batch_size, sequence_length, n_observations]
-        Returns:
-            tuple: (action_probs, state_value)
+        Applies a physical boolean/0-1 mask (`True`/`1` = allowed, `False`/`0` = forbidden)
+        to raw FP32 action logits, guaranteeing at least one valid action per batch element.
         """
-        # The TCN expects input in the format [batch_size, channels (n_obs), sequence_length]
-        # We need to transpose the input, as the PPO sends [batch, seq, obs]
+        logits_fp32 = logits.float() if hasattr(logits, "float") else logits
+        if action_mask is None:
+            return logits_fp32
+
+        try:
+            mask = action_mask
+            if not isinstance(mask, torch.Tensor) and type(mask).__name__ != "DummyTensor":
+                mask = torch.as_tensor(mask, dtype=torch.bool, device=getattr(logits_fp32, "device", "cpu"))
+            if hasattr(mask, "to") and hasattr(logits_fp32, "device") and getattr(mask, "device", None) != logits_fp32.device:
+                mask = mask.to(logits_fp32.device)
+            if hasattr(mask, "dim") and mask.dim() == 1 and hasattr(logits_fp32, "dim") and logits_fp32.dim() == 2:
+                mask = mask.unsqueeze(0).expand(logits_fp32.size(0), -1)
+            mask_bool = mask.bool() if hasattr(mask, "bool") else mask
+
+            # Safety fallback: if all actions in a row were masked out, allow KEEP (index 1 or last index)
+            if isinstance(logits_fp32, torch.Tensor) and isinstance(mask_bool, torch.Tensor):
+                any_valid = mask_bool.any(dim=-1, keepdim=True)
+                fallback = torch.zeros_like(mask_bool)
+                fallback_idx = 1 if mask_bool.size(-1) > 1 else 0
+                fallback[..., fallback_idx] = True
+                safe_mask = torch.where(any_valid, mask_bool, fallback)
+                return logits_fp32.masked_fill(~safe_mask, -1e9)
+        except Exception:
+            pass
+
+        return logits_fp32
+
+    def forward_logits(
+        self,
+        state_sequence: torch.Tensor,
+        action_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Computes `(masked_logits_fp32, state_value)` from `[batch_size, seq_len, n_observations]`.
+        """
+        param = next(self.parameters(), None)
+        if (
+            param is not None
+            and hasattr(state_sequence, "device")
+            and hasattr(state_sequence, "to")
+            and getattr(param, "device", None) is not None
+            and state_sequence.device != param.device
+        ):
+            state_sequence = state_sequence.to(param.device)
+
+        if hasattr(state_sequence, "dim") and state_sequence.dim() == 2:
+            state_sequence = state_sequence.unsqueeze(1)
+
+        # Transpose [batch, seq, obs] -> [batch, obs, seq]
         x = state_sequence.transpose(1, 2)
+        x = align_tcn_input_channels(x, self.tcn)
 
-        # Pass through TCN
         y = self.tcn(x)
-        # Output y: [batch_size, hidden_size, sequence_length]
+        temporal_context = self.temporal_pool(y)
 
-        # We only take the output of the last time step (equivalent to LSTM output[-1])
-        # This represents the encoding of all history up to the present moment.
-        last_timestep = y[:, :, -1]
+        actor_features = self.actor_trunk(temporal_context)
+        critic_features = self.critic_trunk(temporal_context)
 
-        # Final processing
-        features = self.post_tcn_layer(last_timestep)
+        raw_logits = self.actor_head(actor_features)
+        masked_logits = self.apply_action_mask(raw_logits, action_mask)
+        state_value = self.critic_head(critic_features)
+        state_value_fp32 = state_value.float() if hasattr(state_value, "float") else state_value
 
-        # Heads
-        action_probs = self.actor_head(features)
-        state_value = self.critic_head(features)
+        return masked_logits, state_value_fp32
 
-        return action_probs, state_value
+    def forward(
+        self,
+        state_sequence: torch.Tensor,
+        action_mask: Optional[torch.Tensor] = None,
+        return_logits: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass returning `(action_probs, state_value)` by default for backward compatibility,
+        or `(action_logits, state_value)` when `return_logits=True`.
+        """
+        logits, state_value = self.forward_logits(state_sequence, action_mask=action_mask)
+        if return_logits:
+            return logits, state_value
+        return F.softmax(logits, dim=-1), state_value
+
+    def optimize_engine(self, enable_compile: bool = True, mode: str = "reduce-overhead") -> None:
+        """Optionally compiles the causal TCN backbone via PyTorch 2.x `torch.compile`."""
+        if not enable_compile or not hasattr(torch, "compile"):
+            return
+        try:
+            self.tcn = torch.compile(self.tcn, mode=mode)  # type: ignore[assignment]
+        except Exception as e:
+            logging.warning(f"[ActorCriticNet] torch.compile fallback to eager mode: {e}", exc_info=True)

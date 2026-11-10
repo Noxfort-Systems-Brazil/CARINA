@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/integration/test_gateway_ipc_pipeline.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 
@@ -56,3 +40,35 @@ def test_go_gateway_ipc_lifecycle():
     finally:
         client.stop()
         assert client.is_running() is False
+
+
+@pytest.mark.integration
+def test_go_gateway_pure_pipe_concurrency():
+    binary_path = resource_path(os.path.join("bin", "carina-go"))
+    sock_path = "/tmp/carina_gateway.sock"
+
+    # Ensure no lingering socket exists before starting
+    if os.path.exists(sock_path):
+        os.remove(sock_path)
+
+    client = GoGatewayClient(binary_path=binary_path)
+
+    try:
+        assert client.start() is True
+        assert client.is_running() is True
+        assert client.ping(timeout=2.0) is True
+
+        # Verify that pure pipe mode DOES NOT create any Unix domain socket
+        assert not os.path.exists(sock_path), f"Unix domain socket unexpectedly created at {sock_path}"
+
+        # Test concurrent / sequential queries over the anonymous pipe
+        res_a = client.send_command("gateway_get_status")
+        res_b = client.send_command("gateway_get_status")
+        assert res_a.get("success") is True
+        assert res_b.get("success") is True
+
+    finally:
+        client.stop()
+        assert client.is_running() is False
+        assert not os.path.exists(sock_path)
+

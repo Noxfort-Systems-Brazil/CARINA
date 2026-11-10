@@ -1,23 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/mfd/mfd_section_builder.py
-# Author: Gabriel Moraes
-# Date: August 9, 2026
-
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import json
 import logging
 import os
@@ -57,7 +40,7 @@ class MFDSectionBuilder:
                         logging.info(f"[MFDSectionBuilder] Loaded fallbacks from {json_path}")
                         return cls._fallbacks_cache
                 except Exception as e:
-                    logging.warning(f"[MFDSectionBuilder] Failed to load JSON '{json_path}': {e}. Using fallback.")
+                    logging.warning(f"[MFDSectionBuilder] Failed to load JSON '{json_path}': {e}. Using fallback.", exc_info=True)
 
         cls._fallbacks_cache = {}
         return cls._fallbacks_cache
@@ -112,7 +95,7 @@ class MFDSectionBuilder:
                 logging.info("[MFD_SECTION_BUILDER] Generating Section 1 Executive Summary via SLM Transducer...")
                 raw_exec_summary = transducer.generate_report(summary_payload)
             except Exception as slm_err:
-                logging.warning(f"[MFD_SECTION_BUILDER] SLM generation for Executive Summary failed: {slm_err}")
+                logging.warning(f"[MFD_SECTION_BUILDER] SLM generation for Executive Summary failed: {slm_err}", exc_info=True)
                 raw_exec_summary = ""
 
         if not raw_exec_summary or len(raw_exec_summary.strip()) < 20:
@@ -176,7 +159,7 @@ class MFDSectionBuilder:
                 logging.info("[MFD_SECTION_BUILDER] Generating Section 5 Technical Final Opinion via SLM Transducer...")
                 raw_final_opinion = transducer.generate_report(opinion_payload)
             except Exception as slm_err:
-                logging.warning(f"[MFD_SECTION_BUILDER] SLM generation for Technical Final Opinion failed: {slm_err}")
+                logging.warning(f"[MFD_SECTION_BUILDER] SLM generation for Technical Final Opinion failed: {slm_err}", exc_info=True)
                 raw_final_opinion = ""
 
         if not raw_final_opinion or len(raw_final_opinion.strip()) < 20:
@@ -232,7 +215,7 @@ class MFDSectionBuilder:
                 except Exception as ex_single:
                     logging.warning(
                         f"[MFD_SECTION_BUILDER] Failed SLM justification for intersection {row.get('id')}: {ex_single}"
-                    )
+                    , exc_info=True)
 
             if not justification or len(justification.strip()) < 20:
                 try:

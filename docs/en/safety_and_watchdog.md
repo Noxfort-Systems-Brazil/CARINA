@@ -7,34 +7,36 @@ aliases: [Safety Architecture, Guardian Veto, Watchdog System, Safety Auditor]
 
 This document details CARINA's dual-stage Neuro-Symbolic Safety Firewall ([`GuardianAgent`](../../src/agents/guardian_agent.py) & [`SafetyAuditor`](../../src/core/safety_auditor.py)), hardware fail-safe mechanisms, and the real-time deterministic [`Watchdog`](../../src/watchdog/watchdog_process.py) process.
 
-⬅️ Back to [Main Documentation Hub](../CARINA_MOC.md) | 🚦 See [Hardware Drivers](hardware_drivers.md) | 🧠 See [Neural Formulations](../RESEARCH_NOTES.md) | 🧪 See [Testing & Validation](testing.md)
+⬅️ Back to [Main Documentation Hub](carina_moc.md) | 🚨 See [EVP Preemption](evp_and_preemption.md) | 🚦 See [Hardware Drivers](hardware_drivers.md) | 🧠 See [Neural Formulations](research_notes.md) | 🧪 See [Testing & Validation](testing.md)
 
 ---
 
 ## 1. Dual-Stage Safety Firewall Overview
 
-CARINA completely decouples physical public safety from deep reinforcement learning performance. Neural policies can suggest actions, but all actions must be formally cleared through a two-tier safety firewall before dispatching to physical hardware:
+CARINA completely decouples physical public safety from deep reinforcement learning performance. Neural policies can suggest actions, but all actions must be formally cleared through a safety firewall before dispatching to physical hardware:
 
 ```text
-Proposed Phase Action ──> [1. Symbolic Safety Rules] ──> [2. Neural Spillback Veto] ──> Hardware Actuation
-                               │                               │
-                               ├── Veto (Min Green / Yellow)   └── Veto (Spillback Risk > 0.8)
-                               └── Force Keep Phase            └── Force Clearing Phase
+Proposed Phase Action ──> [0. EVP Priority Intercept] ──> [1. Symbolic Rules] ──> [2. Neural Veto] ──> Actuation
+                                 │                               │                        │
+                                 ├── Emergency Corridor (HOLD)   ├── Min Green / Yellow   └── Spillback (Q > 0.8)
+                                 └── Mandatory Clearance Check   └── Conflict Veto        └── Emergency Clearing
 ```
 
 ---
 
 ## 2. Symbolic Veto Rules Inventory (`SafetyAuditor`)
 
-The [`SafetyAuditor`](../../src/core/safety_auditor.py) enforces strict physical constraints that can never be relaxed, modified, or bypassed by neural network optimization:
+The [`SafetyAuditor`](../../src/core/safety_auditor.py) and [`GuardianSymbolicAuditor`](../../src/safety/guardian_symbolic_auditor.py) enforce strict physical constraints that can never be relaxed, modified, or bypassed by neural network optimization:
 
 | Rule ID | Name | Constraint Description | Action on Violation |
 | :--- | :--- | :--- | :--- |
+| **SR-00** | **Emergency Preemption (EVP)** | Active emergency vehicle (SAMU/Fire/Police) approaching with siren engaged. | Intercept action; enforce safe yellow/all-red clearance, then inject `ACTION_HOLD` on target green corridor. |
 | **SR-01** | **Minimum Green Time** | Active phase must remain green for at least $T_{min} = 7.0\text{ s}$ to clear queued vehicles. | Force `ACTION_KEEP_PHASE`. |
 | **SR-02** | **Yellow Clearance** | Any phase transition must execute a mandatory $3.0\text{ s}$ yellow warning interval. | Intercept action; inject Yellow phase. |
 | **SR-03** | **All-Red Interval** | Conflicting directional movements require a $2.0\text{ s}$ all-red clearance interval. | Inject All-Red clearance state. |
-| **SR-04** | **Pedestrian Protection** | Activated pedestrian push-buttons guarantee an uninterrupted walk/flashing interval. | Lock conflicting vehicle movements. |
-| **SR-05** | **Conflict Matrix** | Prevents concurrent green indications on conflicting or intersecting lanes. | Hard veto; revert to safe resting state. |
+| **SR-04** | **Minimum Red Time** | Non-served movements must satisfy a minimum red interval before being recalled. | Inhibit premature phase re-activation. |
+| **SR-05** | **Maximum Green Ceiling (Anti-Starvation)** | Phase cannot exceed maximum green duration if competing approaches have waiting queues. | Force phase termination and transition to competing demand. |
+| **SR-06** | **Conflict Matrix & Ghost Green** | Prevents concurrent green indications on conflicting or intersecting lanes. | Hard veto; revert to safe resting state. |
 
 ---
 
@@ -58,6 +60,7 @@ The `Watchdog` microservice ([`src/watchdog/watchdog_process.py`](../../src/watc
   2. It immediately signals the [`FailsafeManager`](../../src/controller/failsafe_manager.py) to drop phase holds on physical controllers.
   3. Physical traffic controllers autonomously revert to local fixed-time plans or yellow flash.
   4. Triggers the **F.E.N.I.X. Process Supervisor** (`on_fenix_trigger`) to initiate autonomous recovery and state reconciliation.
+  5. **Preemption Dwell Watchdog:** In parallel, [`EVPPreemptionEngine`](../../src/evp/evp_preemption_engine.py) enforces a strict $45.0\text{ s}$ maximum preemption dwell timeout, releasing arterial holds if vehicle checkout is delayed or missed.
 
 ---
 
@@ -126,5 +129,5 @@ For physical controller communication details, see [Hardware Drivers](hardware_d
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3 or later (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

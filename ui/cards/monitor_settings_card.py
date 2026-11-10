@@ -1,26 +1,10 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/monitor_settings_card.py
-# Author: Gabriel Moraes
-# Date: 2026-03-03
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o MonitorSettingsCard, um widget componente para a tela de Configurações
-usado para configurar a integração com o sistema externo "Monitor" via MQTT.
+Defines the MonitorSettingsCard, a component widget for the Settings screen
+used to configure integration with the external "Monitor" system via MQTT.
 """
 
 import json
@@ -35,7 +19,7 @@ from ui.handlers.locale_manager import LocaleManager
 
 class MonitorSettingsCard(ft.Card):
     """
-    Um Card que encapsula as configurações de integração com o Monitor Externo.
+    A Card encapsulating External Monitor integration settings.
     """
 
     def __init__(
@@ -45,7 +29,7 @@ class MonitorSettingsCard(ft.Card):
         locale_manager: Optional[LocaleManager] = None,
     ):
         """
-        Inicializa o Card com os valores fornecidos.
+        Initializes the Card with the provided values.
         """
         super().__init__()
 
@@ -146,13 +130,10 @@ class MonitorSettingsCard(ft.Card):
             self.on_toggle_connection(True, host)
 
     def _send_immediate_ping(self, host: str):
-        """Envia o heartbeat no formato exato solicitado assim que conecta pela UI."""
+        """Sends heartbeat in the exact requested format upon UI connection."""
         payload = {"origin": "Carina", "level": "info", "message": "heartbeat"}
         try:
-            try:
-                from communication.monitor_transport import is_http_endpoint, normalize_http_url
-            except Exception:
-                from src.communication.monitor_transport import is_http_endpoint, normalize_http_url
+            from src.communication.monitor_transport import is_http_endpoint, normalize_http_url
 
             if is_http_endpoint(host):
                 import requests
@@ -160,10 +141,7 @@ class MonitorSettingsCard(ft.Card):
                 url = normalize_http_url(host)
                 requests.post(url, json=payload, timeout=3.0)
             else:
-                try:
-                    from communication.monitor_transport import MonitorMqttTransport
-                except Exception:
-                    from src.communication.monitor_transport import MonitorMqttTransport
+                from src.communication.monitor_transport import MonitorMqttTransport
                 target_host, target_port = MonitorMqttTransport.parse_host_port(host, default_port=1883)
 
                 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="carina_ui_ping")
@@ -183,20 +161,20 @@ class MonitorSettingsCard(ft.Card):
 
     def get_values(self) -> Dict[str, Any]:
         """
-        Retorna um dicionário com os valores atuais dos controles neste card.
+        Returns a dictionary with current control values in this card.
         """
         return {"monitor_enabled": str(self.is_connected), "monitor_mqtt_host": self.tf_host.value}
 
     def set_values(self, values: Dict[str, Any]):
         """
-        Atualiza os valores dos controles neste card com base no dicionário fornecido.
+        Updates control values in this card based on the provided dictionary.
         """
         self.is_connected = str(values.get("monitor_enabled", "False")).lower() == "true"
         self.tf_host.value = values.get("monitor_mqtt_host", "localhost")
         self._update_ui_state()
 
     def update_translations(self, lm: LocaleManager):
-        """Atualiza os textos deste card com base no LocaleManager."""
+        """Updates texts in this card based on the LocaleManager."""
         self.lm = lm
         self.title_text.value = lm.get_string(
             "settings_view.monitor_card.title", default="External Monitor Integration"

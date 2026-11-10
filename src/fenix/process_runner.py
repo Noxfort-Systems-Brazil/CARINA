@@ -1,22 +1,6 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/fenix/process_runner.py
-# Author: Gabriel Moraes
-# Date: September 25, 2026
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Low-level OS Process Runner implementation for CARINA F.E.N.I.X. (SOLID Architecture).
@@ -83,7 +67,7 @@ class SubprocessRunner(IProcessRunner):
                 )
                 return True
             except Exception as e:
-                logger.error(f"[PROCESS RUNNER] Failed to spawn process: {e}")
+                logger.error(f"[PROCESS RUNNER] Failed to spawn process: {e}", exc_info=True)
                 self._process = None
                 return False
 
@@ -112,7 +96,7 @@ class SubprocessRunner(IProcessRunner):
                     self._process.kill()
                     self._process.wait(timeout=2.0)
             except Exception as e:
-                logger.error(f"[PROCESS RUNNER] Error stopping child process [PID: {pid}]: {e}")
+                logger.error(f"[PROCESS RUNNER] Error stopping child process [PID: {pid}]: {e}", exc_info=True)
             finally:
                 self._process = None
 

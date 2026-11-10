@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/drivers/traffic_light_driver.py
-# Author: Gabriel Moraes
-# Date: 2026-02-22 (Refactored 2026-09-25)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 High-level manager for a single traffic light intersection.
@@ -241,18 +225,18 @@ class TrafficLightDriver:
                         id=self.intersection_id,
                         error=e,
                     )
-                )
+                , exc_info=True)
 
             try:
                 self.hardware_driver.stop_heartbeat()
             except Exception as e:
-                logger.warning(f"Error stopping heartbeat for intersection {self.intersection_id}: {e}")
+                logger.warning(f"Error stopping heartbeat for intersection {self.intersection_id}: {e}", exc_info=True)
 
             try:
                 if hasattr(self.hardware_driver, "shutdown") and callable(self.hardware_driver.shutdown):
                     self.hardware_driver.shutdown()
             except Exception as e:
-                logger.warning(f"Error shutting down hardware driver for intersection {self.intersection_id}: {e}")
+                logger.warning(f"Error shutting down hardware driver for intersection {self.intersection_id}: {e}", exc_info=True)
 
             self.is_connected = False
             self.hardware_driver = None

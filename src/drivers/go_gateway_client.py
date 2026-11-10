@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/drivers/go_gateway_client.py
-# Author: Gabriel Moraes
-# Date: 2026-09-25
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 High-performance IPC Client bridging CARINA Python core with the compiled Go Hardware Gateway.
@@ -60,6 +44,7 @@ class GoGatewayClient:
         self.process_manager = GoProcessManager(binary_path=self.binary_path)
         self.event_dispatcher = GoEventDispatcher()
         self.transport = GoPipeTransport(on_event_received=self.event_dispatcher.dispatch)
+        self._start_lock = threading.Lock()
 
     @property
     def process(self):
@@ -67,27 +52,29 @@ class GoGatewayClient:
         return self.process_manager.process
 
     def is_running(self) -> bool:
-        """Checks whether the Go gateway process is currently running."""
-        return self.process_manager.is_running()
+        """Checks whether the Go gateway is running via subprocess pipes."""
+        return self.transport.is_connected(self.process_manager.process)
 
     def start(self) -> bool:
-        """Starts the Go gateway binary and initializes the pipe transport reader."""
-        if self.is_running():
-            return True
+        """Starts the Go gateway client via anonymous OS pipes (stdin/stdout)."""
+        with self._start_lock:
+            if self.is_running():
+                return True
 
-        if not self.process_manager.start():
-            return False
+            # Spawn Go binary with anonymous OS pipes (stdin/stdout)
+            if not self.process_manager.start():
+                return False
 
-        if self.process_manager.process is not None:
-            self.transport.start_stdout_reader(self.process_manager.process)
+            if self.process_manager.process is not None:
+                self.transport.start_stdout_reader(self.process_manager.process)
 
-        if self.ping(timeout=2.0):
-            logger.info("[GoGatewayClient] ✅ Go Hardware Gateway connected successfully via stdin/stdout.")
-            return True
-        else:
-            logger.error("[GoGatewayClient] Go Hardware Gateway ping failed on startup.")
-            self.stop()
-            return False
+            if self.ping(timeout=3.0):
+                logger.info("[GoGatewayClient] ✅ Go Hardware Gateway connected successfully via stdin/stdout.")
+                return True
+            else:
+                logger.error("[GoGatewayClient] Go Hardware Gateway ping failed on startup.")
+                self.stop()
+                return False
 
     def stop(self) -> None:
         """Stops the Go gateway client and cleans up pipe/process resources."""
@@ -95,11 +82,12 @@ class GoGatewayClient:
         def _pre_stop():
             try:
                 self.transport.send_raw(self.process_manager.process, {"id": 0, "cmd": "emergency_release"})
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("[drivers] Ignored recoverable error: %s", _exc)
 
         self.transport.stop()
-        self.process_manager.stop(pre_stop_hook=_pre_stop)
+        if self.process_manager.is_running():
+            self.process_manager.stop(pre_stop_hook=_pre_stop)
 
     def register_ui_callback(self, callback: Callable[[Dict[str, Any]], None]) -> None:
         """Registers a callback for UI updates upon receiving field traps/alarms."""
@@ -219,3 +207,12 @@ class GoGatewayClient:
         """Signals the Go gateway to release control on all active intersections."""
         res = self.send_command("emergency_release", timeout=3.0)
         return bool(res.get("success", False))
+
+    def broadcast_cco(self, data: Dict[str, Any]) -> None:
+        """Sends fire-and-forget CCO broadcast without waiting on stdout response."""
+        if not self.is_running():
+            return
+        try:
+            self.transport.send_raw(self.process_manager.process, {"id": 0, "cmd": "cco_broadcast", "data": data})
+        except Exception as e:
+            logger.debug(f"[GoGatewayClient] Falha ao enviar broadcast_cco assíncrono: {e}")

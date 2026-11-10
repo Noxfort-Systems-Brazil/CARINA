@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/slm/semantic_transducer.py
-# Author: Gabriel Moraes
-# Date: July 29, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import argparse
 import json
@@ -24,11 +8,6 @@ import logging
 import os
 import sys
 from typing import Any, Dict, List
-
-# Ensure project 'src' directory is in sys.path when executed directly as a script
-_src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
 
 from slm.device_manager import SLMDeviceManager
 from slm.model_loader import SLMModelLoader
@@ -197,7 +176,7 @@ def main() -> None:
                 import sys
 
                 sys.stdout.write(f"ERROR: Failed to generate report. Details: {str(e)}")
-        except:
+        except Exception:
             pass
         exit(1)
 

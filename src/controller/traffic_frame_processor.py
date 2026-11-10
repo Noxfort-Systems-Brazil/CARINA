@@ -1,28 +1,13 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/controller/traffic_frame_processor.py
-# Author: Gabriel Moraes
-# Date: April 15, 2026
-
+import math
 import logging
 import time
 from multiprocessing import Queue
 from multiprocessing.connection import Connection
-from typing import Any
+from typing import Any, Dict
 
 from controller.failsafe_manager import FailsafeManager
 from controller.topology_manager import TopologyManager
@@ -38,6 +23,90 @@ class TrafficFrameProcessor:
     NOTE: Heartbeat is now sent immediately in the gRPC hot-path (hft_server.py),
     NOT here. This processor runs on the cold-path worker thread.
     """
+
+    # Numerical Sanitization & Clamping Boundaries (P0 Safety Invariants)
+    OCCUPANCY_MIN: float = 0.0
+    OCCUPANCY_MAX: float = 1.0
+
+    SPEED_MIN: float = 0.0
+    SPEED_MAX: float = 100.0  # m/s (~360 km/h)
+
+    QUEUE_MIN: float = 0.0
+    QUEUE_MAX: float = 1000.0  # vehicle units / meters
+
+    DENSITY_MIN: float = 0.0
+    DENSITY_MAX: float = 1.0
+
+    @classmethod
+    def _sanitize_metric(
+        cls,
+        val: Any,
+        min_val: float,
+        max_val: float,
+        default: float = 0.0,
+        field_name: str = "",
+        edge_id: str = "",
+    ) -> float:
+        """
+        Validates numeric input using math.isnan() and math.isinf(),
+        sanitizing to default on anomalies, and clamps to [min_val, max_val].
+        """
+        try:
+            f_val = float(val) if val is not None else default
+        except (ValueError, TypeError):
+            logger.warning(
+                "[TrafficFrameProcessor] Invalid numeric type for %s on edge %s: %s. Sanitizing to %.2f.",
+                field_name,
+                edge_id,
+                val,
+                default,
+            )
+            return default
+
+        if math.isnan(f_val) or math.isinf(f_val):
+            logger.warning(
+                "[TrafficFrameProcessor] Numerical anomaly (NaN/Inf) detected for %s on edge %s: %s. Sanitizing to %.2f.",
+                field_name,
+                edge_id,
+                f_val,
+                default,
+            )
+            return default
+
+        return max(min_val, min(max_val, f_val))
+
+    def _sanitize_edge_state(self, edge_id: str, state: Any) -> Dict[str, float]:
+        """
+        Extracts, validates (math.isnan / math.isinf), and clamps all metrics
+        for an edge state before dispatch to PPO and Guardian.
+        """
+        raw_occ = getattr(state, "occupancy", None) if not isinstance(state, dict) else state.get("occupancy")
+        raw_speed = getattr(state, "mean_speed", None) if not isinstance(state, dict) else state.get("mean_speed")
+        raw_queue = getattr(state, "queue_length", None) if not isinstance(state, dict) else state.get("queue_length")
+
+        clean_occ = self._sanitize_metric(
+            raw_occ, self.OCCUPANCY_MIN, self.OCCUPANCY_MAX, default=0.0, field_name="occupancy", edge_id=edge_id
+        )
+        clean_speed = self._sanitize_metric(
+            raw_speed, self.SPEED_MIN, self.SPEED_MAX, default=0.0, field_name="mean_speed", edge_id=edge_id
+        )
+        clean_queue = self._sanitize_metric(
+            raw_queue, self.QUEUE_MIN, self.QUEUE_MAX, default=0.0, field_name="queue_length", edge_id=edge_id
+        )
+
+        edge_data = {
+            "occupancy": clean_occ,
+            "mean_speed": clean_speed,
+            "queue_length": clean_queue,
+        }
+
+        raw_density = getattr(state, "density", None) if not isinstance(state, dict) else state.get("density")
+        if raw_density is not None:
+            edge_data["density"] = self._sanitize_metric(
+                raw_density, self.DENSITY_MIN, self.DENSITY_MAX, default=0.0, field_name="density", edge_id=edge_id
+            )
+
+        return edge_data
 
     def __init__(
         self,
@@ -113,12 +182,38 @@ class TrafficFrameProcessor:
                 )
 
         # 2. NORMAL PROCESSING (AI Step)
-        current_time = frame.timestamp
+        raw_ts = getattr(frame, "timestamp", 0.0)
+        try:
+            current_time = float(raw_ts)
+            if math.isnan(current_time) or math.isinf(current_time) or current_time < 0.0:
+                logger.warning(
+                    "[TrafficFrameProcessor] Anomaly detected: invalid timestamp %s. Sanitizing to 0.0.",
+                    raw_ts,
+                )
+                current_time = 0.0
+        except (ValueError, TypeError):
+            current_time = 0.0
 
-        traffic_data = {"timestamp": current_time, "sequence_id": frame.sequence_id, "edges": {}}
+        raw_seq = getattr(frame, "sequence_id", 0)
+        try:
+            seq_id = int(raw_seq)
+            if seq_id < 0:
+                seq_id = 0
+        except (ValueError, TypeError):
+            seq_id = 0
+
+        traffic_data = {"timestamp": current_time, "sequence_id": seq_id, "edges": {}}
+
+        frame_edges = getattr(frame, "edges", {}) or {}
+        if isinstance(frame_edges, dict):
+            edge_items = frame_edges.items()
+        elif hasattr(frame_edges, "items"):
+            edge_items = frame_edges.items()
+        else:
+            edge_items = []
 
         # Prepare data for AI (still manual as it is control logic, not visualization)
-        for edge_id, state in frame.edges.items():
+        for edge_id, state in edge_items:
             # Check if this street is manually blocked by the operator
             # Consider potential sibling/reverse mappings or direct ID
             is_blocked = False
@@ -143,13 +238,12 @@ class TrafficFrameProcessor:
 
             if is_blocked:
                 # If blocked, inform the AI that there is no traffic/flow here
-                traffic_data["edges"][edge_id] = {"occupancy": 0.0, "mean_speed": 0.0, "queue_length": 0.0}
+                blocked_data = {"occupancy": 0.0, "mean_speed": 0.0, "queue_length": 0.0}
+                if hasattr(state, "density") or (isinstance(state, dict) and "density" in state):
+                    blocked_data["density"] = 0.0
+                traffic_data["edges"][edge_id] = blocked_data
             else:
-                traffic_data["edges"][edge_id] = {
-                    "occupancy": state.occupancy,
-                    "mean_speed": state.mean_speed,
-                    "queue_length": state.queue_length,
-                }
+                traffic_data["edges"][edge_id] = self._sanitize_edge_state(edge_id, state)
 
         # AGREEMENT: This is the ONLY place triggering the HFT Step.
         # SAFETY: Do NOT send AI commands while FixedTimeController is active.
@@ -165,7 +259,7 @@ class TrafficFrameProcessor:
                     self._get_string(
                         "controller.traffic_frame.ai_send_error", default="Error sending frame to AI: {error}", error=e
                     )
-                )
+                , exc_info=True)
         else:
             if self.failsafe_manager.failsafe_active:
                 logger.debug(
@@ -193,8 +287,8 @@ class TrafficFrameProcessor:
             }
             try:
                 self.sds_data_queue.put(("hft_rich_update", fast_payload), block=False)
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("[controller] Ignored recoverable error: %s", _exc)
 
         # 3.2 SLOW PATH (Heavy Heatmap Rendering) -> Controller.interval (e.g. 5.0s)
         if self.telemetry_aggregator.should_update(current_time):
@@ -216,7 +310,7 @@ class TrafficFrameProcessor:
                         default="Error putting rich update on SDS queue: {error}",
                         error=e,
                     )
-                )
+                , exc_info=True)
 
         # 4. MEASURE AND DIAGNOSE PROCESSING TIME
         t_end = time.perf_counter()

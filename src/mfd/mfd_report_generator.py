@@ -1,32 +1,30 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/mfd/mfd_report_generator.py
-# Author: Gabriel Moraes
-# Date: August 9, 2026
+"""
+MFD Optimization Analysis Report Generator Orchestrator.
+
+High-level Orchestrator Facade for MFD report generation.
+Coordinates data normalization, plotting, section building, neural proofreading,
+and final document assembly.
+"""
 
 import logging
 from typing import Any, Dict
 
 from blocks.report_post_processor import ReportPostProcessor
+from mfd.mfd_audit_sheet_formatter import MFDAuditSheetFormatter
 from mfd.mfd_data_normalizer import MFDDataNormalizer
+from mfd.mfd_justification_resolver import MFDJustificationResolver
 from mfd.mfd_neural_proofreader import MFDNeuralProofreader
 from mfd.mfd_plotter import MFDPlotter
+from mfd.mfd_prompt_builder import MFDPromptBuilder
 from mfd.mfd_section_builder import MFDSectionBuilder
 from mfd.mfd_subprocess_fallback import MFDSubprocessFallback
+from mfd.mfd_table_formatter import MFDTableFormatter
+from mfd.mfd_template_provider import MFDTemplateProvider
+from mfd.mfd_template_repository import MFDTemplateRepository
 
 
 class MFDReportGenerator:
@@ -102,7 +100,7 @@ class MFDReportGenerator:
                 else:
                     transducer = None
             except Exception as transducer_err:
-                logging.warning(f"[MFD_REPORT_GENERATOR] Could not load in-memory SemanticTransducer: {transducer_err}")
+                logging.warning(f"[MFD_REPORT_GENERATOR] Could not load in-memory SemanticTransducer: {transducer_err}", exc_info=True)
                 transducer = None
 
         # 4. Build narrative sections (1 to 5) and ANEXO I audit sheets
@@ -145,3 +143,17 @@ class MFDReportGenerator:
     def _try_subprocess_transducer(payload: Dict[str, Any], device: str = "auto", gpu_layers: str = "16") -> str:
         """Forwarding helper method to MFDSubprocessFallback for backward compatibility."""
         return MFDSubprocessFallback.try_subprocess_transducer(payload, device=device, gpu_layers=gpu_layers)
+
+
+__all__ = [
+    "MFDReportGenerator",
+    "MFDTemplateRepository",
+    "MFDJustificationResolver",
+    "MFDAuditSheetFormatter",
+    "MFDTableFormatter",
+    "MFDTemplateProvider",
+    "MFDPromptBuilder",
+    "MFDSubprocessFallback",
+    "MFDNeuralProofreader",
+    "MFDSectionBuilder",
+]

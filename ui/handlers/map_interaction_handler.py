@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/handlers/map_interaction_handler.py
-# Author: Gabriel Moraes
-# Date: September 24, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the MapInteractionHandler.
@@ -57,11 +41,9 @@ class MapInteractionHandler:
 
     def handle_pan_update(self, e: ft.DragUpdateEvent):
         """Calculates the new map offset during a pan event."""
-        effective_scale = self.scale.scale if self.scale.scale > 0 else 1.0
-
         # Exact vector anchoring maintaining absolute mouse grip under any zoom (1:1 Tracking)
-        self.offset.x += e.delta_x / (self.base_width * effective_scale)
-        self.offset.y += e.delta_y / (self.base_height * effective_scale)
+        self.offset.x += e.delta_x / self.base_width
+        self.offset.y += e.delta_y / self.base_height
 
         self.on_update()
 
@@ -97,11 +79,11 @@ class MapInteractionHandler:
         dx = mouse_x - center_x
         dy = mouse_y - center_y
 
-        # Mathematically exact offset compensation:
-        # mx = (mouse_x - cx) / old_scale + cx - old_offset * W == (mouse_x - cx) / new_scale + cx - new_offset * W
-        # => delta_offset = - dx * (new_scale - old_scale) / (W * old_scale * new_scale)
-        self.offset.x -= (dx * (new_scale - old_scale)) / (self.base_width * old_scale * new_scale)
-        self.offset.y -= (dy * (new_scale - old_scale)) / (self.base_height * old_scale * new_scale)
+        # Mathematically exact offset compensation under FractionalTranslation(Transform.scale(Stack)):
+        # map_x = ((mouse_x - cx - old_offset * W) / old_scale) + cx == ((mouse_x - cx - new_offset * W) / new_scale) + cx
+        # => delta_offset = - (dx - old_offset * W) * (new_scale - old_scale) / (W * old_scale)
+        self.offset.x -= ((dx - (self.offset.x * self.base_width)) * (new_scale - old_scale)) / (self.base_width * old_scale)
+        self.offset.y -= ((dy - (self.offset.y * self.base_height)) * (new_scale - old_scale)) / (self.base_height * old_scale)
 
         self.on_update()
 
@@ -110,14 +92,14 @@ class MapInteractionHandler:
         Converts raw screen pixel coordinates into map-space coordinates
         based on current zoom (scale) and pan (offset).
         Mathematically exact inverse transformation:
-        sx = (map_x - center_x) * scale + center_x + (offset.x * base_width * scale)
-        => map_x = (local_x - center_x) / scale + center_x - (offset.x * base_width)
+        sx = (map_x - center_x) * scale + center_x + (offset.x * base_width)
+        => map_x = ((local_x - center_x - (offset.x * base_width)) / scale) + center_x
         """
         scale = self.scale.scale if self.scale.scale > 0 else 1.0
         center_x = self.base_width / 2.0
         center_y = self.base_height / 2.0
 
-        map_space_x = ((local_x - center_x) / scale) + center_x - (self.offset.x * self.base_width)
-        map_space_y = ((local_y - center_y) / scale) + center_y - (self.offset.y * self.base_height)
+        map_space_x = ((local_x - center_x - (self.offset.x * self.base_width)) / scale) + center_x
+        map_space_y = ((local_y - center_y - (self.offset.y * self.base_height)) / scale) + center_y
 
         return map_space_x, map_space_y

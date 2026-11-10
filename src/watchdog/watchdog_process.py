@@ -1,35 +1,17 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/watchdog/watchdog_process.py
-# Author: Gabriel Moraes
-# Date: 2026-06-11
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import logging
 import os
 import queue
-import sys
 import time
 from multiprocessing import Queue
+from typing import Optional
 
 from watchdog.watchdog_logic import Watchdog
 
-# Add parent directory to path to locate utils if necessary
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from utils.logging_setup import setup_logging
     from utils.paths import get_base_output_dir, resource_path
@@ -48,13 +30,14 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def run_watchdog(com_queue: Queue, locale_manager):
+def run_watchdog(com_queue: Queue, locale_manager, fenix_queue: Optional[Queue] = None):
     """
     Process entry point for the Watchdog system.
 
     Args:
         com_queue (Queue): Queue to receive 'HEARTBEAT' signals and potentially send status updates.
         locale_manager: Instance of locale manager (passed from main, though we might rely on logs mostly).
+        fenix_queue (Optional[Queue]): Queue to notify FENIX supervisor process manager for resurrection.
     """
 
     def get_str(key: str, default: str = None, **kwargs) -> str:
@@ -100,10 +83,32 @@ def run_watchdog(com_queue: Queue, locale_manager):
             get_str(
                 "watchdog.settings_error", default="Error reading settings: {error}. Using default timeout.", error=e
             )
+        , exc_info=True)
+
+    def on_fenix_trigger():
+        logger.warning(
+            get_str(
+                "watchdog.fenix_trigger",
+                default="[Watchdog] 🚨 F.E.N.I.X. TRIGGERED: DNN error confirmed. Activating crash supervisor.",
+            )
         )
+        if fenix_queue is not None:
+            try:
+                fenix_queue.put_nowait(("TRIGGER_RESURRECTION", "DNN_ERROR"))
+                logger.info("[Watchdog] Dispatched TRIGGER_RESURRECTION to FENIX IPC queue.")
+            except Exception as q_err:
+                logger.error(f"[Watchdog] Error notifying fenix_queue: {q_err}", exc_info=True)
+
+        try:
+            from fenix.fenix_supervisor import FenixSupervisor
+
+            supervisor = FenixSupervisor()
+            supervisor.record_child_crash(exit_code=1)
+        except Exception as err:
+            logger.debug(f"[Watchdog] Error notifying FENIX supervisor: {err}")
 
     # 3. Initialize Logic
-    wd = Watchdog(timeout_ms=timeout_ms, locale_manager=locale_manager)
+    wd = Watchdog(timeout_ms=timeout_ms, locale_manager=locale_manager, on_fenix_trigger=on_fenix_trigger)
 
     # Define Actions (Defense-in-depth: log critical events for audit trail)
     # NOTE: We no longer put FAILSAFE/RECOVERY on com_queue because that is the SAME
@@ -122,10 +127,19 @@ def run_watchdog(com_queue: Queue, locale_manager):
             )
         )
 
-    wd.set_callbacks(on_failsafe_active, on_failsafe_recover)
+    wd.set_callbacks(on_failsafe_active, on_failsafe_recover, on_fenix_trigger=on_fenix_trigger)
 
     # 4. Main Loop
     logger.info(get_str("watchdog.loop_active", default="Watchdog monitoring loop active. Waiting for Heartbeats..."))
+
+    def _apply_config_update(payload):
+        if isinstance(payload, (int, float)):
+            wd.update_timeout(int(payload))
+        elif isinstance(payload, dict):
+            if "timeout_ms" in payload:
+                wd.update_timeout(int(payload["timeout_ms"]))
+            elif "heartbeat_timeout_seconds" in payload:
+                wd.update_timeout(int(float(payload["heartbeat_timeout_seconds"]) * 1000))
 
     try:
         while True:
@@ -138,18 +152,21 @@ def run_watchdog(com_queue: Queue, locale_manager):
 
                     if msg == "HEARTBEAT":
                         wd.register_heartbeat()
+                    elif msg == "DNN_ERROR" or (isinstance(msg, tuple) and msg[0] == "DNN_ERROR"):
+                        err_info = msg[1] if isinstance(msg, tuple) and len(msg) > 1 else None
+                        wd.trigger_dnn_error(error=err_info)
                     elif msg in ("STOP", None):
                         logger.info(
                             get_str("watchdog.stop_signal", default="Stop signal received. Shutting down Watchdog.")
                         )
                         return
                     elif isinstance(msg, tuple) and msg[0] == "CONFIG_UPDATE":
-                        # Future proofing: allow changing timeout on fly
-                        pass
+                        if len(msg) > 1:
+                            _apply_config_update(msg[1])
             except queue.Empty:
                 pass
             except Exception as e:
-                logger.error(get_str("watchdog.loop_error", default="Error in Watchdog loop: {error}", error=e))
+                logger.error(get_str("watchdog.loop_error", default="Error in Watchdog loop: {error}", error=e), exc_info=True)
 
             # Phase 2: Check health AFTER draining all pending heartbeats
             wd.check_system_health()
@@ -161,15 +178,21 @@ def run_watchdog(com_queue: Queue, locale_manager):
                 msg = com_queue.get(timeout=0.01)
                 if msg == "HEARTBEAT":
                     wd.register_heartbeat()
+                elif msg == "DNN_ERROR" or (isinstance(msg, tuple) and msg[0] == "DNN_ERROR"):
+                    err_info = msg[1] if isinstance(msg, tuple) and len(msg) > 1 else None
+                    wd.trigger_dnn_error(error=err_info)
                 elif msg in ("STOP", None):
                     logger.info(
                         get_str("watchdog.stop_signal", default="Stop signal received. Shutting down Watchdog.")
                     )
                     return
+                elif isinstance(msg, tuple) and msg[0] == "CONFIG_UPDATE":
+                    if len(msg) > 1:
+                        _apply_config_update(msg[1])
             except queue.Empty:
                 pass
             except Exception as e:
-                logger.error(get_str("watchdog.wait_error", default="Error in Watchdog wait phase: {error}", error=e))
+                logger.error(get_str("watchdog.wait_error", default="Error in Watchdog wait phase: {error}", error=e), exc_info=True)
     except (KeyboardInterrupt, SystemExit):
         logger.info(get_str("watchdog.stop_signal", default="Stop signal received. Shutting down Watchdog."))
     finally:

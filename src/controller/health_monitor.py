@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/health_monitor.py (ALREADY COMPLIANT)
-# Author: Gabriel Moraes
-# Date: October 1, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import time
@@ -31,7 +15,7 @@ class AIHealthMonitor:
 
     def __init__(self, heartbeat_timeout: float, locale_manager: "LocaleManagerBackend"):
         """
-        Inicializa o monitor de saúde.
+        Initializes the health monitor.
         """
         self.timeout = heartbeat_timeout
         self.locale_manager = locale_manager
@@ -45,7 +29,7 @@ class AIHealthMonitor:
 
     def record_activity(self):
         """
-        Registra que a IA enviou uma mensagem, "resetando" o cronômetro do heartbeat.
+        Records that the AI sent a message, resetting the heartbeat timer.
         """
         self.last_message_time = time.time()
         if not self.is_healthy:

@@ -7,7 +7,7 @@ aliases: [API Reference, Synapse HFT, IPC Queues, gRPC Interface]
 
 This document serves as the authoritative interface specification for CARINA. It covers the **Synapse HFT gRPC Protocol**, the **Prometheus Exporter Metrics**, and the **Inter-Process Communication (IPC) Schemas**.
 
-⬅️ Back to [Main Documentation Hub](../CARINA_MOC.md) | 🚦 See [Hardware Drivers](hardware_drivers.md) | 🛡️ See [Safety & Watchdog](safety_and_watchdog.md) | 🗄️ See [Database & Schemas](database_and_schemas.md)
+⬅️ Back to [Main Documentation Hub](carina_moc.md) | 🚨 See [EVP Preemption](evp_and_preemption.md) | 🚦 See [Hardware Drivers](hardware_drivers.md) | 🛡️ See [Safety & Watchdog](safety_and_watchdog.md) | 🗄️ See [Database & Schemas](database_and_schemas.md)
 
 ---
 
@@ -86,7 +86,7 @@ message ScenarioDefinition {
 
 ## 3. Inter-Process Communication (IPC) Queue Specifications
 
-CARINA manages 10 bounded IPC channels created by [`ProcessManager`](../../src/launcher/process_manager.py).
+CARINA coordinates 11 bounded IPC queues and 1 duplex pipe connection managed by [`ProcessManager`](../../src/launcher/process_manager.py):
 
 | Queue Name | Max Size | Producer Process | Consumer Process | Payload Schema / Message Type |
 | :--- | :---: | :--- | :--- | :--- |
@@ -170,9 +170,87 @@ The factory function [`create_monitor_transport()`](../../src/transports/factory
 
 ---
 
+## 6. Emergency Vehicle Telemetry Ingestion HTTP API
+
+The compiled Go Web Gateway exposes high-throughput, unidirectional (fire-and-forget) ingestion for emergency vehicle GPS transponders:
+
+- **Endpoint:** `POST /api/v1/evp/telemetry` (alias: `POST /amb` or `POST /amb/`)
+- **Port:** `2201` (Go Web Gateway / Tailscale Funnel) or `8085` (dedicated Go EVP server [`src_go/evp_go/`](../../src_go/evp_go) / standalone receiver)
+- **Response:** `204 No Content` (Immediate return for sub-millisecond execution)
+- **Payload Schema:**
+  ```json
+  {
+    "vehicle_id": "SAMU-01",
+    "corporation": "SAMU",
+    "latitude": -23.31028,
+    "longitude": -51.16278,
+    "speed_kmh": 65.4,
+    "heading_deg": 180.0,
+    "siren_active": true,
+    "timestamp": 1789458600.0
+  }
+  ```
+
+---
+
+## 7. Go Hardware & Web Gateway NDJSON IPC Command Set
+
+Commands dispatched from CARINA's Python core to `bin/carina-go` via anonymous standard pipes (`stdin`/`stdout`):
+
+| Command (`cmd`) | Arguments / Payload | Response Data | Description |
+| :--- | :--- | :--- | :--- |
+| **`ping`** | None | `"pong"` | Verifies gateway liveness ($< 1\text{ ms}$). |
+| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `protocol`, `green_stages` | Connection metadata | Establishes SNMP/UDP session with field controller. |
+| **`disconnect`** | `intersection_id` | `success: true` | Closes connection and releases socket. |
+| **`apply_logical_action`** | `action` (0=NEXT, 1=HOLD), `current_stage_idx`, `green_stages`, `stage_codes` | `success: bool` | Applies neural or safety action to physical signal groups. |
+| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `vehicle_id` | Action executed string | Dispatches microsecond stage preemption holds to field controllers. |
+| **`cco_broadcast`** | `data: dict` | `success: true` | Transmits fire-and-forget telemetry frames to connected CCO SSE clients. |
+| **`tailscale_status`** | None | `TailscaleStatus` JSON | Queries Tailscale Funnel domain, node state, and public CCO URLs. |
+| **`emergency_release`** | None | `success: true` | Unconditionally drops all phase holds across the entire metropolitan network. |
+
+---
+
+## 8. Central Control Operator (CCO) REST & SSE Endpoints
+
+Available on Go Web Gateway port `2201` (and secured via Tailscale Funnel):
+
+- **`GET /health`**: Returns system health status and gateway availability.
+- **`GET /cco` & `GET /cco/`**: Serves the compiled React 18 CCO web interface.
+- **`GET /cco/stream`**: Server-Sent Events (SSE) persistent stream broadcasting real-time signal states, congestion heatmaps, and emergency vehicle locations to videowalls.
+- **`GET /cco/topology`**: Serves GeoJSON/JSON street link geometries, lane mappings, and junction coordinates for map rendering.
+
+---
+
+## 9. Pacing, Maturation, and Weekly Coverage Utility APIs
+
+Core Python modules and interfaces governing temporal horizons, step scaling, and maturation safety floors:
+
+### 9.1 `EpisodeStepCalculator` (`src.utils.episode_step_calculator`)
+Dynamically computes episode step horizons and weekly maturation requirements from network graph topology:
+- **`calculate(net_or_path: Union[str, Any], telemetry_delta_ms: float = 250.0) -> EpisodePacingResult`**
+  Parses the SUMO network (`.net.xml`/`.net.xml.gz` or in-memory `net`), collapses bidirectional two-way street pairs, excludes internal junction connectors (`:`), computes topological complexity $C_{\text{topo}}$, sub-linear physical relaxation time $T_{\text{physical}}$, and returns an immutable `EpisodePacingResult` containing `episode_steps`, `duration_seconds`, and 1-week episode safety floors (`child_episodes_1_week`, `teen_episodes_1_week`).
+
+### 9.2 `WeeklyCoverageTracker` (`src.core.weekly_coverage_tracker`)
+Tracks observation across the 168 calendar hours of the real week ($7\text{ days} \times 24\text{ hours}$) with atomic state persistence:
+- **`register_step(raw_timestamp: float) -> Tuple[int, int]`**: Records telemetry frame arrivals in the `(weekday, hour)` matrix based on real UNIX timestamps.
+- **`is_week_completed() -> bool`**: Returns `True` if all 168 hourly calendar slots have received observation.
+- **`get_completion_ratio() -> float`**: Returns current weekly coverage proportion in $[0.0, 1.0]$.
+- **`save_state() / load_state()`**: Atomically saves and restores matrix progress to/from disk (`weekly_coverage_{phase}.json`), ensuring tolerance to process pauses and server maintenance.
+
+### 9.3 `ActionAuthorizer` (`src.core.action_authorizer`)
+Authorizes physical hardware control based on maturity lifecycle stage and real calendar time:
+- **`is_action_authorized(agent_id: str, maturity: Maturity, sim_time: float, raw_timestamp: float = 0.0) -> Tuple[bool, str]`**: Evaluates whether an agent may act on physical signal controllers. Restricts `TEEN` stage agents to off-peak periods, forcing shadow mode during classical urban peak hours (06:30-09:00 & 17:00-19:30 Monday-Friday) or Synapse dynamic schedules.
+- **`load_peak_schedule_json(schedule_data: dict) -> None`**: Loads custom municipal or regional peak period schedules provided by Synapse.
+
+### 9.4 `MaturityPacingCalculator` (`src.promotion.maturity_pacing_calculator`)
+- **`calculate_pacing(net: Any, tls_list: Any, settings: Any = None) -> Tuple[int, int, int, int]`**: Returns `(child_episodes, teen_episodes, child_steps, teen_steps)` strictly clamped to the inviolable 1-week safety floor ($E_{\text{week}} \times S \times \Delta t \ge 604,800\text{ s}$).
+- **`apply_if_enabled(maturity_manager: Any, net: Any, tls_list: Any, settings: Any) -> bool`**: Automatically injects dynamic pacing durations into `MaturityManager` and `PromotionEvaluator`.
+
+---
+
 <div align="center">
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3 or later (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

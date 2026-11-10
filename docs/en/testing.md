@@ -7,13 +7,13 @@ aliases: [Testing Guidelines, Unit Testing, Safety Mocks, Quality Assurance]
 
 CARINA governs safety-critical municipal traffic infrastructure. Absolute reliability, deterministic unit testing, driver mocks, and continuous safety veto validation are mandatory before deploying changes.
 
-⬅️ Back to [Main Documentation Hub](../CARINA_MOC.md) | 🛡️ See [Safety & Watchdog](safety_and_watchdog.md) | 🚦 See [Hardware Drivers](hardware_drivers.md) | 🛠️ See [Developer Guides](../DEVELOPER_GUIDES.md)
+⬅️ Back to [Main Documentation Hub](../CARINA_MOC.md) | 🛡️ See [Safety & Watchdog](safety_and_watchdog.md) | 🚦 See [Hardware Drivers](hardware_drivers.md) | 🛠️ See [Developer Guides](developer_guides.md) | 🚑 See [EVP Preemption](evp_and_preemption.md)
 
 ---
 
 ## 1. Running the Test Suite (`pytest`)
 
-All tests are located in [`tests/`](../../tests).
+CARINA features an exhaustive test suite with **861 automated tests** (verified via `pytest --collect-only`) ensuring safety, zero regressions, and deterministic microsecond failover across every subsystem. All tests are located in [`tests/`](../../tests).
 
 ### 1.1 Execute All Tests
 ```bash
@@ -43,7 +43,19 @@ tests/
 ├── mock_junctions.py               # Synthetic topology graph & node definitions
 ├── benchmark.py                    # Performance benchmarks (throughput & latency)
 │
-├── unit/                           # Isolated Unit Tests (94 Test Modules)
+├── unit/                           # Isolated Unit Tests (861 Total Collected Tests)
+│   ├── test_evp_service.py         # EVPService lifecycle, ingestion pipeline & preemption triggers
+│   ├── test_evp_kinematics.py      # Haversine distance, speed, heading & approach gates
+│   ├── test_evp_preemption_engine.py # Preemption hold arbitration, 45s dwell watchdog & clearance
+│   ├── test_evp_map_topology.py    # Topology matching, incoming approaches & stage mapping
+│   ├── test_evp_fleet_persistence.py # Authorized fleet CRUD operations & plate caching
+│   ├── test_evp_config_repo.py     # EVP configuration repository & threshold persistence
+│   ├── test_evp_fleet_controller.py # Fleet management business logic & validation
+│   ├── test_evp_fleet_csv.py       # Fleet CSV export and bulk import parsing
+│   ├── test_evp_fleet_save_flow.py # End-to-end fleet UI form save & database commit
+│   ├── test_evp_hardware_parity_persistence.py # Hardware state parity across DB engines
+│   ├── test_evp_settings_handler.py # EVP settings persistence in settings.ini & .env
+│   ├── test_evp_vehicle_marker.py  # Flet canvas EVP vehicle marker glyphs & strobe animations
 │   ├── test_local_agent.py         # PPO Tactical Agent action selection & update loop
 │   ├── test_guardian_agent.py      # D3QN safety sentinel & risk threshold validation
 │   ├── test_strategist_agent.py    # ST-GATv2 Lite Graph Attention arterial coordinator
@@ -64,7 +76,7 @@ tests/
 │   ├── test_fenix_recovery_policy.py # Windowed crash recovery policy & exponential backoff
 │   ├── test_fenix_state_reconciler.py # Clean boundary handover & FROZEN_SYNC synchronization
 │   ├── test_watchdog_fenix_integration.py # Watchdog timeout trigger to FENIX resurrection
-│   ├── test_security_modular.py    # AuthService, UserService, Bcrypt & Lockdown
+│   ├── test_security_modular.py    # AuthService, UserService, PBKDF2 & Lockdown
 │   ├── test_security_manager.py    # Legacy SecurityManager facade validation
 │   ├── test_captum_analyzer.py     # Integrated Gradients attribution tests
 │   ├── test_xai_report_builder.py  # ABNT Word report generation with OMML equations
@@ -99,7 +111,13 @@ tests/
 │   ├── test_pushdown_query.py      # Pushdown SQL query evaluation
 │   ├── test_tls_state_provider.py  # Traffic light state provider
 │   ├── test_ui_main_orchestrator.py # Main UI orchestration tests
-│   └── test_window_manager.py      # Desktop window lifecycle management
+│   ├── test_window_manager.py      # Desktop window lifecycle management
+│   ├── test_population_manager_pbt.py # Intra-Phase PBT cohort isolation & tensor mismatch safety
+│   ├── test_performance_margin_calculator.py # Fluid dynamics graduation margin & childhood telemetry
+│   ├── test_reward_weights_calculator.py # Physical reward balancing (HCM link traversal time)
+│   ├── test_maturity_pacing_calculator.py # Auto-pacing of episode durations from network topology
+│   ├── test_yellow_schedule_manager.py # Overnight flashing yellow schedule evaluator
+│   └── test_yellow_schedule_card.py # Yellow schedule UI card & time window controls
 │
 └── integration/                    # End-to-End System Integration Tests (5 Modules)
     ├── test_system_integration.py    # Full gRPC telemetry-to-actuation cycle
@@ -133,6 +151,26 @@ def test_symbolic_min_green_veto():
     assert is_vetoed is True
     assert authorized_action == 1  # Forced to maintain active phase
     assert "Minimum Green" in reason
+
+
+def test_evp_preemption_overrides_rl_action():
+    """Verify Rule SR-00: active preemption forces corridor green while respecting yellow clearance."""
+    auditor = SafetyAuditor(min_green_time_seconds=7.0)
+
+    current_state = {
+        "active_phase": 2,
+        "phase_duration_seconds": 15.0,
+        "evp_active": True,
+        "evp_target_stage": 1,
+        "yellow_clearance_completed": True
+    }
+    proposed_action = 3  # RL agent wanted Phase 3
+
+    authorized_action, is_vetoed, reason = auditor.audit(current_state, proposed_action)
+
+    assert is_vetoed is True
+    assert authorized_action == 1  # Forced to EVP target Stage 1
+    assert "SR-00" in reason or "Preemption" in reason
 ```
 
 ---
@@ -155,5 +193,5 @@ def test_ntcip_driver_status_query(mock_snmp_client):
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3 or later (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

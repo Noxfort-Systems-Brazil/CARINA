@@ -1,25 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/global_controls_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o GlobalControlsWidget.
+Defines the GlobalControlsWidget.
 """
 
 from typing import Callable
@@ -33,7 +17,7 @@ from ui.handlers.locale_manager import LocaleManager
 
 class GlobalControlsWidget(ft.Card):
     """
-    Um Card que contém os botões de modo global e sua lógica de interação.
+    A Card containing the global mode buttons and their interaction logic.
     """
 
     def __init__(
@@ -164,16 +148,10 @@ class GlobalControlsWidget(ft.Card):
         uname = (self._username_field.value or "").strip()
         pwd = self._password_field.value or ""
 
-        try:
-            from src.utils.security_manager import SecurityManager
+        from src.security.security_manager import SecurityManager
 
-            sm = SecurityManager(self.locale_manager)
-            success, role = sm.authenticate(uname, pwd)
-        except Exception:
-            from utils.security_manager import SecurityManager
-
-            sm = SecurityManager(self.locale_manager)
-            success, role = sm.authenticate(uname, pwd)
+        sm = SecurityManager(self.locale_manager)
+        success, role = sm.authenticate(uname, pwd)
 
         if not success or role not in ["SUPERUSER", "MASTER"]:
             self._username_field.error_text = self.locale_manager.get_string(
@@ -232,9 +210,9 @@ class GlobalControlsWidget(ft.Card):
 
     def set_locked_state(self, is_locked: bool):
         """
-        Trava ou destrava os botões de controle global baseado na maturidade da rede.
-        Se travado, os botões ficam desativados e um aviso é mostrado.
-        Ignora atualizações redundantes vindas do fluxo de alta frequência do WebSocket.
+        Locks or unlocks global control buttons based on network maturity.
+        If locked, buttons are disabled and a warning is shown.
+        Ignores redundant updates from the high-frequency WebSocket stream.
         """
         if getattr(self, "_last_locked_state", None) == is_locked:
             return

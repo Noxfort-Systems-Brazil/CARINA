@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/controllers/planning_controller.py
-# Author: Gabriel Moraes
-# Date: 2026-08-13
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import time
@@ -29,8 +13,8 @@ from ui.handlers.planning_export_handler import PlanningExportHandler
 
 class PlanningController:
     """
-    Controller responsável pelo gerenciamento de estado da análise urbana e pela
-    orquestração da comunicação com os clientes de infraestrutura e exportação.
+    Controller responsible for managing urban analysis state and
+    orchestrating communication with infrastructure and export clients.
     """
 
     def __init__(
@@ -59,8 +43,8 @@ class PlanningController:
 
     def trigger_analysis(self) -> float:
         """
-        Reseta o estado atual e inicia uma nova requisição de análise.
-        Retorna o tempo inicial (trigger_time).
+        Resets current state and initiates a new analysis request.
+        Returns trigger time (trigger_time).
         """
         trigger_time = time.time()
         self.is_analyzing = True
@@ -71,15 +55,15 @@ class PlanningController:
             try:
                 self.control_client.trigger_analysis()
             except Exception as ex:
-                logging.error(f"[PLANNING_CONTROLLER] Error triggering analysis: {ex}")
+                logging.error(f"[PLANNING_CONTROLLER] Error triggering analysis: {ex}", exc_info=True)
 
         self.client.start_fetching_latest_analysis(trigger_time=trigger_time)
         return trigger_time
 
     def process_analysis_response(self, response: dict) -> Dict:
         """
-        Processa o retorno da análise, atualizando o estado interno e retornando
-        um dicionário estruturado com as alterações de estado para a View.
+        Processes analysis response, updating internal state and returning
+        a structured dictionary with state updates for the View.
         """
         self.is_analyzing = False
 
@@ -107,7 +91,7 @@ class PlanningController:
 
     def export_report(self, page, save_path: str) -> Tuple[bool, str]:
         """
-        Exporta o relatório atual utilizando o PlanningExportHandler.
+        Exports current report using PlanningExportHandler.
         """
         if not self.last_report_content or not save_path:
             return False, "Nenhum relatório disponível para salvar."

@@ -68,11 +68,15 @@ CARINA structure les rapports d'audit médico-légaux selon le **patron de Regis
 
 ## 4. Modèles de Rapports Multilingues
 
-Les modèles de rapports et les structures de sections sont conservés dans [`config/templates/`](../../config/templates) :
-- `config/templates/xai/xai_report_sections.json` : Définitions structurées des sections.
-- `config/templates/xai/xai_categories.json` : Balises de catégories localisées.
-- `config/templates/omml_equation_templates.json` : Modèles de base pour les équations OMML.
-- `config/templates/xai/xai_table_templates.json` : En-têtes de tableaux et définitions de mise en forme.
+Les modèles de rapports et les structures de sections sont organisés par domaine dans [`config/templates/`](../../config/templates) :
+- **Formules Mathématiques de Base :**
+  - `config/templates/omml_equation_templates.json` : Modèles de base pour les équations OMML (PPO, TCN, ST-GATv2, PAE, D3QN, Captum).
+- **Modèles d'IA Explicable (XAI) (`config/templates/xai/`) :**
+  - `xai_report_sections.json`, `xai_categories.json`, `xai_equations.json`, `xai_card_templates.json`, `xai_table_templates.json`.
+- **Modèles de Diagramme Fondamental Macroscopique (MFD) (`config/templates/mfd/`) :**
+  - `mfd_report_sections.json`, `mfd_table_templates.json`, `mfd_audit_sheet_templates.json`, `mfd_classification_thresholds.json`, `mfd_prompts.json`, `mfd_summary_directives.json`, `mfd_fallback_defaults.json`.
+- **Modèles du Smart Analysis System (SAS) (`config/templates/sas/`) :**
+  - `sas_report_sections.json`, `sas_intersection_templates.json`, `sas_recommendation_labels.json`, `sas_summary_directives.json`.
 
 ---
 
@@ -80,5 +84,5 @@ Les modèles de rapports et les structures de sections sont conservés dans [`co
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

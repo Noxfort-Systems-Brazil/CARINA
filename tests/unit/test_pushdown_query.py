@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_pushdown_query.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import sqlite3
 from unittest.mock import MagicMock
@@ -30,11 +14,12 @@ from sas.analyzer_data_processor import AnalyzerDataProcessor
 class MockDbEngine:
     def __init__(self):
         self.db_type = "sqlite"
-        self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+        self._db_uri = f"file:memdb_{id(self)}?mode=memory&cache=shared"
         self._init_sqlite()
 
     def _init_sqlite(self):
-        cursor = self._conn.cursor()
+        conn = sqlite3.connect(self._db_uri, uri=True)
+        cursor = conn.cursor()
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS synapse_fluid_dynamics (
@@ -42,11 +27,16 @@ class MockDbEngine:
                 edge_id TEXT NOT NULL,
                 density REAL,
                 mean_speed REAL,
+                min_speed REAL,
                 queue_length REAL,
+                max_queue REAL,
                 occupancy REAL,
                 edge_length REAL,
                 num_lanes INTEGER,
                 speed_limit REAL,
+                maturity_stage TEXT DEFAULT 'CHILD',
+                scenario_name TEXT DEFAULT 'default',
+                intersection_id TEXT DEFAULT 'tl_1',
                 collected_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         """
@@ -54,17 +44,19 @@ class MockDbEngine:
         # Insert test traffic samples for edge_A and edge_B
         cursor.execute(
             """
-            INSERT INTO synapse_fluid_dynamics (edge_id, density, mean_speed, queue_length, occupancy, edge_length, num_lanes, speed_limit, collected_at)
+            INSERT INTO synapse_fluid_dynamics (edge_id, density, mean_speed, min_speed, queue_length, max_queue, occupancy, edge_length, num_lanes, speed_limit, maturity_stage, scenario_name, intersection_id, collected_at)
             VALUES
-            ('edge_A', 10.0, 10.0, 5, 0.2, 100.0, 2, 13.89, '2026-08-01 06:00:00'),
-            ('edge_A', 15.0, 8.0, 8, 0.3, 100.0, 2, 13.89, '2026-08-01 06:30:00'),
-            ('edge_B', 5.0, 12.0, 2, 0.1, 150.0, 1, 13.89, '2026-08-01 07:00:00');
+            ('edge_A', 10.0, 10.0, 5.0, 5, 10, 0.2, 100.0, 2, 13.89, 'CHILD', 'scen1', 'tl_1', '2026-08-01 06:00:00'),
+            ('edge_A', 15.0, 8.0, 4.0, 8, 12, 0.3, 100.0, 2, 13.89, 'CHILD', 'scen1', 'tl_1', '2026-08-01 06:30:00'),
+            ('edge_B', 5.0, 12.0, 8.0, 2, 5, 0.1, 150.0, 1, 13.89, 'CHILD', 'scen1', 'tl_1', '2026-08-01 07:00:00');
         """
         )
-        self._conn.commit()
+        conn.commit()
+        # Keep one persistent connection open so the shared memory database doesn't disappear
+        self._keepalive = conn
 
     def get_connection(self):
-        return self._conn
+        return sqlite3.connect(self._db_uri, uri=True)
 
 
 def test_fluid_dynamics_repo_pushdown_aggregation():
@@ -119,3 +111,81 @@ def test_analyzer_data_processor_with_pushdown():
     assert true_tls == ["junction1"]
     assert "junction1" in processed_data
     assert len(processed_data["junction1"]["primary_edges"]) > 0
+
+
+def test_query_fluid_dynamics_history_with_and_without_limit():
+    engine = MockDbEngine()
+    lm = MagicMock()
+    repo = FluidDynamicsRepository(engine, lm)
+
+    # With limit
+    history_limited = repo.reader.query_fluid_dynamics_history(limit_seconds=3600)
+    assert isinstance(history_limited, list)
+
+    # Without limit (all)
+    history_all = repo.reader.query_fluid_dynamics_history(limit_seconds=None)
+    assert len(history_all) == 3
+    assert history_all[0]["edge_id"] == "edge_A"
+
+
+def test_query_fluid_dynamics_history_batches():
+    engine = MockDbEngine()
+    lm = MagicMock()
+    repo = FluidDynamicsRepository(engine, lm)
+
+    batches = list(repo.reader.query_fluid_dynamics_history_batches(limit_seconds=None, batch_size=2))
+    assert len(batches) == 2
+    assert len(batches[0]) == 2
+    assert len(batches[1]) == 1
+
+
+def test_fluid_dynamics_reader_fallbacks_and_connection_none():
+    from src.repositories.fluid_dynamics_reader import FluidDynamicsReader
+
+    engine = MagicMock()
+    engine.get_connection.return_value = None
+    query_provider = MagicMock()
+
+    reader = FluidDynamicsReader(engine, query_provider, ["c1"], ["a1"])
+    assert reader.query_fluid_dynamics_history() == []
+    assert reader.query_aggregated_fluid_dynamics() == []
+    assert list(reader.query_fluid_dynamics_history_batches()) == []
+
+    # Test fallback branch when primary table is empty
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    # Primary returns empty, fallback returns rows
+    mock_cursor.fetchall.side_effect = [[], [("edge_fallback",)]]
+    mock_cursor.fetchmany.side_effect = [[], [("edge_fallback",)], []]
+    mock_conn.cursor.return_value = mock_cursor
+    engine.get_connection.return_value = mock_conn
+    engine.db_type = "sqlite"
+
+    res = reader.query_aggregated_fluid_dynamics(limit_seconds=None)
+    assert len(res) == 1
+    assert res[0]["a1"] == "edge_fallback"
+
+    # Aggregated with limit_seconds fallback
+    mock_cursor.fetchall.side_effect = [[], [("edge_fallback_limit",)]]
+    res_lim = reader.query_aggregated_fluid_dynamics(limit_seconds=100)
+    assert len(res_lim) == 1
+    assert res_lim[0]["a1"] == "edge_fallback_limit"
+
+    # Batches with limit_seconds fallback (postgres cursor)
+    engine.db_type = "postgres"
+    mock_cursor.fetchmany.side_effect = [[], [("edge_batch_fb",)], []]
+    batches = list(reader.query_fluid_dynamics_history_batches(limit_seconds=100, batch_size=5))
+    assert len(batches) == 1
+    assert batches[0][0]["c1"] == "edge_batch_fb"
+
+    # Batches without limit fallback
+    mock_cursor.fetchmany.side_effect = [[], [("edge_batch_all_fb",)], []]
+    batches_all = list(reader.query_fluid_dynamics_history_batches(limit_seconds=None, batch_size=5))
+    assert len(batches_all) == 1
+
+    # Exception handling
+    mock_cursor.execute.side_effect = sqlite3.OperationalError("db error")
+    assert reader.query_fluid_dynamics_history() == []
+    assert reader.query_aggregated_fluid_dynamics() == []
+    assert list(reader.query_fluid_dynamics_history_batches()) == []
+

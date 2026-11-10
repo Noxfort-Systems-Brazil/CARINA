@@ -1,19 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: src/engine/episode_runner.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import logging
-import os
-import sys
 import time
 from collections import defaultdict, deque
 from multiprocessing import Queue
@@ -22,22 +12,17 @@ from typing import TYPE_CHECKING, Any, Dict, Union
 
 import numpy as np
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
 from core.childhood_analyzer import ChildhoodAnalyzer
 from core.decision_coordinator import DecisionCoordinator
 from core.enums import Maturity
-from core.maturity_manager import MaturityManager
+from maturity.maturity_manager import MaturityManager
 from core.system_reporter import SystemReporter
 from engine.action_filter import ActionFilter
-from engine.episode_override_manager import EpisodeOverrideManager
-from engine.guardian_communicator import GuardianCommunicator
 from engine.metrics_tracker import MetricsTracker
-from engine.state_history_manager import StateHistoryManager
 from engine.step_timer import StepTimer
+from manager.episode_override_manager import EpisodeOverrideManager
+from manager.state_history_manager import StateHistoryManager
+from safety.guardian_communicator import GuardianCommunicator
 
 if TYPE_CHECKING:
     from core.action_authorizer import ActionAuthorizer
@@ -99,7 +84,7 @@ class EpisodeRunner:
             self.db_manager = DatabaseManager(self.locale_manager)
         except Exception as e_db:
             self.db_manager = None
-            logging.warning(f"[EpisodeRunner] Could not initialize DatabaseManager: {e_db}")
+            logging.warning(f"[EpisodeRunner] Could not initialize DatabaseManager: {e_db}", exc_info=True)
 
         self.decision_coordinator = DecisionCoordinator(
             agents=population_manager.agents,
@@ -126,9 +111,14 @@ class EpisodeRunner:
                 "[EpisodeRunner] Chave 'update_timestep' não encontrada em [AI_TRAINING]. Usando fallback 2048."
             )
 
-        log_settings = self.settings["LOGGING"] if self.settings.has_section("LOGGING") else {}
-        self.log_step_progress = log_settings.getboolean("log_step_progress", fallback=False)
-        self.log_progress_frequency = log_settings.getint("log_progress_frequency", fallback=500)
+        if self.settings.has_section("LOGGING"):
+            log_settings = self.settings["LOGGING"]
+            self.log_step_progress = log_settings.getboolean("log_step_progress", fallback=False)
+            self.log_progress_frequency = log_settings.getint("log_progress_frequency", fallback=500)
+        else:
+            self.log_step_progress = False
+            self.log_progress_frequency = 500
+
 
         logging.info(self.locale_manager.get_string("episode_runner.init.created"))
 
@@ -171,7 +161,7 @@ class EpisodeRunner:
                     done = True
                     break
             except Exception as e_time:
-                logging.warning(f"[EpisodeRunner] Erro ao obter tempo da simulação: {e_time}. Usando 0.0.")
+                logging.warning(f"[EpisodeRunner] Erro ao obter tempo da simulação: {e_time}. Usando 0.0.", exc_info=True)
                 done = True
                 break
 

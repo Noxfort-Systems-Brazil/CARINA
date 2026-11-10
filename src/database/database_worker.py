@@ -1,37 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/database/database_worker.py (FIXED FOR CORRECT LOGGING INITIALIZATION)
-# Author: Gabriel Moraes
-# Date: October 5, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
-import sys
 import threading
 import time
 from multiprocessing import Queue
 
 import psutil
-
-# Adds the 'src' directory to the path to allow imports from other modules
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 from database.database_manager import DatabaseManager
 from utils.locale_manager_backend import LocaleManagerBackend
@@ -46,7 +23,7 @@ def run_database_worker(db_queue: Queue):
     # --- FIX APPLIED HERE: Boot order has been reversed ---
 
     # 1. Configure FIRST logging.
-    from src.utils.paths import get_base_output_dir
+    from utils.paths import get_base_output_dir
 
     log_dir = os.path.join(get_base_output_dir(), "logs", "db_worker")
     os.makedirs(log_dir, exist_ok=True)
@@ -67,7 +44,7 @@ def run_database_worker(db_queue: Queue):
     try:
         # setup_logging has already been moved to the top
 
-        db_manager = DatabaseManager(locale_manager=lm)
+        db_manager = DatabaseManager(locale_manager=lm, run_migrations=True)
 
         def cloud_sync_loop(db_mgr, base_dir):
             # Give the system some time to boot before first sync
@@ -76,7 +53,7 @@ def run_database_worker(db_queue: Queue):
                 try:
                     db_mgr.sync_all_files_to_vault(base_dir)
                 except Exception as e:
-                    logging.error(f"[CLOUD_SYNC] Error in sync loop: {e}")
+                    logging.error(f"[CLOUD_SYNC] Error in sync loop: {e}", exc_info=True)
                 # Wait 5 minutes before next sync
                 time.sleep(300)
 
@@ -92,7 +69,7 @@ def run_database_worker(db_queue: Queue):
                 try:
                     db_mgr.consolidate_and_purge_old_data(keep_hours=48)
                 except Exception as e:
-                    logging.error(f"[DB_WORKER] Error in consolidation purge loop: {e}")
+                    logging.error(f"[DB_WORKER] Error in consolidation purge loop: {e}", exc_info=True)
                 # Run consolidation every 1 hour (3600 seconds)
                 time.sleep(3600)
 

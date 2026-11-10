@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/main.py (HFT Refactor - Modular Pure Orchestrator)
-# Author: Gabriel Moraes
-# Date: December 14, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -25,12 +9,6 @@ import traceback
 from datetime import datetime
 from multiprocessing import Queue
 from multiprocessing.connection import Connection
-
-# Add 'src' directory to python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 from utils.hardware_initializer import HardwareInitializer
 from utils.locale_manager_backend import LocaleManagerBackend
@@ -97,7 +75,7 @@ def run_ai_process(
     # 3. Hardware Acceleration & PyTorch Setup
     try:
         HardwareInitializer.setup_environment(logging_func=print_and_log)
-        from engine.trainer import Trainer
+        from engine.engine_factory import EngineFactory
 
         print_and_log(lm.get_string("main_ai.components_loaded", default="AI Engine components loaded successfully."))
     except ImportError as e_import:
@@ -130,17 +108,31 @@ def run_ai_process(
         print_and_log(f"Failed to load settings: {e_cfg}", level="error")
         return
 
+    # 5.1 Episode Pacing from Active Map Topology
+    try:
+        from controller.map_discoverer import MapTopologyDiscoverer
+        from utils.episode_step_calculator import EpisodeStepCalculator
+
+        map_file = MapTopologyDiscoverer.get_map_file()
+        if map_file and os.path.exists(map_file):
+            pacing = EpisodeStepCalculator.calculate(map_file)
+            print_and_log(
+                f"[AI_Process PACING] Map: {os.path.basename(map_file)} | "
+                f"1 episode = {pacing.episode_steps} steps ({pacing.duration_seconds:.1f}s @ 250ms) | "
+                f"Safety Floor: {pacing.child_episodes_1_week} episodes (1 week / 168h)",
+                level="info",
+            )
+    except Exception as e_ai_pacing:
+        print_and_log(f"Episode pacing detection at AI startup skipped: {e_ai_pacing}", level="debug")
+
     # 6. Instantiate Trainer and Start Continuous Service Loop
     try:
         print_and_log(lm.get_string("main_ai.initializing_trainer", default="[MAIN_AI] Initializing Trainer..."))
-        trainer = Trainer(
+        trainer = EngineFactory.create_trainer(
             settings=settings,
             log_dir=log_dir_ai,
             gpu_info=gpu_info,
             pipe_conn=pipe_conn,
-            guardian_state_queue=guardian_state_queue,
-            guardian_signal_queue=guardian_signal_queue,
-            db_data_queue=db_data_queue,
         )
 
         print_and_log(lm.get_string("main_ai.trainer_ready", default="Trainer ready. Entering event loop..."))

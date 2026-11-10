@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/evaluator.py (FIXED: Correct reference to policy_net)
-# Author: Gabriel Moraes
-# Date: November 22, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the ValidationEvaluator class, responsible for evaluating an agent's
@@ -36,13 +20,13 @@ class ValidationEvaluator:
 
     def __init__(self, settings):
         """
-        Inicializa o Avaliador.
-        :param settings: As configurações globais do projeto.
+        Initializes the Evaluator.
+        :param settings: Global project settings.
         """
         self.settings = settings
         self.sequence_length = self.settings.getint("AI_TRAINING", "sequence_length", fallback=4)
         self.state_history = {}
-        logging.info("[EVAL] Módulo ValidationEvaluator criado.")
+        logging.info("[EVAL] ValidationEvaluator module created.")
 
     def _initialize_state_history(self, initial_states):
         """Fills the history with zeroed states to form the first sequence."""

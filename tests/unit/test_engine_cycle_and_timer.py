@@ -1,30 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_engine_cycle_and_timer.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from core.enums import Maturity
-from engine.cycle_manager import CycleManager
 from engine.step_timer import StepTimer
+from manager.cycle_manager import CycleManager
 
 
 def test_step_timer_hft_mode():
@@ -89,7 +73,7 @@ def test_cycle_manager_evaluate_cycle(tmp_path):
         }
     }
 
-    with patch("engine.cycle_manager.get_base_output_dir", return_value=str(tmp_path)):
+    with patch("manager.cycle_manager.get_base_output_dir", return_value=str(tmp_path)):
         cycle_mgr.evaluate_cycle(
             step_counter=10,
             agents=agents,

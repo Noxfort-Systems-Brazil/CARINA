@@ -13,7 +13,7 @@ CARINA régit des infrastructures de feux de circulation municipales critiques p
 
 ## 1. Exécution de la Suite de Tests (`pytest`)
 
-CARINA dispose d'une suite de tests exhaustive comprenant **647 tests automatisés** (vérifiés via `pytest --collect-only`), garantissant la sécurité, l'absence de régression et un basculement déterministe à la microseconde sur chaque sous-système. Tous les tests sont situés dans [`tests/`](../../tests).
+CARINA dispose d'une suite de tests exhaustive comprenant **861 tests automatisés** (vérifiés via `pytest --collect-only`), garantissant la sécurité, l'absence de régression et un basculement déterministe à la microseconde sur chaque sous-système. Tous les tests sont situés dans [`tests/`](../../tests).
 
 ### 1.1 Exécuter Tous les Tests
 ```bash
@@ -43,7 +43,7 @@ tests/
 ├── mock_junctions.py               # Graphe synthétique de topologie & définitions de nœuds
 ├── benchmark.py                    # Bancs d'essai de performance (débit & latence)
 │
-├── unit/                           # Tests Unitaires Isolés (647 Tests Collectés au Total)
+├── unit/                           # Tests Unitaires Isolés (861 Tests Collectés au Total)
 │   ├── test_evp_service.py         # Cycle de vie EVPService, pipeline d'ingestion & déclencheurs de préemption
 │   ├── test_evp_kinematics.py      # Distance Haversine, vitesse, cap & portes d'approche
 │   ├── test_evp_preemption_engine.py # Arbitrage de maintien de préemption, watchdog 45s & dégagement
@@ -76,7 +76,7 @@ tests/
 │   ├── test_fenix_recovery_policy.py # Politique de récupération après crash fenêtrée & backoff exponentiel
 │   ├── test_fenix_state_reconciler.py # Transfert sur frontière propre & synchronisation FROZEN_SYNC
 │   ├── test_watchdog_fenix_integration.py # Déclencheur expiration Watchdog vers résurrection FENIX
-│   ├── test_security_modular.py    # AuthService, UserService, Bcrypt & Verrouillage
+│   ├── test_security_modular.py    # AuthService, UserService, PBKDF2 & Verrouillage
 │   ├── test_security_manager.py    # Validation de la façade historique SecurityManager
 │   ├── test_captum_analyzer.py     # Tests d'attribution par Gradients Intégrés
 │   ├── test_xai_report_builder.py  # Génération de rapports Word ABNT avec équations OMML
@@ -193,5 +193,5 @@ def test_ntcip_driver_status_query(mock_snmp_client):
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

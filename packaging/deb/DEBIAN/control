@@ -1,0 +1,14 @@
+Package: carina
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Gabriel Moraes <gmateusmoraes@gmail.com>
+Depends: libc6 (>= 2.34), ca-certificates, libgl1, libglib2.0-0, libxkbcommon0, libcairo2, libmpv2 | libmpv1 | libmpv-dev, python3-gi, gir1.2-ayatanaappindicator3-0.1
+Recommends: systemd
+Homepage: https://github.com/gabriel-moraes/CARINA_CORE
+Description: Controlled Artificial Road-traffic Intelligence Network Architecture
+ CARINA is an industrial-grade adaptive AI urban traffic network architecture.
+ It bundles sub-millisecond signal actuation, emergency vehicle preemption (EVP),
+ local neural inference (including offline SLM model in Model_Vault),
+ and a real-time web operational control center (CCO) vector map.

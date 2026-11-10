@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_core_maturity_manager.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import os
@@ -25,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.enums import Maturity
-from core.maturity_manager import MaturityManager
+from maturity.maturity_manager import MaturityManager
 
 
 @pytest.fixture
@@ -50,6 +34,9 @@ def test_maturity_manager_init(mock_locale):
     assert mgr.baseline_performance == -500.0
     assert mgr.baseline_target == pytest.approx(-550.0)
 
+    mgr.set_performance_margin(32.0)
+    assert mgr.baseline_target == pytest.approx(-660.0)
+
 
 def test_maturity_manager_register_and_state(mock_locale, tmp_path):
     """MaturityManager registers agents and correctly serializes/deserializes state."""
@@ -59,7 +46,7 @@ def test_maturity_manager_register_and_state(mock_locale, tmp_path):
     mgr.register_agents(["TL_1", "TL_2"])
     assert mgr.agent_maturity["TL_1"] == Maturity.CHILD
     assert mgr.agent_maturity["TL_2"] == Maturity.CHILD
-    assert mgr.agent_episodes_in_phase["TL_1"] == 0
+    assert mgr.get_agent("TL_1").episodes_in_phase == 0
 
     state = mgr.get_state()
     assert state["agent_maturity"]["TL_1"] == "CHILD"

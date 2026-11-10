@@ -3,6 +3,8 @@
 venv
 dist
 build
+node_modules
+src_tsx/node_modules
 .pytest_cache
 .vscode
 .coverage
@@ -18,3 +20,11 @@ __pycache__
 *.pyd
 .env
 .env.*
+
+# Demos and video recordings
+recordings/
+*.mp4
+*.webm
+*.cjs
+run_demo_recording.sh
+demo/

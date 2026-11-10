@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: carina.py (SOLID Orchestrator Edition)
-# Author: Gabriel Moraes
-# Date: August 6, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import atexit
 import logging
@@ -67,6 +51,31 @@ def main():
 
     setup_launcher_logging()
     logging.info("--- CARINA SYSTEM STARTING (HFT - SOLID Architecture) ---")
+
+    try:
+        from src.controller.map_discoverer import MapTopologyDiscoverer
+        from src.utils.episode_step_calculator import EpisodeStepCalculator
+
+        map_file = MapTopologyDiscoverer.get_map_file()
+        if map_file and os.path.exists(map_file):
+            pacing = EpisodeStepCalculator.calculate(map_file)
+            logging.info("=" * 80)
+            logging.info(f"[LAUNCHER PACING] Active Map: {os.path.basename(map_file)}")
+            logging.info(
+                f"[LAUNCHER PACING] 1 Episode = {pacing.episode_steps} steps "
+                f"({pacing.duration_seconds:.1f}s / {pacing.duration_seconds / 60:.1f}min @ 250ms/step)"
+            )
+            logging.info(
+                f"[LAUNCHER PACING] Network Topology: {pacing.total_intersections} signals, "
+                f"{pacing.real_connections} connections, complexity={pacing.topological_complexity:.2f}"
+            )
+            logging.info(
+                f"[LAUNCHER PACING] Inviolable Safety Floor: Minimum {pacing.child_episodes_1_week} episodes "
+                f"(604,800s / 1 full calendar week)"
+            )
+            logging.info("=" * 80)
+    except Exception as e_pacing:
+        logging.debug(f"[LAUNCHER PACING] Startup map detection skipped: {e_pacing}")
 
     process_mgr = ProcessManager()
     ui_mgr = UITrayManager(process_manager=process_mgr, bundle_root=bundle_root)

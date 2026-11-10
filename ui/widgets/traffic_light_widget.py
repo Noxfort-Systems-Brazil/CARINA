@@ -1,30 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/traffic_light_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define a classe TrafficLightWidget.
+Defines the TrafficLightWidget class.
 
-Esta é a versão final simplificada. É um componente 'burro' cuja única
-responsabilidade é exibir visualmente um estado de luz que é comandado
-por um controlador externo. A lógica de clique foi removida para ser
-centralizada no widget pai.
+This is the simplified final version. It is a dumb component whose sole
+responsibility is to visually display a light state commanded
+by an external controller. The click logic has been removed to be
+centralized in the parent widget.
 """
 
 import logging
@@ -35,7 +19,7 @@ import flet as ft
 
 class TrafficLightWidget(ft.Container):
     """
-    Um widget visual que representa um semáforo.
+    A visual widget representing a traffic light.
     """
 
     def __init__(self, semaphore_id: str, initial_state: str = "RED"):
@@ -65,7 +49,7 @@ class TrafficLightWidget(ft.Container):
         self._update_visuals()
 
     def _criar_luz(self, cor: str) -> ft.Container:
-        """Cria um único container circular para uma luz."""
+        """Creates a single circular container for a light."""
         return ft.Container(
             width=12,
             height=12,
@@ -75,7 +59,7 @@ class TrafficLightWidget(ft.Container):
         )
 
     def _update_visuals(self):
-        """Atualiza a cor das luzes com base no estado atual."""
+        """Updates light colors based on current state."""
         for state, light_container in self.lights.items():
             base_color = getattr(ft.Colors, state)
             light_container.bgcolor = ft.Colors.with_opacity(0.2, base_color)
@@ -94,7 +78,7 @@ class TrafficLightWidget(ft.Container):
 
     def set_state(self, new_state: str):
         """
-        Método público para alterar o estado do semáforo.
+        Public method to alter traffic light state.
         """
         valid_states = ["RED", "YELLOW", "GREEN", "ALERT", "OFF"]
         if new_state not in valid_states:

@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/formatting/planning_panel_presenter.py
-# Author: Gabriel Moraes
-# Date: August 13, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -142,14 +126,17 @@ class PlanningPanelPresenter:
     @classmethod
     def format_edge_details(cls, edge_id: str, edge_data: Optional[Dict[str, Any]] = None) -> NodeDetailsDTO:
         """Formats street/via edge data into a display-ready Data Transfer Object."""
-        name = edge_id
+        from ui.managers.alias_manager import AliasManager
+
+        alias_mgr = AliasManager()
+        default_name = edge_data.get("name") if isinstance(edge_data, dict) else None
+        name = alias_mgr.get_alias(edge_id, default=default_name)
         lanes = "1"
         speed = "60 km/h"
         flow = "Normal"
-        just = "Trecho viário monitorado pela malha tática."
+        just = f"Via {name} integrante da malha viária tática."
 
         if isinstance(edge_data, dict):
-            name = edge_data.get("name", edge_id) or edge_id
             lanes = str(edge_data.get("numLanes", edge_data.get("lanes", "1")))
             speed_val = edge_data.get("speed", edge_data.get("maxSpeed", None))
             if speed_val is not None:

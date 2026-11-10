@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/action_supervisor.py
-# Author: Gabriel Moraes
-# Date: 2026-02-24
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Description:
@@ -26,15 +10,7 @@ Delegates hardware communication directly to the ConnectionManager.
 
 import configparser
 import logging
-import os
-import sys
 from typing import TYPE_CHECKING, Any, Dict
-
-# Ensure src path is in sys.path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -82,11 +58,14 @@ class ActionSupervisor:
         """Updates the list of actions vetoed by the Safety Layer (Guardian)."""
         if vetos:
             for tl_id, veto_signal in vetos.items():
-                self.vetoed_actions[tl_id] = veto_signal.get("veto_action")
+                if isinstance(veto_signal, dict):
+                    self.vetoed_actions[tl_id] = veto_signal.get("veto_action")
+                elif isinstance(veto_signal, (int, float)):
+                    self.vetoed_actions[tl_id] = 0 if veto_signal > 0.8 else None
 
     def apply_actions(self, actions: Dict[str, int], current_sim_time: float, current_stages: Dict[str, Any]) -> None:
         """
-        Executa as ações recomendadas pela IA nos respectivos drivers de hardware.
+        Executes AI-recommended actions on respective hardware drivers.
         """
         for tl_id, action in list(actions.items()):
             # 1. Check Guardian Veto

@@ -1,28 +1,15 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/core/safety_auditor.py
-# Author: Gabriel Moraes
-# Date: April 15, 2026
-
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from agents.guardian_agent import GuardianAgent
     from engine.environment import SumoEnvironment
+
+logger = logging.getLogger(__name__)
 
 
 class SafetyAuditor:
@@ -32,6 +19,7 @@ class SafetyAuditor:
 
     def __init__(self, guardian_agent: "GuardianAgent"):
         self.guardian = guardian_agent
+        self.last_veto_reasons = {}
 
     def audit(
         self,
@@ -46,6 +34,7 @@ class SafetyAuditor:
         Returns: (final_action, was_vetoed)
         """
         if suggested_action != 0:
+            self.last_veto_reasons[tl_id] = "Nenhum (Decisão Aprovada)"
             return suggested_action, False
 
         extractor = environment.state_extractor
@@ -56,12 +45,36 @@ class SafetyAuditor:
             try:
                 sim_time = environment.conn.simulation.getTime()
                 current_stage_idx = environment.conn.trafficlight.getPhase(tl_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.error(
+                    "[SafetyAuditor] Falha ao consultar fase/tempo para %s: %s. Veto conservador (fail-safe) aplicado.",
+                    tl_id,
+                    exc,
+                 exc_info=True)
+                self.last_veto_reasons[tl_id] = f"Veto Fail-Safe (Erro de Telemetria: {type(exc).__name__})"
+                return 1, True
 
         current_stage_duration = 0.0
         if environment.action_supervisor:
             current_stage_duration = sim_time - environment.action_supervisor._last_stage_change_time.get(tl_id, 0.0)
+
+        # 0. Emergency Priority Interception (EVP - Emergency Vehicle Preemption)
+        try:
+            from evp.evp_bridge import EVPBridge
+
+            bridge = EVPBridge()
+            evp_action, is_evp, _ = bridge.intercept_safety_audit(
+                tl_id=tl_id,
+                current_stage=current_stage_idx,
+                stage_duration=current_stage_duration,
+                suggested_action=suggested_action,
+            )
+            if is_evp and evp_action is not None:
+                if evp_action == 1:
+                    self.last_veto_reasons[tl_id] = "Preempção de Veículo de Emergência (EVP - Corredor Verde Ativo)"
+                return evp_action, (evp_action == 1)
+        except Exception as exc:
+            logger.error("[SafetyAuditor] Falha na interceptação EVP para %s: %s", tl_id, exc, exc_info=True)
 
         stage_codes = extractor.tl_stage_codes.get(tl_id, {})
         state_string = stage_codes.get(current_stage_idx, "G")
@@ -87,19 +100,34 @@ class SafetyAuditor:
             "current_stage_state": state_string.upper(),
             "next_stage_has_flow": True,
             "is_clearance_red": is_clearance_red,
+            "max_green_time": SafetyRules.get_max_green(),
         }
 
         # 1. Immediate Symbolic Audit
         if self.guardian:
             symbolic_action, reason = self.guardian.symbolic_audit(context)
             if symbolic_action == 0:  # Vetoed by symbolic rules
+                self.last_veto_reasons[tl_id] = reason
                 return 1, True
 
-        # 2. Zero-Latency Neural Spillback Audit (from Background Veto Map)
+        # 2. Maximum Green Ceiling (Anti-Starvation / Force-off)
+        max_green_time = float(context.get("max_green_time", SafetyRules.get_max_green()))
+        if "G" in state_string.upper() and current_stage_duration >= max_green_time:
+            self.last_veto_reasons[tl_id] = "Nenhum (Teto Máximo de Verde Excedido - Forçamento)"
+            return suggested_action, False
+
+        # 3. Zero-Latency Neural Spillback Audit (from Background Veto Map)
         if latest_veto_map and tl_id in latest_veto_map:
-            risk_score = latest_veto_map[tl_id]
+            veto_val = latest_veto_map[tl_id]
+            risk_score = veto_val.get("risk", veto_val) if isinstance(veto_val, dict) else veto_val
+            is_exploratory = veto_val.get("is_exploratory", False) if isinstance(veto_val, dict) else False
             # If risk is extremely high, veto the change
-            if risk_score > 0.8:  # Threshold can be tuned
+            if risk_score > 0.8:
+                if is_exploratory:
+                    self.last_veto_reasons[tl_id] = "Intervenção exploratória de spillback (Treino/Exploração)"
+                else:
+                    self.last_veto_reasons[tl_id] = "Veto Crítico de Spillback (Redes Neurais D3QN)"
                 return 1, True
 
+        self.last_veto_reasons[tl_id] = "Nenhum (Decisão Aprovada)"
         return suggested_action, False

@@ -1,37 +1,15 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sds/dashboard_orchestrator.py (MODIFIED FOR TRANSLATION)
-# Author: Gabriel Moraes
-# Date: October 2, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
+import json
 import logging
-import os
 import queue
-import sys
 import threading
+import urllib.request
 from multiprocessing import Queue
 from typing import TYPE_CHECKING, Optional
-
-# Add 'src' directory to path to allow absolute imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -43,6 +21,7 @@ from sds.websocket_server import WebSocketServer
 class Orchestrator:
     """The maestro that manages the workflow of the SDS service."""
 
+
     def __init__(
         self,
         sds_data_queue: Queue,
@@ -52,7 +31,7 @@ class Orchestrator:
         ui_telemetry_queue: Optional[Queue] = None,
     ):
         """
-        Inicializa o orquestrador e seus componentes especialistas.
+        Initializes the orchestrator and its specialist components.
         """
         self.data_queue = sds_data_queue
         self.locale_manager = locale_manager
@@ -65,11 +44,12 @@ class Orchestrator:
         else:
             self.ws_server = None
 
+        self._http_opener = urllib.request.build_opener()
         logging.info(lm.get_string("sds_orchestrator.init.orchestrator_created"))
 
     def run(self):
         """
-        Inicia os serviços e entra no loop principal de processamento de dados.
+        Starts the services and enters the main data processing loop.
         """
         lm = self.locale_manager
         try:
@@ -102,6 +82,19 @@ class Orchestrator:
                                 pass
                     elif self.ws_server:
                         self.ws_server.broadcast(ui_data_package)
+
+                    # Forward telemetry to Go Gateway (Videowall CCO SSE)
+                    try:
+                        cco_body = json.dumps({"type": "congestion_update", **ui_data_package}).encode("utf-8")
+                        req = urllib.request.Request(
+                            "http://127.0.0.1:2201/cco/broadcast",
+                            data=cco_body,
+                            headers={"Content-Type": "application/json", "Connection": "keep-alive"},
+                        )
+                        self._http_opener.open(req, timeout=0.15)
+                    except Exception:
+                        pass
+
 
         except KeyboardInterrupt:
             logging.info(lm.get_string("sds_orchestrator.run.interrupt_received"))

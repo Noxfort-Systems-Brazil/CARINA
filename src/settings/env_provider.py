@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/settings/env_provider.py
-# Author: Gabriel Moraes
-# Date: 2026-09-12
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Handles 12-Factor App secret injection and .env file synchronization.
@@ -33,10 +17,7 @@ try:
 except ImportError:
     load_dotenv = None
 
-try:
-    from settings.interfaces import IEnvironmentProvider
-except ImportError:
-    from src.settings.interfaces import IEnvironmentProvider
+from settings.interfaces import IEnvironmentProvider
 
 
 class DotenvSecretProvider(IEnvironmentProvider):
@@ -49,9 +30,13 @@ class DotenvSecretProvider(IEnvironmentProvider):
         "CARINA_DB_PORT": "db_port",
         "CARINA_DB_NAME": "db_name",
         "CARINA_DB_SCHEMA": "db_schema",
+        "CARINA_DB_TYPE": "db_type",
+        "CARINA_DB_CONNECTED": "db_connected",
         "CARINA_SNMP_COMMUNITY": "snmp_community_string",
         "CARINA_MQTT_HOST": "monitor_mqtt_host",
         "CARINA_MQTT_PORT": "monitor_mqtt_port",
+        "CARINA_MONITOR_ENABLED": "monitor_enabled",
+        "CARINA_GATEWAY_ENABLED": "gateway_enabled",
     }
 
     SETTINGS_TO_ENV_MAP: Dict[str, str] = {v: k for k, v in DEFAULT_ENV_TO_SETTINGS_MAP.items()}
@@ -90,7 +75,7 @@ class DotenvSecretProvider(IEnvironmentProvider):
                         if k and k not in os.environ:
                             os.environ[k] = v
             except Exception as e:
-                logging.warning(f"[DotenvSecretProvider] Failed manual parse of .env: {e}")
+                logging.warning(f"[DotenvSecretProvider] Failed manual parse of .env: {e}", exc_info=True)
 
     def get_overrides(self) -> Dict[str, str]:
         """Returns setting_key -> env_value for all mapped environment variables that are set."""
@@ -132,5 +117,5 @@ class DotenvSecretProvider(IEnvironmentProvider):
                     f.writelines(new_lines)
                 return True
             except Exception as err:
-                logging.warning(f"[DotenvSecretProvider] Failed to update {env_key} in .env: {err}")
+                logging.warning(f"[DotenvSecretProvider] Failed to update {env_key} in .env: {err}", exc_info=True)
                 return False

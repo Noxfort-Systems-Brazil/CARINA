@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: tests/unit/test_map_drawer.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from unittest.mock import MagicMock
 
@@ -84,3 +76,36 @@ def test_map_animator_safe_partial_update():
     assert animator.latest_congestion_data["edge_1"] == 50.0
     assert animator.latest_congestion_data["edge_2"] == 90.0
     assert animator.latest_panel_data == {"tl_1": {"state": "updated"}}
+
+
+def test_map_drawer_dead_ends_do_not_extend_or_draw_points():
+    """Validates that dead-end streets terminate cleanly at the end of their geometry
+    without extending to node center offsets, and that no circles/points are drawn at dead ends."""
+    import math
+
+    nodes = {
+        "j_main": {"x": 50.0, "y": 50.0, "type": "traffic_light"},
+        "j_dead": {"x": 100.0, "y": 55.0, "type": "dead_end"},
+    }
+    edges = [
+        {"id": "e_dead", "from": "j_main", "to": "j_dead", "shape": [[50.0, 50.0], [90.0, 50.0]]}
+    ]
+    drawer = MapDrawer(nodes, edges)
+    drawer.calculate_transformations(800, 600)
+
+    canvas = cv.Canvas(shapes=[], width=800, height=600)
+    edge_paths = drawer.draw_initial_map(canvas, stroke_width=5.0)
+
+    path = edge_paths["e_dead"]
+    # Path should end at (90, 50), and NOT extend to j_dead at (100, 55)
+    last_element = path.elements[-1]
+    expected_x, expected_y = drawer.transform_point(90.0, 50.0)
+    dead_node_x, dead_node_y = drawer.transform_point(100.0, 55.0)
+
+    assert math.isclose(last_element.x, expected_x, abs_tol=1e-3)
+    assert math.isclose(last_element.y, expected_y, abs_tol=1e-3)
+    assert not math.isclose(last_element.x, dead_node_x, abs_tol=1.0)
+
+    # Ensure no cv.Circle is drawn on canvas for dead end
+    circles = [s for s in canvas.shapes if isinstance(s, cv.Circle)]
+    assert len(circles) == 0

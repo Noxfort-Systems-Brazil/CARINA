@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: ui/formatting/report_exporter.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import base64
 import logging
@@ -20,7 +12,7 @@ import flet as ft
 
 from blocks.report_post_processor import ReportPostProcessor
 from blocks.structured_report_builder import StructuredReportBuilder
-from src.utils.settings_manager import SettingsManager
+from utils.settings_manager import SettingsManager
 from ui.formatting.report_asset_resolver import ReportAssetResolver
 from ui.formatting.report_config_builder import ReportConfigBuilder
 from ui.handlers.locale_manager import LocaleManager
@@ -82,7 +74,7 @@ class ReportExporter:
                                 tmp_img.write(base64.b64decode(image_base64))
                                 tmp_img_path = tmp_img.name
                 except Exception as e:
-                    logging.warning(f"[ReportExporter] Failed multi-agent XAI report generation: {e}")
+                    logging.warning(f"[ReportExporter] Failed multi-agent XAI report generation: {e}", exc_info=True)
 
             cleaned_text_content = (
                 ReportPostProcessor.enforce_semantic_consistency(text_content) if text_content else ""

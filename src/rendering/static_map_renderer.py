@@ -1,33 +1,19 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: src/rendering/static_map_renderer.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
-import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-
-project_root_render = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path_render = os.path.join(project_root_render, "src")
-if src_path_render not in sys.path:
-    sys.path.insert(0, src_path_render)
 
 from rendering.static_map_painter import StaticMapPainter
 from rendering.static_map_projector import StaticMapProjector
-from src.utils.paths import resource_path
+from utils.paths import resource_path
 from utils.map_data_parser import parse_map_data
 from utils.map_generator import generate_map_data_files
 
 if TYPE_CHECKING:
-    from src.utils.locale_manager_backend import LocaleManagerBackend
+    from utils.locale_manager_backend import LocaleManagerBackend
 
 import matplotlib.pyplot as plt
 
@@ -48,7 +34,13 @@ class StaticMapRenderer:
         logging.info(self.locale_manager.get_string("static_map_renderer.init.created"))
 
     def _draw_map_and_icons_with_matplotlib(
-        self, nodes: Dict[str, Any], edges: List[Dict[str, Any]], bounds: Any, icon_requests: dict, output_path: str
+        self,
+        nodes: Dict[str, Any],
+        edges: List[Dict[str, Any]],
+        bounds: Any,
+        icon_requests: dict,
+        output_path: str,
+        basemap_path: Optional[str] = None,
     ) -> None:
         lm = self.locale_manager
         logging.info(lm.get_string("static_map_renderer.run.rendering_map", path=output_path))
@@ -58,6 +50,11 @@ class StaticMapRenderer:
         # Coordinate projection
         projector = StaticMapProjector(base_width=1200.0, base_height=800.0)
         projector.compute_bounds_and_scale(nodes, edges)
+
+        # Apply basemap background if available
+        if basemap_path:
+            from rendering.static_map_background_painter import StaticMapBackgroundPainter
+            StaticMapBackgroundPainter.apply_background(ax, basemap_path, projector)
 
         # Draw streets
         StaticMapPainter.draw_streets(ax, edges, projector.map_to_canvas)
@@ -86,7 +83,7 @@ class StaticMapRenderer:
             logging.critical(f"MemoryError ao salvar a imagem '{output_path}'.")
             raise me
         except Exception as save_err:
-            logging.error(f"Erro inesperado ao salvar a imagem '{output_path}': {save_err}")
+            logging.error(f"Erro inesperado ao salvar a imagem '{output_path}': {save_err}", exc_info=True)
             raise save_err
         finally:
             plt.close(fig)
@@ -122,7 +119,41 @@ class StaticMapRenderer:
                 return None, None
 
             final_image_path = os.path.join(maps_output_dir, output_filename)
-            self._draw_map_and_icons_with_matplotlib(nodes, edges, bounds, icon_requests, final_image_path)
+
+            # Check / fetch basemap if enabled and georeferenced
+            basemap_path = None
+            try:
+                from rendering.static_map_background_painter import StaticMapBackgroundPainter
+
+                if StaticMapBackgroundPainter.ENABLED:
+                    candidate = os.path.join(maps_output_dir, "basemap_positron.png")
+                    if os.path.exists(candidate) and os.path.getsize(candidate) > 0:
+                        basemap_path = candidate
+                    else:
+                        from rendering.cartodb_basemap_fetcher import CartoDBBasemapFetcher
+                        from utils.sumo_geo_bounds_reader import SumoGeoBoundsReader
+
+                        target_net = net_file_path
+                        if not target_net or not os.path.exists(target_net):
+                            for cand_dir in (maps_output_dir, scenario_results_dir):
+                                if os.path.exists(cand_dir):
+                                    for f in os.listdir(cand_dir):
+                                        if f.endswith(".net.xml.gz") or f.endswith(".net.xml"):
+                                            target_net = os.path.join(cand_dir, f)
+                                            break
+                                if target_net and os.path.exists(target_net):
+                                    break
+
+                        if target_net and os.path.exists(target_net):
+                            geo_bounds = SumoGeoBoundsReader.read_bounds(target_net)
+                            if geo_bounds and geo_bounds.has_geo_coords:
+                                basemap_path = CartoDBBasemapFetcher.fetch_basemap(geo_bounds, maps_output_dir)
+            except Exception as bg_err:
+                logging.debug(f"[StaticMapRenderer] Não foi possível carregar basemap: {bg_err}")
+
+            self._draw_map_and_icons_with_matplotlib(
+                nodes, edges, bounds, icon_requests, final_image_path, basemap_path=basemap_path
+            )
 
             return final_image_path, (nodes, edges)
         except MemoryError:
@@ -139,7 +170,7 @@ class StaticMapRenderer:
                     if os.path.exists(plain_xml_prefix + ".edg.xml"):
                         os.remove(plain_xml_prefix + ".edg.xml")
                 except Exception as cleanup_err:
-                    logging.warning(f"Erro ao limpar arquivos XML temporários: {cleanup_err}")
+                    logging.warning(f"Erro ao limpar arquivos XML temporários: {cleanup_err}", exc_info=True)
 
     def generate_coordinates_file(
         self,

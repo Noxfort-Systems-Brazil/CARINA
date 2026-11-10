@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CARINA
+GenericName=Urban Traffic AI Network Architecture
+Comment=Plataforma de Inteligência e Controle Semafórico Adaptativo (Core & CCO)
+Exec=/usr/bin/carina
+Icon=carina
+Terminal=false
+Categories=System;Network;Utility;
+StartupNotify=true
+Keywords=traffic;ntcip;utmc;semáforo;ia;cco;mobilidade;

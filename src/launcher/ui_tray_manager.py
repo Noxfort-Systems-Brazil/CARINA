@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/launcher/ui_tray_manager.py
-# Author: Gabriel Moraes
-# Date: August 6, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -95,7 +79,7 @@ class UITrayManager:
             if hasattr(signal, "SIGTERM"):
                 signal.signal(signal.SIGTERM, handle_shutdown_signal)
         except Exception as e:
-            logging.warning(f"[Launcher] Could not register signal handler: {e}")
+            logging.warning(f"[Launcher] Could not register signal handler: {e}", exc_info=True)
 
     def on_tray_restore(self):
         """Callback triggered when user selects restore from system tray menu."""
@@ -131,7 +115,7 @@ class UITrayManager:
             if self.process_manager:
                 self.process_manager.shutdown_all()
         except Exception as e:
-            logging.error(f"[Tray] Error executing process_manager.shutdown_all: {e}")
+            logging.error(f"[Tray] Error executing process_manager.shutdown_all: {e}", exc_info=True)
 
         # 3. Kill lingering child processes
         try:
@@ -171,7 +155,7 @@ class UITrayManager:
             if "cannot schedule new futures after shutdown" not in str(e):
                 logging.error(f"[Flet Runtime] {e}")
         except Exception as e:
-            logging.error(f"[UI Launcher] Failed to start or shutdown interface: {e}")
+            logging.error(f"[UI Launcher] Failed to start or shutdown interface: {e}", exc_info=True)
 
     def run(self):
         """Executes the main UI and Tray loop on the main thread."""

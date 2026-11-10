@@ -1,37 +1,13 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/request_processor.py
-# Author: Gabriel Moraes
-# Date: February 19, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import logging
-import os
-import sys
 from multiprocessing import Queue
 from multiprocessing.connection import Connection
 from queue import Empty
 from typing import TYPE_CHECKING, Any
-
-# Add 'src' directory to path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     from controller.failsafe_manager import FailsafeManager
@@ -41,13 +17,18 @@ if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
 # Import Handlers
-from src.handlers.ai_request_handler import AIRequestHandler
-from src.handlers.ui_command_handler import UICommandHandler
-from src.handlers.watchdog_command_handler import WatchdogCommandHandler
-from src.utils.security_manager import SecurityManager
+try:
+    from src.handlers.ai_request_handler import AIRequestHandler
+    from src.handlers.ui_command_handler import UICommandHandler
+    from src.handlers.watchdog_command_handler import WatchdogCommandHandler
+except ImportError:
+    from handlers.ai_request_handler import AIRequestHandler
+    from handlers.ui_command_handler import UICommandHandler
+    from handlers.watchdog_command_handler import WatchdogCommandHandler
+from security.security_manager import SecurityManager
 
 
-class EnvironmentConnectionException(Exception):
+class EnvironmentConnectionException(RuntimeError):
     pass
 
 
@@ -71,11 +52,13 @@ class RequestProcessor:
         failsafe_manager: "FailsafeManager",
         topology_manager: "TopologyManager",
         mfd_trigger_queue: Queue = None,
+        yellow_schedule_manager=None,
     ):
 
         self.ai_pipe_conn = ai_pipe_conn
         self.watchdog_q = watchdog_q
         self.ui_command_queue = ui_command_queue
+        self.yellow_schedule_manager = yellow_schedule_manager
 
         # Shared State
         self.override_commands_buffer = []
@@ -90,6 +73,7 @@ class RequestProcessor:
             sds_data_queue,
             sas_data_queue,
             mfd_trigger_queue=mfd_trigger_queue,
+            yellow_schedule_manager=yellow_schedule_manager,
         )
         self.ai_handler = AIRequestHandler(
             locale_manager, topology_manager, sds_data_queue, sas_data_queue, health_monitor, override_manager
@@ -115,8 +99,8 @@ class RequestProcessor:
             if self.ai_pipe_conn and not self.ai_pipe_conn.closed:
                 try:
                     self.ai_pipe_conn.send(e)
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    logging.debug("[controller] Ignored recoverable error: %s", _exc)
 
     def process_queues(self, sumo_conn: Any, is_ai_healthy: bool):
         # UI Commands (Flet Interface)

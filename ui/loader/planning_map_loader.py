@@ -1,29 +1,12 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/clients/planning_map_loader.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o PlanningMapLoader.
+Defines the PlanningMapLoader.
 
-Este cliente tem a responsabilidade única de encontrar, de forma assíncrona,
-o caminho para o arquivo de imagem do mapa de planejamento mais recente,
-sem bloquear a thread principal da UI.
+This client has the sole responsibility of asynchronously finding
+the path to the latest planning map image file, without blocking the UI main thread.
 """
 
 import logging
@@ -35,22 +18,22 @@ from typing import Callable
 
 class PlanningMapLoader:
     """
-    Busca pelo arquivo de mapa de planejamento em uma thread separada.
+    Searches for the planning map file in a separate thread.
     """
 
     def __init__(self, on_complete_callback: Callable[[str | None], None]):
         """
-        Inicializa o carregador.
+        Initializes the loader.
 
         Args:
-            on_complete_callback: A função a ser chamada quando a busca terminar.
-                                  Receberá o caminho do arquivo ou None.
+            on_complete_callback: The function to be called when search completes.
+                                  Receives the file path or None.
         """
         self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         self.on_complete = on_complete_callback
 
     def _find_latest_map_image_path(self) -> str | None:
-        """Busca o caminho esperado para a imagem de mapa mais recente."""
+        """Finds the expected path for the latest map image."""
         try:
             from src.utils.paths import get_base_output_dir
 
@@ -74,13 +57,13 @@ class PlanningMapLoader:
             return planning_map_path if os.path.exists(planning_map_path) else None
 
         except Exception as e:
-            logging.error(f"[PlanningMapLoader] Erro ao procurar imagem do mapa: {e}")
+            logging.error(f"[PlanningMapLoader] Erro ao procurar imagem do mapa: {e}", exc_info=True)
             return None
 
     def _loader_thread_target(self):
         """
-        Alvo da thread: Procura pelo arquivo de mapa repetidamente e depois
-        chama o callback com o resultado.
+        Thread target: Searches repeatedly for the map file and then
+        calls the callback with the result.
         """
         logging.info("[PlanningMapLoader] Iniciando busca em segundo plano pelo mapa de planejamento...")
         map_path = None
@@ -102,8 +85,8 @@ class PlanningMapLoader:
 
     def start_loading(self):
         """
-        Inicia a busca pelo arquivo de mapa em uma nova thread.
-        Retorna imediatamente.
+        Starts searching for the map file in a new thread.
+        Returns immediately.
         """
         thread = threading.Thread(target=self._loader_thread_target, daemon=True)
         thread.start()

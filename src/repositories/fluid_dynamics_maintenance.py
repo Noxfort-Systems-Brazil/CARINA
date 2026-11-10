@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/repositories/fluid_dynamics_maintenance.py
-# Author: Gabriel Moraes
-# Date: August 12, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 from typing import TYPE_CHECKING
@@ -97,7 +81,7 @@ class FluidDynamicsMaintenance:
                 conn.commit()
                 logging.info(f"[DB_MANAGER] Consolidated and purged raw fluid dynamics older than {keep_hours} hours.")
         except Exception as e:
-            logging.error(f"[DB_MANAGER] Error consolidating and purging old fluid dynamics: {e}")
+            logging.error(f"[DB_MANAGER] Error consolidating and purging old fluid dynamics: {e}", exc_info=True)
         finally:
             if conn:
                 conn.close()
@@ -119,7 +103,7 @@ class FluidDynamicsMaintenance:
             if deleted > 0:
                 logging.info(f"[DB_MANAGER] Purged {deleted} old fluid dynamics samples (>{keep_minutes}min).")
         except Exception as e:
-            logging.error(f"[DB_MANAGER] Error purging old fluid dynamics samples: {e}")
+            logging.error(f"[DB_MANAGER] Error purging old fluid dynamics samples: {e}", exc_info=True)
         finally:
             if conn:
                 conn.close()

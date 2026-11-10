@@ -1,22 +1,6 @@
 # CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/fenix/fenix_supervisor.py
-# Author: Gabriel Moraes
-# Date: September 25, 2026
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 F.E.N.I.X. Process Supervisor & Orchestrator Facade (SOLID Architecture).
@@ -86,7 +70,7 @@ class FenixSupervisor(IProcessSupervisor):
             try:
                 self.on_status_changed(new_state, message)
             except Exception as e:
-                logger.error(f"[FENIX SUPERVISOR] Error in on_status_changed callback: {e}")
+                logger.error(f"[FENIX SUPERVISOR] Error in on_status_changed callback: {e}", exc_info=True)
 
     def resurrect_ai(self, custom_command: Optional[List[str]] = None) -> bool:
         """

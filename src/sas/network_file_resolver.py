@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sas/network_file_resolver.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -44,7 +28,7 @@ class NetworkFileResolver:
                 json.dump({"last_net_file_path": path}, f, indent=4)
             logging.debug(f"[NetworkFileResolver] Persisted last known net_file_path: {path}")
         except Exception as e:
-            logging.error(f"[NetworkFileResolver] Failed to persist net_file_path: {e}")
+            logging.error(f"[NetworkFileResolver] Failed to persist net_file_path: {e}", exc_info=True)
 
     @classmethod
     def load_last_known_net_file(cls) -> Optional[str]:
@@ -60,7 +44,7 @@ class NetworkFileResolver:
                         logging.info(f"[NetworkFileResolver] Restored net_file_path from config: {path}")
                         return path
         except Exception as e:
-            logging.error(f"[NetworkFileResolver] Failed to load persisted net_file_path: {e}")
+            logging.error(f"[NetworkFileResolver] Failed to load persisted net_file_path: {e}", exc_info=True)
         return None
 
     @classmethod
@@ -78,7 +62,7 @@ class NetworkFileResolver:
                         cls.save_last_known_net_file(resolved_path)
                         return resolved_path
         except Exception as e:
-            logging.error(f"[NetworkFileResolver] Error checking scenario maps for {scenario_name}: {e}")
+            logging.error(f"[NetworkFileResolver] Error checking scenario maps for {scenario_name}: {e}", exc_info=True)
 
         # Level 2: Try to load from persistent user configuration
         persisted_path = cls.load_last_known_net_file()
@@ -97,7 +81,7 @@ class NetworkFileResolver:
                             cls.save_last_known_net_file(fallback_path)
                             return fallback_path
         except Exception as e:
-            logging.error(f"[NetworkFileResolver] Error scanning results directory: {e}")
+            logging.error(f"[NetworkFileResolver] Error scanning results directory: {e}", exc_info=True)
 
         # Level 4: Scan parent/workspace directories
         try:
@@ -115,6 +99,6 @@ class NetworkFileResolver:
                                 cls.save_last_known_net_file(fallback_path)
                                 return fallback_path
         except Exception as e:
-            logging.error(f"[NetworkFileResolver] Error scanning workspace directory: {e}")
+            logging.error(f"[NetworkFileResolver] Error scanning workspace directory: {e}", exc_info=True)
 
         return None

@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/connection_config_repo.py
-# Author: Gabriel Moraes
-# Date: 2026-06-16
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Description:
@@ -54,7 +38,7 @@ class ConnectionConfigRepository:
             logger.info(f"Hardware template exported successfully to {filepath}")
             return True
         except Exception as e:
-            logger.error(f"Failed to export hardware template: {e}")
+            logger.error(f"Failed to export hardware template: {e}", exc_info=True)
             return False
 
     @staticmethod
@@ -121,18 +105,21 @@ class ConnectionConfigRepository:
 
             logger.info(f"Imported {len(configs)} configurations from CSV: {filepath}")
         except Exception as e:
-            logger.error(f"Failed to import CSV configuration: {e}")
+            logger.error(f"Failed to import CSV configuration: {e}", exc_info=True)
         return configs
 
     @staticmethod
-    def save_connection_db(intersection_id: str, ip_address: str, locale_manager=None) -> bool:
+    def save_connection_db(
+        intersection_id: str, ip_address: str, locale_manager=None, engine=None
+    ) -> bool:
         """
         Saves or updates an intersection IP connection config in PostgreSQL/SQLite database.
         """
         try:
-            from src.database.db_engine import DatabaseEngine
+            if engine is None:
+                from src.database.db_engine import DatabaseEngine
 
-            engine = DatabaseEngine(locale_manager=locale_manager)
+                engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:
                 return False
@@ -162,19 +149,22 @@ class ConnectionConfigRepository:
             logger.info(f"[DB Persistence] Saved hardware connection for '{intersection_id}' at {ip_address}")
             return True
         except Exception as e:
-            logger.error(f"[DB Persistence] Failed to save hardware connection to database: {e}")
+            logger.error(f"[DB Persistence] Failed to save hardware connection to database: {e}", exc_info=True)
             return False
 
     @staticmethod
-    def remove_connection_db(intersection_id: str, locale_manager=None) -> bool:
+    def remove_connection_db(
+        intersection_id: str, locale_manager=None, engine=None
+    ) -> bool:
         """
         Deletes the intersection IP connection record completely from PostgreSQL/SQLite database.
         Deletes both the raw ID and any 'tl_' prefixed variant to ensure complete cleanup.
         """
         try:
-            from src.database.db_engine import DatabaseEngine
+            if engine is None:
+                from src.database.db_engine import DatabaseEngine
 
-            engine = DatabaseEngine(locale_manager=locale_manager)
+                engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:
                 return False
@@ -198,19 +188,20 @@ class ConnectionConfigRepository:
             logger.info(f"[DB Persistence] Deleted connection record for '{clean_id}' and '{alt_id}' from database.")
             return True
         except Exception as e:
-            logger.error(f"[DB Persistence] Failed to delete hardware connection from database: {e}")
+            logger.error(f"[DB Persistence] Failed to delete hardware connection from database: {e}", exc_info=True)
             return False
 
     @staticmethod
-    def load_all_connections_db(locale_manager=None) -> Dict[str, str]:
+    def load_all_connections_db(locale_manager=None, engine=None) -> Dict[str, str]:
         """
         Loads all saved auto-connect hardware connections from PostgreSQL/SQLite database.
         """
         configs = {}
         try:
-            from src.database.db_engine import DatabaseEngine
+            if engine is None:
+                from src.database.db_engine import DatabaseEngine
 
-            engine = DatabaseEngine(locale_manager=locale_manager)
+                engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:
                 return configs
@@ -224,18 +215,19 @@ class ConnectionConfigRepository:
             conn.close()
             logger.info(f"[DB Persistence] Loaded {len(configs)} saved hardware connection configs from database.")
         except Exception as e:
-            logger.error(f"[DB Persistence] Failed to load hardware connections from database: {e}")
+            logger.error(f"[DB Persistence] Failed to load hardware connections from database: {e}", exc_info=True)
         return configs
 
     @staticmethod
-    def clear_all_connections_db(locale_manager=None) -> bool:
+    def clear_all_connections_db(locale_manager=None, engine=None) -> bool:
         """
         Deletes all hardware connection entries completely from PostgreSQL/SQLite database.
         """
         try:
-            from src.database.db_engine import DatabaseEngine
+            if engine is None:
+                from src.database.db_engine import DatabaseEngine
 
-            engine = DatabaseEngine(locale_manager=locale_manager)
+                engine = DatabaseEngine(locale_manager=locale_manager)
             conn = engine.get_connection()
             if not conn:
                 return False
@@ -246,5 +238,5 @@ class ConnectionConfigRepository:
             logger.info("[DB Persistence] Cleared (deleted) all hardware connection records from database.")
             return True
         except Exception as e:
-            logger.error(f"[DB Persistence] Failed to clear hardware connections in database: {e}")
+            logger.error(f"[DB Persistence] Failed to clear hardware connections in database: {e}", exc_info=True)
             return False

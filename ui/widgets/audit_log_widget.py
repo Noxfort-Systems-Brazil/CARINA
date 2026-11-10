@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/audit_log_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -96,7 +80,7 @@ class AuditLogWidget(ft.Container):
             with open(self.audit_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Mostra os mais recentes primeiro
+            # Show newest records first
             data = list(reversed(data))
 
             rows = []
@@ -123,7 +107,7 @@ class AuditLogWidget(ft.Container):
                 self.update()
 
         except Exception as ex:
-            logging.error(f"[AuditLogWidget] Erro ao carregar logs: {ex}")
+            logging.error(f"[AuditLogWidget] Erro ao carregar logs: {ex}", exc_info=True)
 
     def update_translations(self, lm: LocaleManager):
         self.locale_manager = lm

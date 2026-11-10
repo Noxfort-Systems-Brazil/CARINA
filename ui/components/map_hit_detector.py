@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: ui/components/map_hit_detector.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import math
 from typing import Any, Dict, List, Optional, Tuple
@@ -52,17 +44,53 @@ class MapHitDetector:
         # 1. Check Node Hits (Junctions / Semaphores)
         clicked_node_id = None
         min_node_dist = float("inf")
+        is_direct_box_hit = False
+        hit_node_has_semaphore = False
         node_hit_radius = node_base_hit_radius / effective_scale
 
         for node in drawn_nodes_cache:
-            dx = map_x - node["cx"]
-            dy = map_y - node["cy"]
-            dist = math.sqrt(dx * dx + dy * dy)
-            if dist < min_node_dist:
-                min_node_dist = dist
-                clicked_node_id = node["id"]
+            cx = node["cx"]
+            cy = node["cy"]
+            has_semaphore = node.get("has_semaphore", False) or "tl" in str(node.get("id", "")).lower()
 
-        node_hit = clicked_node_id is not None and min_node_dist <= node_hit_radius
+            if has_semaphore:
+                # 16x42 vertical box with hit padding (4px in screen coordinates)
+                pad = 4.0 / effective_scale
+                box_half_w = 8.0 + pad
+                box_half_h = 21.0 + pad
+                left = cx - box_half_w
+                right = cx + box_half_w
+                top = cy - box_half_h
+                bottom = cy + box_half_h
+
+                if left <= map_x <= right and top <= map_y <= bottom:
+                    min_node_dist = 0.0
+                    clicked_node_id = node["id"]
+                    is_direct_box_hit = True
+                    hit_node_has_semaphore = True
+                    break
+
+                # Distance to bounding box edges
+                dx = max(left - map_x, 0.0, map_x - right)
+                dy = max(top - map_y, 0.0, map_y - bottom)
+                dist = math.hypot(dx, dy)
+                if dist < min_node_dist:
+                    min_node_dist = dist
+                    clicked_node_id = node["id"]
+                    hit_node_has_semaphore = True
+            else:
+                dx = map_x - cx
+                dy = map_y - cy
+                dist = math.hypot(dx, dy)
+                if dist < min_node_dist:
+                    min_node_dist = dist
+                    clicked_node_id = node["id"]
+                    hit_node_has_semaphore = False
+
+        if hit_node_has_semaphore:
+            node_hit = clicked_node_id is not None and (is_direct_box_hit or min_node_dist <= (6.0 / effective_scale))
+        else:
+            node_hit = clicked_node_id is not None and min_node_dist <= node_hit_radius
 
         # 2. Check Street Segment Hits (Edges)
         clicked_edge_id = None
@@ -85,7 +113,16 @@ class MapHitDetector:
 
         # 3. Disambiguate between Node and Edge hits
         if node_hit and edge_hit:
-            if min_node_dist <= (8.0 / effective_scale) or min_node_dist < min_edge_dist:
+            # If user directly clicked the semaphore box (or padding),
+            # the foreground semaphore unconditionally takes precedence over the street underneath.
+            if is_direct_box_hit:
+                return "node", clicked_node_id, None
+            elif hit_node_has_semaphore:
+                if min_node_dist < min_edge_dist:
+                    return "node", clicked_node_id, None
+                else:
+                    return "edge", clicked_edge_id, clicked_edge_raw
+            elif min_node_dist < min_edge_dist or min_node_dist <= (8.0 / effective_scale):
                 return "node", clicked_node_id, None
             else:
                 return "edge", clicked_edge_id, clicked_edge_raw

@@ -1,313 +1,234 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/core/strategic_coordinator.py (Fixed: Moved edge_index to self.device)
-# Author: Gabriel Moraes
-# Date: November 1, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
-import os  # Import the
-import sys  # Import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import torch
-from torch_geometric.data import Data as GraphData
 
-# Add 'src' directory to path to allow absolute imports
-project_root_strat = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path_strat = os.path.join(project_root_strat, "src")
-if src_path_strat not in sys.path:
-    sys.path.insert(0, src_path_strat)
-
-
-# --- CHANGE 1: Add imports ---
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
-from agents.consultant_agent import ConsultantAgent
-from agents.strategist_agent import GATStrategist
-from core.system_reporter import SystemReporter  # Fixed to import from core
-from utils.network_parser import build_structural_neighborhood_map
+from agents.strategist_agent import StrategistAgent
+from core.structural_graph_builder import StructuralGraphBuilder
+from core.temporal_sequence_manager import TemporalSequenceManager
 
 
 class StrategicCoordinator:
-    """Manages the lifecycle and execution of the GAT Strategist and Consultant Agent."""
+    """Manages the lifecycle and execution of the GAT Strategist."""
 
-    def __init__(self, settings, device, locale_manager: "LocaleManagerBackend"):
+    def __init__(
+        self,
+        settings: Any,
+        device: Any,
+        locale_manager: "LocaleManagerBackend",
+        shared_pae: Optional[Any] = None,
+    ):
         self.settings = settings
-        self.device = device  # Maintains the device (GPU) for the GAT model
+        self.device = torch.device(device) if isinstance(device, str) else device
         self.locale_manager = locale_manager
+        self.shared_pae = shared_pae
         lm = self.locale_manager
 
-        gat_settings = settings["GAT_STRATEGIST"]  # Access directly from the past settings
-        self.update_frequency = gat_settings.getint("update_frequency_seconds")
-        self.output_dim = gat_settings.getint("output_dim")
-        self.gat_model = None
-        self.consultant_agent = ConsultantAgent(pae_model=None, locale_manager=self.locale_manager)
-        self.last_update_time = -self.update_frequency  # Guarantees first execution
+        gat_settings = settings["GAT_STRATEGIST"]
+        if hasattr(gat_settings, "getint"):
+            self.update_frequency = gat_settings.getint("update_frequency_seconds")
+            self.output_dim = gat_settings.getint("output_dim")
+        else:
+            self.update_frequency = int(gat_settings.get("update_frequency_seconds", 5))
+            self.output_dim = int(gat_settings.get("output_dim", 8))
+
+        try:
+            temporal_window = (
+                gat_settings.getint("temporal_window")
+                if hasattr(gat_settings, "getint")
+                else int(gat_settings.get("temporal_window", 12))
+            )
+        except Exception:
+            temporal_window = 12
+
+        self.temporal_window = temporal_window
+        self.sequence_manager = TemporalSequenceManager(temporal_window=self.temporal_window)
+
+        self.gat_model: Optional[StrategistAgent] = None
+        self.last_update_time = -self.update_frequency
         self.strategic_vectors = None
+        self.graph_edge_index = None
+        self.graph_edge_attr = None
 
-        # --- CHANGE (Fixed): graph_edge_index now goes to self.device ---
-        self.graph_edge_index = None  # It will be a tensor in self.device
-        # --- END ---
-
-        self.tl_id_to_idx = {}
-        self.tl_idx_to_id = {}
+        self.tl_id_to_idx: Dict[str, int] = {}
+        self.tl_idx_to_id: Dict[int, str] = {}
         self.max_state_dim = 0
         logging.info(lm.get_string("strategic_coordinator.init.created"))
 
-    # --- CHANGE 3: Modify function signature ---
-    def initialize(self, traci_conn):
-        """
-        Constrói o grafo da rede, inicializa o modelo GAT e retorna as métricas.
-        """
+    @property
+    def temporal_buffer(self):
+        return self.sequence_manager.temporal_buffer
+
+    @property
+    def prediction_target_time(self):
+        return self.sequence_manager.prediction_target_time
+
+    @property
+    def cached_future_pred(self):
+        return self.sequence_manager.cached_future_pred
+
+    def initialize(self, traci_conn: Any):
+        """Constructs network graph topology, initializes the GAT model, and returns metric dimensions."""
         lm = self.locale_manager
         logging.info(lm.get_string("strategic_coordinator.initialize.start"))
-        net_file = traci_conn.simulation.getOption("net-file")
 
-        tls_ids = sorted(traci_conn.trafficlight.getIDList())
-        if not tls_ids:
-            # This error message is for the programmer, it may be in English
-            raise ValueError("No traffic lights found in the simulation to initialize the Strategic Coordinator.")
-
-        num_nodes = len(tls_ids)
-        self.tl_id_to_idx = {tl_id: i for i, tl_id in enumerate(tls_ids)}
-        self.tl_idx_to_id = {i: tl_id for i, tl_id in enumerate(tls_ids)}
-
-        # --- CHANGE 4: Pass 'lm' to function ---
-        neighborhoods = build_structural_neighborhood_map(net_file_path=net_file, tls_ids_in_sim=tls_ids, lm=lm)
-
-        edge_list = []
-        for tl_id, neighbors in neighborhoods.items():
-            for neighbor_id in neighbors:
-                # Ensures both IDs exist in the mapping before adding the edge
-                if tl_id in self.tl_id_to_idx and neighbor_id in self.tl_id_to_idx:
-                    edge_list.append([self.tl_id_to_idx[tl_id], self.tl_id_to_idx[neighbor_id]])
-
-        # --- CHANGE 5: Edge_index is now moved to self.device (GPU/CUDA) ---
-        self.graph_edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous().to(self.device)
-        logging.info(
-            lm.get_string(
-                "strategic_coordinator.initialize.edge_index_created",
-                default="[StrategicCoordinator] graph_edge_index created on {device} with shape: {shape}",
-                device=self.device,
-                shape=self.graph_edge_index.shape,
-            )
-        )
-        # --- END OF CHANGE 5 ---
-
-        num_edges = self.graph_edge_index.size(1) if self.graph_edge_index.dim() == 2 else 0
-
-        # --- CHANGE 6: Pass 'lm' to function ---
-        SystemReporter.report_graph_structure(num_nodes=num_nodes, num_edges=num_edges, lm=lm)
-
-        all_state_dims = []
-        for tl_id in tls_ids:
-            try:  # Added try-except for robustness
-                num_lanes = len(set(traci_conn.trafficlight.getControlledLanes(tl_id)))
-                # Checks for logical definitions before attempting to access
-                logic_defs = traci_conn.trafficlight.getCompleteRedYellowGreenDefinition(tl_id)
-                if not logic_defs:
-                    logging.warning(
-                        lm.get_string(
-                            "strategic_coordinator.initialize.no_logic_found",
-                            default="No logic definition found for TL {tl_id}, using 0 green phases.",
-                            tl_id=tl_id,
-                        )
-                    )
-                    num_green_phases = 0
-                else:
-                    logic = logic_defs[0]
-                    num_green_phases = len(
-                        [p for p in logic.phases if "g" in p.state.lower() and "y" not in p.state.lower()]
-                    )
-                all_state_dims.append(num_lanes + num_green_phases)
-            except Exception as e:
-                logging.warning(
-                    lm.get_string(
-                        "strategic_coordinator.initialize.dim_error",
-                        default="Error obtaining dimensions for TL {tl_id}: {error}",
-                        tl_id=tl_id,
-                        error=e,
-                    )
-                )
-
-        self.max_state_dim = max(all_state_dims) if all_state_dims else 0
-        logging.info(lm.get_string("strategic_coordinator.initialize.max_state_dim", size=self.max_state_dim))
-
-        # Make sure max_state_dim is not zero to avoid error in GATConv
-        if self.max_state_dim <= 0:
-            logging.error(
-                lm.get_string(
-                    "strategic_coordinator.initialize.zero_dim_error",
-                    default="max_state_dim calculated as zero or negative. Cannot initialize GAT model.",
-                )
-            )
-            raise ValueError("Calculated max_state_dim is zero or negative.")
+        graph_res = StructuralGraphBuilder.build_network_graph(traci_conn, self.device, lm)
+        if len(graph_res) == 7:
+            (
+                self.graph_edge_index,
+                self.max_state_dim,
+                self.tl_id_to_idx,
+                self.tl_idx_to_id,
+                num_nodes,
+                num_edges,
+                self.graph_edge_attr,
+            ) = graph_res
+        else:
+            (
+                self.graph_edge_index,
+                self.max_state_dim,
+                self.tl_id_to_idx,
+                self.tl_idx_to_id,
+                num_nodes,
+                num_edges,
+            ) = graph_res
+            self.graph_edge_attr = None
 
         gat_settings = self.settings["GAT_STRATEGIST"]
-        self.gat_model = GATStrategist(
+        try:
+            edge_dim = gat_settings.getint("edge_dim")
+        except Exception:
+            edge_dim = 3
+
+        self.gat_model = StrategistAgent(
             input_dim=self.max_state_dim,
             hidden_dim=gat_settings.getint("hidden_dim"),
             output_dim=self.output_dim,
             heads=gat_settings.getint("heads"),
-        ).to(
-            self.device
-        )  # The GAT model still goes to the GPU
+            edge_dim=edge_dim,
+            device=str(self.device),
+        ).to(self.device)
         logging.info(lm.get_string("strategic_coordinator.initialize.model_created", device=self.device))
 
-        num_agents = len(tls_ids)
-        # Strategic output vectors also go to the GPU
+        num_agents = len(self.tl_id_to_idx)
         self.strategic_vectors = torch.zeros((num_agents, self.output_dim), device=self.device)
-
-        # Returns the max_state_dim (local) and the output_dim (GAT)
-        # LifecycleManager will use this to calculate the total size
-        # (max_local_obs + gat_output + num_override_flags)
         return self.max_state_dim, num_nodes, num_edges
 
-    def update_if_needed(self, sim_time, current_states_dict):
-        """
-        Checks if it is time to execute the GAT and updates the strategic vectors.
-        """
+    def update_if_needed(self, sim_time: float, current_states_dict: Dict[str, Any]):
+        """Checks if it is time to execute the GAT and updates strategic vectors."""
         lm = self.locale_manager
-        if self.gat_model is None:
-            return
-        # Ensures that graph_edge_index has been initialized
-        if self.graph_edge_index is None:
-            logging.warning(
-                lm.get_string(
-                    "strategic_coordinator.update.edge_index_not_init",
-                    default="[StrategicCoordinator] graph_edge_index not initialized. Skipping update.",
+        if self.gat_model is None or self.graph_edge_index is None:
+            if self.graph_edge_index is None and self.gat_model is not None:
+                logging.warning(
+                    lm.get_string(
+                        "strategic_coordinator.update.edge_index_not_init",
+                        default="[StrategicCoordinator] graph_edge_index not initialized. Skipping update.",
+                    )
                 )
-            )
             return
 
-        if (sim_time - self.last_update_time) >= self.update_frequency:
-            logging.info(
+        if (sim_time - self.last_update_time) < self.update_frequency:
+            return
+
+        logging.info(
+            lm.get_string(
+                "strategic_coordinator.update.running",
+                default="[STRATEGIC_COORD] Running GAT update at time {time}s",
+                time=sim_time,
+            )
+        )
+
+        num_agents = len(self.tl_id_to_idx)
+        node_features, valid_agent_indices = StructuralGraphBuilder.extract_padded_features(
+            current_states_dict=current_states_dict,
+            tl_idx_to_id=self.tl_idx_to_id,
+            num_agents=num_agents,
+            max_state_dim=self.max_state_dim,
+            sim_time=sim_time,
+            lm=lm,
+        )
+
+        if not node_features:
+            logging.warning(
                 lm.get_string(
-                    "strategic_coordinator.update.running",
-                    default="[STRATEGIC_COORD] Running GAT update at time {time}s",
+                    "strategic_coordinator.update.no_valid_features",
+                    default="No valid node features to process at time {time}.",
                     time=sim_time,
                 )
             )
+            return
 
-            num_agents = len(self.tl_id_to_idx)
-            node_features = []
-            valid_agent_indices = []  # List to track which agents have valid status
-            for i in range(num_agents):
-                tl_id = self.tl_idx_to_id.get(i)  # Use .get() for safety
-                if not tl_id:
-                    continue
+        node_features_tensor = torch.tensor(node_features, dtype=torch.float32).to(self.device)
 
-                state = current_states_dict.get(tl_id)
-                # Skip agents without valid state in this step
-                if state is None or not isinstance(state, list):
-                    logging.debug(
+        # 1. Self-supervised prediction training
+        self.sequence_manager.evaluate_and_train_prediction(sim_time, node_features_tensor, self.gat_model)
+
+        # 2. Append features and build 3D temporal sequence
+        self.sequence_manager.append_features(node_features_tensor)
+        temporal_seq = self.sequence_manager.build_temporal_sequence()
+
+        self.gat_model.eval()
+        with torch.no_grad():
+            try:
+                res = self.gat_model.get_strategic_vectors(
+                    temporal_seq,
+                    self.graph_edge_index,
+                    edge_attr=self.graph_edge_attr,
+                    return_prediction=True,
+                )
+                if isinstance(res, tuple):
+                    output_vectors, future_pred = res
+                    self.sequence_manager.cache_prediction(future_pred, sim_time + self.update_frequency)
+                else:
+                    output_vectors = res
+
+                if len(valid_agent_indices) > 0:
+                    valid_indices_tensor = torch.tensor(valid_agent_indices, device=self.device)
+                    if output_vectors.shape[0] == len(node_features):
+                        self.strategic_vectors.index_put_((valid_indices_tensor,), output_vectors[valid_indices_tensor])
+                    else:
+                        logging.error(
+                            lm.get_string(
+                                "strategic_coordinator.update.shape_mismatch",
+                                default="Shape mismatch: output_vectors ({out}) vs node_features ({features}). Could not update strategic_vectors.",
+                                out=output_vectors.shape[0],
+                                features=len(node_features),
+                            )
+                        )
+                else:
+                    logging.warning(
                         lm.get_string(
-                            "strategic_coordinator.update.invalid_state_debug",
-                            default="Invalid or missing state for {tl_id} at time {time}. Using padding.",
-                            tl_id=tl_id,
+                            "strategic_coordinator.update.no_valid_agents",
+                            default="No agents with valid state at time {time}. strategic_vectors not updated.",
                             time=sim_time,
                         )
                     )
-                    # We use a vector of zeros as a fallback to maintain the structure
-                    padded_state = [0.0] * self.max_state_dim
-                else:
-                    # Ensures padding is applied correctly
-                    current_len = len(state)
-                    padding_needed = max(0, self.max_state_dim - current_len)
-                    padded_state = state + ([0.0] * padding_needed)
-                    # Ensures final size is exactly max_state_dim
-                    padded_state = padded_state[: self.max_state_dim]
-                    valid_agent_indices.append(i)  # Mark this index as valid
-
-                node_features.append(padded_state)
-
-            # Only continues if there are features to process
-            if not node_features:
-                logging.warning(
+            except Exception as gat_err:
+                logging.error(
                     lm.get_string(
-                        "strategic_coordinator.update.no_valid_features",
-                        default="No valid node features to process at time {time}.",
-                        time=sim_time,
-                    )
+                        "strategic_coordinator.update.gat_exec_error",
+                        default="Error executing GAT model: {error}",
+                        error=gat_err,
+                    ),
+                    exc_info=True,
                 )
-                return
 
-            # node_features go to the GPU before feeding the model
-            node_features_tensor = torch.tensor(node_features, dtype=torch.float32).to(self.device)
-
-            self.gat_model.eval()
-            with torch.no_grad():
-                try:
-                    # --- CHANGE 8: The edge_index_input now comes directly from self.graph_edge_index (which is already on the device) ---
-                    # We no longer need .to('cpu')
-                    output_vectors = self.gat_model(node_features_tensor, self.graph_edge_index)
-                    # --- END OF CHANGE 8 ---
-
-                    # Update self.strategic_vectors ONLY for agents that had valid status
-                    if len(valid_agent_indices) > 0:
-                        valid_indices_tensor = torch.tensor(valid_agent_indices, device=self.device)
-                        if output_vectors.shape[0] == len(node_features):
-                            self.strategic_vectors.index_put_(
-                                (valid_indices_tensor,), output_vectors[valid_indices_tensor]
-                            )
-                        else:
-                            logging.error(
-                                lm.get_string(
-                                    "strategic_coordinator.update.shape_mismatch",
-                                    default="Shape mismatch: output_vectors ({out}) vs node_features ({features}). Could not update strategic_vectors.",
-                                    out=output_vectors.shape[0],
-                                    features=len(node_features),
-                                )
-                            )
-                    else:
-                        logging.warning(
-                            lm.get_string(
-                                "strategic_coordinator.update.no_valid_agents",
-                                default="No agents with valid state at time {time}. strategic_vectors not updated.",
-                                time=sim_time,
-                            )
-                        )
-
-                except Exception as gat_err:
-                    logging.error(
-                        lm.get_string(
-                            "strategic_coordinator.update.gat_exec_error",
-                            default="Error executing GAT model: {error}",
-                            error=gat_err,
-                        ),
-                        exc_info=True,
-                    )
-
-            self.last_update_time = sim_time
-
-            # Trigger Consultant Agent event telemetry cognitive loop
-            stgat_dict = {tid: self.get_strategic_vector_for_agent(tid) for tid in self.tl_id_to_idx.keys()}
-            self.consultant_agent.process_event_telemetry(current_states_dict, stgat_dict)
+        self.last_update_time = sim_time
 
     def get_strategic_vector_for_agent(self, tl_id: str) -> list:
         """Returns the most recent strategic vector for a specific agent."""
         lm = self.locale_manager
         if tl_id not in self.tl_id_to_idx:
-            # Returns a vector of zeros if ID is not found
             return [0.0] * self.output_dim
 
         agent_idx = self.tl_id_to_idx[tl_id]
-
         if self.strategic_vectors is None or agent_idx >= self.strategic_vectors.shape[0]:
             logging.warning(
                 lm.get_string(

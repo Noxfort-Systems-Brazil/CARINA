@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/promotion/promotion_evaluator.py
-# Author: Gabriel Moraes
-# Date: June 15, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Promotion Evaluator.
@@ -90,6 +74,21 @@ class PromotionEvaluator:
                 child_t_min=child_t_min,
                 teen_t_min=teen_t_min,
             )
+        )
+
+    def set_phase_durations(self, child_episodes: int, teen_episodes: int) -> None:
+        """Dynamically updates the required minimum episode durations for CHILD and TEEN phases."""
+        self.configs["CHILD"].t_min = max(1, int(child_episodes))
+        self.configs["TEEN"].t_min = max(1, int(teen_episodes))
+        logger.info(
+            f"[PromotionEvaluator] Phase durations updated: CHILD t_min={self.configs['CHILD'].t_min}, TEEN t_min={self.configs['TEEN'].t_min}"
+        )
+
+    def set_performance_margin(self, margin_percent: float) -> None:
+        """Dynamically updates the performance graduation margin percentage."""
+        self.performance_margin_percent = float(margin_percent)
+        logger.info(
+            f"[PromotionEvaluator] Performance margin updated: {self.performance_margin_percent:.2f}%"
         )
 
     def evaluate_agent(

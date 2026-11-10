@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: ui/renderers/node_drawer.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from typing import Any, Callable, Dict, List, Optional
 
@@ -146,7 +138,14 @@ class NodeDrawer:
                 has_semaphore = is_traffic_light or rec_type == "add"
 
                 if has_semaphore or is_junction:
-                    drawn_nodes_cache.append({"id": node_id, "cx": cx, "cy": cy})
+                    drawn_nodes_cache.append(
+                        {
+                            "id": node_id,
+                            "cx": cx,
+                            "cy": cy,
+                            "has_semaphore": has_semaphore,
+                        }
+                    )
                     canvas_dynamic.shapes.append(
                         cv.Circle(
                             x=cx,

@@ -1,0 +1,54 @@
+{
+  "theme": {
+    "background": "#F7F7F7",
+    "surface": "#263238",
+    "surfaceBorder": "#37474F",
+    "surfaceBorderSubtle": "#455A64",
+    "textPrimary": "#FFFFFF",
+    "textSecondary": "#B0BEC5",
+    "textMuted": "#90A4AE"
+  },
+  "map": {
+    "roadCasing": "#1E242B",
+    "roadDefault": "#000000",
+    "intersectionBorder": "#FFFFFF",
+    "intersectionCore": "#2C3E50"
+  },
+  "trafficLights": {
+    "box": "#000000",
+    "border": "#334155",
+    "red": "#EF4444",
+    "yellow": "#F59E0B",
+    "green": "#22C55E",
+    "inactiveOpacity": 0.22
+  },
+  "heatmap": {
+    "freeFlow": "#2ECC71",
+    "moderate": "#F1C40F",
+    "retention": "#E67E22",
+    "intense": "#E74C3C",
+    "congested": "#C0392B"
+  },
+  "evp": {
+    "samu": {
+      "base": "#FFFFFF",
+      "alert": "#E53935",
+      "stroke": "#0F172A",
+      "aura": "#EF4444"
+    },
+    "bombeiros": {
+      "base": "#FF9800",
+      "alert": "#FF3D00",
+      "stroke": "#0F172A",
+      "aura": "#FF3D00"
+    },
+    "policia": {
+      "base": "#1E3A8A",
+      "alert": "#2563EB",
+      "stroke": "#0F172A",
+      "aura": "#2563EB"
+    },
+    "badgeBackground": "#263238",
+    "badgeText": "#FFFFFF"
+  }
+}

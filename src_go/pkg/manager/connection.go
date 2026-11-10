@@ -1,22 +1,6 @@
-// CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-// Copyright (C) 2026 Noxfort Systems
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as
-// published by the Free Software Foundation, either version 3 of the
-// License, or (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-// File: src_go/pkg/manager/connection.go
-// Author: Gabriel Moraes
-// Date: September 2026
+// CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+// SPDX-FileCopyrightText: 2026 Noxfort Systems
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 package manager
 
@@ -43,22 +27,9 @@ func (m *HardwareManager) Connect(
 	greenStages []int,
 	configPaths ...string,
 ) (map[string]interface{}, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	var customConfigPath string
 	if len(configPaths) > 0 {
 		customConfigPath = configPaths[0]
-	}
-
-	// If already connected, close previous connection cleanly
-	if oldDriver, exists := m.drivers[intersectionID]; exists {
-		if hb, ok := m.heartbeats[intersectionID]; ok {
-			hb.Stop()
-			delete(m.heartbeats, intersectionID)
-		}
-		oldDriver.Shutdown()
-		delete(m.drivers, intersectionID)
 	}
 
 	if port <= 0 {
@@ -68,6 +39,19 @@ func (m *HardwareManager) Connect(
 		community = "public"
 	}
 
+	// 1. Clean up old connection under lock
+	m.mu.Lock()
+	if oldDriver, exists := m.drivers[intersectionID]; exists {
+		if hb, ok := m.heartbeats[intersectionID]; ok {
+			hb.Stop()
+			delete(m.heartbeats, intersectionID)
+		}
+		oldDriver.Shutdown()
+		delete(m.drivers, intersectionID)
+	}
+	m.mu.Unlock()
+
+	// 2. Discover or instantiate driver without holding the manager mutex
 	var driver protocol.TrafficDriver
 	var err error
 
@@ -85,6 +69,18 @@ func (m *HardwareManager) Connect(
 		if err != nil {
 			return nil, fmt.Errorf("connection and discovery failed for %s (%s:%d): %w", intersectionID, ip, port, err)
 		}
+	}
+
+	// 3. Register driver and start heartbeat under lock
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if oldDriver, exists := m.drivers[intersectionID]; exists {
+		if hb, ok := m.heartbeats[intersectionID]; ok {
+			hb.Stop()
+			delete(m.heartbeats, intersectionID)
+		}
+		oldDriver.Shutdown()
 	}
 
 	m.drivers[intersectionID] = driver

@@ -1,24 +1,7 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/analysis/warrant_evaluator.py (V2 — Traffic Engineering Mathematics)
-# Author: Gabriel Moraes
-# Date: April 22, 2026
-
-# -*- coding: utf-8 -*-
 """
 WarrantEvaluator V2 — Proper Traffic Engineering Analysis.
 
@@ -152,7 +135,7 @@ class WarrantEvaluator:
         saturation_critical = w4.get("met", False) or (w4.get("max_x_ratio", 0.0) > 0.85)
 
         if has_tl:
-            # Status Atual == "Sinalizado"
+            # Current Status == "Signalized"
             if saturation_critical or warrants_met >= 1:
                 justification = "O cruzamento já é sinalizado e opera sob alta demanda ou warrants normativos, recomendando-se a otimização dos tempos de ciclo e sincronização viária."
                 return rec_optimize, justification
@@ -160,7 +143,7 @@ class WarrantEvaluator:
                 justification = self.lm.get_string("warrant_evaluator.justify_keep", count=warrants_met)
                 return rec_keep, justification
         else:
-            # Status Atual == "Não Sinalizado"
+            # Current Status == "Unsignalized"
             if saturation_critical or warrants_met >= 1:
                 justification = (
                     self.lm.get_string("warrant_evaluator.justify_add_saturation")

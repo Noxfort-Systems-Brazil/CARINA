@@ -1,28 +1,15 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/account_settings_card.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from typing import Callable, Dict, List
 
 import flet as ft
 
+from ui.components.password_strength_indicator import PasswordStrengthIndicator
 from ui.handlers.locale_manager import LocaleManager
+
+from src.security.password_policy import PasswordValidator
 
 
 class AccountSettingsCard(ft.Card):
@@ -53,7 +40,12 @@ class AccountSettingsCard(ft.Card):
             password=True,
             can_reveal_password=True,
             expand=True,
+            on_change=self._on_password_change,
         )
+
+        # Delegated Password Strength Indicator
+        self.strength_indicator = PasswordStrengthIndicator(self.locale_manager)
+
         self.role_dropdown = ft.Dropdown(
             label=self.locale_manager.get_string("accounts.access_level", "Nível de Acesso"),
             options=[
@@ -98,6 +90,7 @@ class AccountSettingsCard(ft.Card):
                     ft.Divider(height=10),
                     self.add_account_title,
                     ft.Row([self.username_field, self.password_field]),
+                    self.strength_indicator,
                     ft.Row([self.role_dropdown, self.add_btn]),
                     ft.Divider(height=20),
                     ft.Row(
@@ -113,10 +106,58 @@ class AccountSettingsCard(ft.Card):
             ),
         )
 
+    # Backward-compatibility accessors for existing tests and consumers
+    @property
+    def strength_title(self):
+        return self.strength_indicator.strength_title
+
+    @property
+    def strength_status(self):
+        return self.strength_indicator.strength_status
+
+    @property
+    def strength_bar(self):
+        return self.strength_indicator.strength_bar
+
+    @property
+    def crit_length_icon(self):
+        return self.strength_indicator.crit_length_icon
+
+    @property
+    def crit_upper_icon(self):
+        return self.strength_indicator.crit_upper_icon
+
+    @property
+    def crit_num_icon(self):
+        return self.strength_indicator.crit_num_icon
+
+    @property
+    def crit_spec_icon(self):
+        return self.strength_indicator.crit_spec_icon
+
+    @property
+    def crit_lower_icon(self):
+        return self.strength_indicator.crit_lower_icon
+
+    def _reset_strength_meter(self):
+        self.strength_indicator.reset()
+
+    def _on_password_change(self, e):
+        pwd = self.password_field.value or ""
+        strength = self.strength_indicator.update_from_password(pwd)
+        if self.password_field.error_text and strength["is_valid"]:
+            self.password_field.error_text = None
+        if self.page:
+            self.update()
+
     def update_translations(self, lm: LocaleManager):
+        self.locale_manager = lm
         self.title_text.value = lm.get_string("accounts.title", "Gerenciamento de Contas")
         self.username_field.label = lm.get_string("security.username", "Nome de Usuário")
         self.password_field.label = lm.get_string("security.password", "Senha")
+
+        self.strength_indicator.update_translations(lm)
+
         self.role_dropdown.label = lm.get_string("accounts.access_level", "Nível de Acesso")
         if len(self.role_dropdown.options) >= 2:
             self.role_dropdown.options[0].text = lm.get_string("accounts.operator", "Operador (Acesso Padrão)")
@@ -126,17 +167,43 @@ class AccountSettingsCard(ft.Card):
         self.add_account_title.value = lm.get_string("accounts.add_new_account", "Adicionar Nova Conta:")
         self.registered_accounts_title.value = lm.get_string("accounts.registered_accounts", "Contas Cadastradas:")
 
+        self._on_password_change(None)
+
         if self.page:
             self.update()
 
     def _add_user(self, e):
-        uname = self.username_field.value.strip()
-        pwd = self.password_field.value
+        uname = self.username_field.value.strip() if self.username_field.value else ""
+        pwd = self.password_field.value or ""
         role = self.role_dropdown.value
+
+        if not uname:
+            self.username_field.error_text = self.locale_manager.get_string(
+                "security.username_required", "Nome de usuário obrigatório."
+            )
+            if self.page:
+                self.update()
+            return
+        else:
+            self.username_field.error_text = None
+
+        is_valid, _ = PasswordValidator.validate(pwd)
+        if not is_valid:
+            self.password_field.error_text = self.locale_manager.get_string(
+                "accounts.password_requirements_hint",
+                "A senha deve conter no mínimo 8 caracteres, números, letra maiúscula e caractere especial.",
+            )
+            if self.page:
+                self.update()
+            return
+        else:
+            self.password_field.error_text = None
+
         if uname and pwd and role:
             self.on_add_user(uname, pwd, role)
             self.username_field.value = ""
             self.password_field.value = ""
+            self._reset_strength_meter()
             if self.page:
                 self.update()
 
@@ -146,7 +213,6 @@ class AccountSettingsCard(ft.Card):
             uname = u.get("username", "")
             role = u.get("role", "")
 
-            # Prevent removing the master from here if it leaks, but master is not in DB.
             icon_color = ft.Colors.AMBER if role == "SUPERUSER" else ft.Colors.BLUE_200
 
             row = ft.Row(

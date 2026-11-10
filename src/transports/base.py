@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/transports/base.py
-# Author: Gabriel Moraes
-# Date: 2026-09-12 (SOLID Refactoring)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the abstract base contract for all external Monitor communication transports.
@@ -26,14 +10,24 @@ Adheres to:
 """
 
 from abc import ABC, abstractmethod
+import logging
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _log_monitor_healthcheck(
     status_msg: str, is_connected: bool, enabled: bool, host: str = "127.0.0.1", port: int = 1883
 ):
-    """Placeholder for monitor healthcheck audit logging."""
-    pass
+    """Logs monitor transport healthcheck state transitions at debug level."""
+    logger.debug(
+        "[MonitorHealthcheck] status=%s | connected=%s | enabled=%s | endpoint=%s:%s",
+        status_msg,
+        is_connected,
+        enabled,
+        host,
+        port,
+    )
 
 
 class BaseMonitorTransport(ABC):

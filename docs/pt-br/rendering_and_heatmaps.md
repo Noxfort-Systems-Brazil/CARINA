@@ -70,9 +70,11 @@ Pesos e gradientes de calor são configurados em `config/settings.ini`:
 [HEATMAP_SCALING]
 weight_occupancy = 1.0
 weight_waiting_time = 1.5
-weight_queue_length = 2.0
-gaussian_kernel_radius = 24
-color_ramp = viridis  # Opções: viridis, plasma, turbo, traffic_light
+weight_flow = 1.0
+saturation_threshold = 0.85
+lane_aggregation_strategy = max
+heatmap_strategy = combined
+heatmap_saturation = 1.0
 ```
 
 ---

@@ -26,7 +26,7 @@ Action de Phase Proposée ──> [0. Interception Priorité EVP] ──> [1. R�
 
 ## 2. Inventaire des Règles de Veto Symbolique (`SafetyAuditor`)
 
-Le [`SafetyAuditor`](../../src/core/safety_auditor.py) applique des contraintes physiques strictes qui ne peuvent jamais être relâchées, modifiées ou contournées par l'optimisation des réseaux neuronaux :
+Le [`SafetyAuditor`](../../src/core/safety_auditor.py) et le [`GuardianSymbolicAuditor`](../../src/safety/guardian_symbolic_auditor.py) appliquent des contraintes physiques strictes qui ne peuvent jamais être relâchées, modifiées ou contournées par l'optimisation des réseaux neuronaux :
 
 | ID Règle | Nom | Description de la Contrainte | Action en Cas de Violation |
 | :--- | :--- | :--- | :--- |
@@ -34,8 +34,9 @@ Le [`SafetyAuditor`](../../src/core/safety_auditor.py) applique des contraintes 
 | **SR-01** | **Temps Vert Minimal** | La phase active doit rester verte pendant au moins $T_{min} = 7.0\text{ s}$ pour évacuer les véhicules en file. | Forcer `ACTION_KEEP_PHASE`. |
 | **SR-02** | **Dégagement Jaune** | Toute transition de phase doit obligatoirement respecter un intervalle d'avertissement jaune de $3.0\text{ s}$. | Intercepter l'action ; injecter la phase Jaune. |
 | **SR-03** | **Intervalle Tout-Rouge** | Les mouvements directionnels en conflit nécessitent un intervalle de dégagement tout-rouge de $2.0\text{ s}$. | Injecter l'état de dégagement Tout-Rouge. |
-| **SR-04** | **Protection Piétons** | Les boutons-poussoirs piétons activés garantissent un intervalle piéton/clignotant ininterrompu. | Bloquer les mouvements véhiculaires conflictuels. |
-| **SR-05** | **Matrice de Conflit** | Empêche l'affichage simultané d'indications vertes sur des voies conflictuelles ou sécantes. | Veto strict ; repli vers l'état de repos sécurisé. |
+| **SR-04** | **Temps Rouge Minimal** | Les mouvements non desservis doivent respecter un intervalle rouge minimal avant d'être réactivés. | Inhiber la réactivation prématurée de la phase. |
+| **SR-05** | **Plafond Vert Maximal (Anti-Famine)** | Une phase ne peut excéder la durée verte maximale si des approches concurrentes ont des files d'attente. | Forcer la terminaison de la phase et la transition vers la demande en attente. |
+| **SR-06** | **Matrice de Conflit & Vert Fantôme** | Empêche l'affichage simultané d'indications vertes sur des voies conflictuelles ou sur des axes sans débit. | Veto strict ; repli vers l'état de repos sécurisé. |
 
 ---
 
@@ -128,5 +129,5 @@ Pour les détails sur la communication avec les contrôleurs physiques, voir [Pi
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

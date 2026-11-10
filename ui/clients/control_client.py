@@ -1,29 +1,13 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/clients/control_client.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o ControlClient.
+Defines the ControlClient.
 
-Esta versão foi atualizada para se conectar ao LiveDataProvider, criando
-um 'feedback loop' que permite que os comandos da UI (como mudança de
-tempos) afetem a simulação de dados mock em tempo real.
+This version connects to the LiveDataProvider, creating
+a 'feedback loop' that allows UI commands (such as timing changes)
+to affect mock simulation data in real time.
 """
 
 import logging
@@ -36,33 +20,33 @@ if TYPE_CHECKING:
 
 class ControlClient:
     """
-    Traduz ações da UI em comandos e os envia para o backend.
+    Translates UI actions into commands and sends them to the backend.
     """
 
     def __init__(self, live_data_provider: "LiveDataProvider" = None):
         """
-        Inicializa o cliente de controle.
+        Initializes the control client.
 
         Args:
-            live_data_provider: Uma referência opcional ao provedor de dados
-                                para o feedback loop da UI.
+            live_data_provider: An optional reference to the data provider
+                                for UI feedback loop.
         """
         self.live_data_provider = live_data_provider
-        logging.info("[ControlClient] Cliente de comando inicializado (Modo Stub).")
+        logging.info("[ControlClient] Cliente de comando inicializado.")
 
     def set_global_mode(self, mode: str):
         """
-        Envia um comando para alterar o modo de operação global do sistema.
+        Sends a command to change the global system operation mode.
         """
-        print(f">>> [COMANDO UI]: Mudar modo global para '{mode.upper()}'")
         logging.info(f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Mudar modo global para '{mode.upper()}'")
-        pass
+        if self.live_data_provider:
+            command = {"type": "set_global_mode", "payload": {"mode": mode}}
+            self.live_data_provider.send_command_to_backend(command)
 
     def set_semaphore_override(self, semaphore_id: str, state: str):
         """
-        Envia um comando para aplicar um override em um semáforo específico.
+        Sends a command to apply an override to a specific traffic light.
         """
-        print(f">>> [COMANDO UI]: Override no semáforo '{semaphore_id}' para o estado '{state.upper()}'")
         logging.info(
             f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Aplicar override no semáforo '{semaphore_id}' para o estado '{state.upper()}'"
         )
@@ -72,9 +56,8 @@ class ControlClient:
 
     def set_street_override(self, street_id: str, state: str):
         """
-        Envia um comando para bloquear ou desbloquear uma rua.
+        Sends a command to block or unblock a street.
         """
-        print(f">>> [COMANDO UI]: Override na rua '{street_id}' para o estado '{state.upper()}'")
         logging.info(
             f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Aplicar override na rua '{street_id}' para o estado '{state.upper()}'"
         )
@@ -84,7 +67,7 @@ class ControlClient:
 
     def trigger_analysis(self):
         """
-        Envia um comando para disparar a análise de planejamento imediatamente.
+        Sends a command to trigger planning analysis immediately.
         """
         logging.info("--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Disparar análise de planejamento")
         if self.live_data_provider:
@@ -93,9 +76,28 @@ class ControlClient:
 
     def trigger_mfd_analysis(self):
         """
-        Envia um comando para disparar a análise de otimização MFD imediatamente.
+        Sends a command to trigger MFD optimization analysis immediately.
         """
         logging.info("--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Disparar análise MFD")
         if self.live_data_provider:
             command = {"type": "trigger_mfd_analysis", "payload": {}}
             self.live_data_provider.send_command_to_backend(command)
+
+    def toggle_semaphore_yellow_schedule(self, semaphore_id: str):
+        """
+        Sends a command to toggle inclusion of a traffic light in the flashing yellow schedule.
+        """
+        logging.info(f"--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Alternar agendamento de amarelo para {semaphore_id}")
+        if self.live_data_provider:
+            command = {"type": "toggle_yellow_schedule_semaphore", "payload": {"semaphore_id": semaphore_id}}
+            self.live_data_provider.send_command_to_backend(command)
+
+    def set_yellow_schedule(self, schedule_payload: dict):
+        """
+        Sends a command to update flashing yellow schedule settings.
+        """
+        logging.info("--- [CONTROL_CLIENT] ---> COMANDO ENVIADO: Atualizar agendamento de amarelo intermitente")
+        if self.live_data_provider:
+            command = {"type": "set_yellow_schedule", "payload": schedule_payload}
+            self.live_data_provider.send_command_to_backend(command)
+

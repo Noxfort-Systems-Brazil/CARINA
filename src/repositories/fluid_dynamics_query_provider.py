@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/repositories/fluid_dynamics_query_provider.py
-# Author: Gabriel Moraes
-# Date: August 12, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -61,7 +45,7 @@ class FluidDynamicsQueryProvider:
                 logging.warning(f"[FluidDynamicsQueryProvider] Query config file not found in candidates: {candidates}")
                 cls._queries_cache = {}
         except Exception as e:
-            logging.error(f"[FluidDynamicsQueryProvider] Failed to load fluid_dynamics_queries.json: {e}")
+            logging.error(f"[FluidDynamicsQueryProvider] Failed to load fluid_dynamics_queries.json: {e}", exc_info=True)
             cls._queries_cache = {}
 
     def get_query(self, query_key: str, key_suffix: str = None) -> str:
@@ -117,7 +101,7 @@ class FluidDynamicsQueryProvider:
 
             return max_dt - timedelta(seconds=limit_seconds)
         except Exception as e:
-            logging.warning(f"[DB_MANAGER] Could not fetch MAX timestamp, fallback to datetime.now(): {e}")
+            logging.warning(f"[DB_MANAGER] Could not fetch MAX timestamp, fallback to datetime.now(): {e}", exc_info=True)
             return datetime.now() - timedelta(seconds=limit_seconds)
 
     @staticmethod

@@ -1,26 +1,31 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: src/mfd/mfd_analyzer.py
-# Author: Gabriel Moraes
-# Date: July 03, 2026
+"""
+MFD Optimization Analysis & Orchestration Module.
+
+Coordinates macroscopic fundamental diagram metrics, averages, trend detection,
+and historical comparisons. Acts purely as an orchestrator, delegating to specialized
+submodules for metrics calculation, baseline management, comparisons, and impacts.
+"""
 
 from mfd.mfd_baseline_manager import MFDReportBaselineManager
 from mfd.mfd_comparison_engine import MFDComparisonEngine
-from mfd.mfd_metrics_calculator import MFDMetricsCalculator
+from mfd.mfd_data_normalizer import MFDDataNormalizer
+from mfd.mfd_fallback_factory import MFDFallbackFactory
+from mfd.mfd_impact_calculator import MFDImpactCalculator
+from mfd.mfd_impact_labels import MFDImpactLabels, get_impact_labels
+from mfd.mfd_intersection_metrics_calculator import MFDIntersectionMetricsCalculator
+from mfd.mfd_map_resolver import MFDMapResolver
+from mfd.mfd_maturity_evaluator import MFDMaturityEvaluator
+from mfd.mfd_metrics_calculator import (
+    MFDMetricsCalculator,
+    _classify_outcome,
+    _safe_pct,
+)
+from mfd.mfd_stage_aggregator import MFDStageAggregator
+from mfd.mfd_zone_calculator import MFDZoneCalculator
 
 
 class MFDAnalyzer:
@@ -136,3 +141,23 @@ class MFDAnalyzer:
                 "intersection_comparisons": comparison_first["intersection_comparisons"],
             },
         }
+
+
+__all__ = [
+    "MFDAnalyzer",
+    "MFDComparisonEngine",
+    "MFDDataNormalizer",
+    "MFDFallbackFactory",
+    "MFDImpactCalculator",
+    "MFDImpactLabels",
+    "MFDIntersectionMetricsCalculator",
+    "MFDMapResolver",
+    "MFDMaturityEvaluator",
+    "MFDMetricsCalculator",
+    "MFDReportBaselineManager",
+    "MFDStageAggregator",
+    "MFDZoneCalculator",
+    "get_impact_labels",
+    "_classify_outcome",
+    "_safe_pct",
+]

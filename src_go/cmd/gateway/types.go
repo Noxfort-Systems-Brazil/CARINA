@@ -1,22 +1,6 @@
-// CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-// Copyright (C) 2026 Noxfort Systems
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as
-// published by the Free Software Foundation, either version 3 of the
-// License, or (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-// File: src_go/cmd/gateway/types.go
-// Author: Gabriel Moraes
-// Date: September 2026
+// CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+// SPDX-FileCopyrightText: 2026 Noxfort Systems
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 package main
 
@@ -43,6 +27,10 @@ type RequestEnvelope struct {
 	ConfigPath      string                 `json:"config_path,omitempty"`
 	CurrentStageIdx int                    `json:"current_stage_idx"`
 	StageCodes      map[int]string         `json:"stage_codes"`
+	Domain          string                 `json:"domain,omitempty"`
+	Token           string                 `json:"token,omitempty"`
+	Enabled         *bool                  `json:"enabled,omitempty"`
+	Data            interface{}            `json:"data,omitempty"`
 }
 
 // ResponseEnvelope represents a synchronous command response sent over stdout.
@@ -53,6 +41,11 @@ type ResponseEnvelope struct {
 	Error     string      `json:"error,omitempty"`
 	Data      interface{} `json:"data,omitempty"`
 	Telemetry interface{} `json:"telemetry,omitempty"`
+}
+
+// ResponseSender defines an abstract sender for command responses and push events.
+type ResponseSender interface {
+	Send(payload interface{})
 }
 
 type stdoutWriter struct {
@@ -74,3 +67,43 @@ func (w *stdoutWriter) Send(payload interface{}) {
 	_ = w.writer.WriteByte('\n')
 	_ = w.writer.Flush()
 }
+
+
+// IPCHub broadcasts unsolicited push events to all connected clients (stdout and Unix sockets).
+type IPCHub struct {
+	mu      sync.RWMutex
+	senders map[ResponseSender]struct{}
+}
+
+func NewIPCHub(initial ...ResponseSender) *IPCHub {
+	hub := &IPCHub{
+		senders: make(map[ResponseSender]struct{}),
+	}
+	for _, s := range initial {
+		if s != nil {
+			hub.senders[s] = struct{}{}
+		}
+	}
+	return hub
+}
+
+func (h *IPCHub) Register(s ResponseSender) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.senders[s] = struct{}{}
+}
+
+func (h *IPCHub) Unregister(s ResponseSender) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.senders, s)
+}
+
+func (h *IPCHub) Broadcast(payload interface{}) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for s := range h.senders {
+		s.Send(payload)
+	}
+}
+

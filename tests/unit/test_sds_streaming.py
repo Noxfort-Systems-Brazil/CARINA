@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_sds_streaming.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -132,3 +116,119 @@ def test_websocket_server_registration():
         assert mock_ws not in server.clients
 
     asyncio.run(_run())
+
+
+@pytest.mark.unit
+def test_websocket_server_handler_lifecycle():
+    async def _run():
+        import json
+        from queue import Full
+        import websockets
+
+        lm = MagicMock()
+        ui_queue = MagicMock()
+        server = WebSocketServer(host="127.0.0.1", port=8765, ui_command_queue=ui_queue, locale_manager=lm)
+
+        mock_ws = AsyncMock()
+        mock_ws.remote_address = ("127.0.0.1", 54321)
+
+        # Messages: valid JSON, invalid JSON, queue full, then disconnect
+        async def mock_messages():
+            yield json.dumps({"cmd": "override", "tl": "TL_1"})
+            yield "INVALID_JSON{{{"
+            yield json.dumps({"cmd": "overflow"})
+
+        mock_ws.__aiter__.side_effect = mock_messages
+
+        # 3rd message causes Full queue
+        ui_queue.put.side_effect = [None, Full()]
+
+        await server._handler(mock_ws)
+
+        assert mock_ws not in server.clients
+        assert ui_queue.put.call_count == 2
+
+    asyncio.run(_run())
+
+
+@pytest.mark.unit
+def test_websocket_server_broadcast_async_with_disconnected_clients():
+    async def _run():
+        import websockets
+        lm = MagicMock()
+        server = WebSocketServer(host="127.0.0.1", port=8765, locale_manager=lm)
+
+        client1 = AsyncMock()
+        client2 = AsyncMock()
+        client2.send.side_effect = ConnectionResetError("Disconnected")
+
+        server.clients.add(client1)
+        server.clients.add(client2)
+
+        await server._broadcast_async('{"data": 123}')
+
+        client1.send.assert_called_once_with('{"data": 123}')
+        # client2 should have been unregistered
+        assert client2 not in server.clients
+        assert client1 in server.clients
+
+        # Empty clients branch
+        server.clients.clear()
+        await server._broadcast_async('{"data": 123}')
+
+    asyncio.run(_run())
+
+
+@pytest.mark.unit
+def test_websocket_server_main_loop_port_fallback_and_fatal():
+    async def _run():
+        import websockets
+        lm = MagicMock()
+        server = WebSocketServer(host="127.0.0.1", port=8765, locale_manager=lm)
+
+        # 1. Port 8765 busy (errno 98), port 8766 succeeds
+        err_busy = OSError()
+        err_busy.errno = 98
+
+        mock_srv = AsyncMock()
+        mock_srv.__aenter__.return_value = mock_srv
+        mock_srv.__aexit__.return_value = None
+
+        calls = [err_busy, mock_srv]
+        async def fake_serve(*args, **kwargs):
+            res = calls.pop(0)
+            if isinstance(res, Exception):
+                raise res
+            return res
+
+        with patch("websockets.serve", side_effect=fake_serve), \
+             patch("asyncio.Future", side_effect=asyncio.CancelledError):
+            try:
+                await server._main_loop()
+            except asyncio.CancelledError:
+                pass
+            assert server.port == 8766
+
+        # 2. All 3 ports busy -> fatal error logged
+        server.port = 8765
+        async def fake_serve_all_fail(*args, **kwargs):
+            raise err_busy
+
+        with patch("websockets.serve", side_effect=fake_serve_all_fail):
+            await server._main_loop()
+
+    asyncio.run(_run())
+
+
+
+@pytest.mark.unit
+def test_websocket_server_start_and_stop():
+    lm = MagicMock()
+    server = WebSocketServer(host="127.0.0.1", port=8765, locale_manager=lm)
+
+    with patch.object(server, "_main_loop", return_value=None):
+        server.start()
+        assert server.thread is not None
+        assert server.loop is not None
+        server.stop()
+

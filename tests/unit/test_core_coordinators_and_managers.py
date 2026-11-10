@@ -1,34 +1,19 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_core_coordinators_and_managers.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
 from collections import Counter
 from unittest.mock import MagicMock, patch
 
 import pytest
+import torch
 
 import core.traci_proxy as traci_proxy
 from core.enums import Maturity
 from core.inference_engine import InferenceEngine
 from core.lifecycle_manager import LifecycleManager
-from core.maturity_reporter import MaturityReporter
+from maturity.maturity_reporter import MaturityReporter
 from core.observation_builder import ObservationBuilder
 from core.population_manager import PopulationManager
 from core.strategic_coordinator import StrategicCoordinator
@@ -173,16 +158,61 @@ def test_population_manager_pbt_loading(mock_locale):
 
 
 def test_strategic_coordinator_init():
-    """StrategicCoordinator initializes GAT settings and consultant agent."""
+    """StrategicCoordinator initializes GAT settings and sequence manager."""
     mock_locale = MagicMock()
     mock_settings = MagicMock()
     gat_mock = MagicMock()
-    gat_mock.getint.side_effect = lambda k: 60 if k == "update_frequency_seconds" else 16
+    gat_mock.getint.side_effect = lambda k: 5 if k == "update_frequency_seconds" else (12 if k == "temporal_window" else 16)
     mock_settings.__getitem__.side_effect = lambda k: gat_mock if k == "GAT_STRATEGIST" else MagicMock()
 
     coord = StrategicCoordinator(settings=mock_settings, device="cpu", locale_manager=mock_locale)
-    assert coord.update_frequency == 60
+    assert coord.update_frequency == 5
     assert coord.output_dim == 16
+    assert coord.temporal_window == 12
+    assert len(coord.temporal_buffer) == 0
+
+
+def test_strategic_coordinator_temporal_update_and_training():
+    """Verifies that StrategicCoordinator maintains temporal buffer and runs self-supervised updates."""
+    mock_locale = MagicMock()
+    mock_settings = MagicMock()
+    gat_mock = MagicMock()
+    gat_mock.getint.side_effect = lambda k: 5 if k == "update_frequency_seconds" else (12 if k == "temporal_window" else 8)
+    mock_settings.__getitem__.side_effect = lambda k: gat_mock if k == "GAT_STRATEGIST" else MagicMock()
+
+    coord = StrategicCoordinator(settings=mock_settings, device="cpu", locale_manager=mock_locale)
+
+    # Setup mocked graph topology
+    coord.graph_edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
+    coord.graph_edge_attr = torch.zeros((2, 3))
+    coord.tl_id_to_idx = {"TL_1": 0, "TL_2": 1}
+    coord.tl_idx_to_id = {0: "TL_1", 1: "TL_2"}
+    coord.max_state_dim = 6
+    coord.strategic_vectors = torch.zeros((2, 8))
+
+    # Mock StrategistAgent
+    mock_agent = MagicMock()
+    mock_out = torch.zeros((2, 8))
+    mock_pred = torch.zeros((2, 6))
+    mock_agent.get_strategic_vectors.return_value = (mock_out, mock_pred)
+    coord.gat_model = mock_agent
+
+    # First update at t = 0
+    states_t0 = {"TL_1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "TL_2": [0.5] * 6}
+    coord.update_if_needed(sim_time=0.0, current_states_dict=states_t0)
+    assert len(coord.temporal_buffer) == 1
+    assert coord.cached_future_pred is not None
+    assert coord.prediction_target_time == 5.0
+
+    # Second update at t = 5 (target time arrived -> triggers update(loss))
+    states_t1 = {"TL_1": [1.2, 2.1, 3.1, 4.1, 5.1, 6.1], "TL_2": [0.6] * 6}
+    coord.update_if_needed(sim_time=5.0, current_states_dict=states_t1)
+    assert len(coord.temporal_buffer) == 2
+    assert mock_agent.update.called
+
+    vec = coord.get_strategic_vector_for_agent("TL_1")
+    assert isinstance(vec, list)
+    assert len(vec) == 8
 
 
 def test_maturity_reporter_promotion(mock_locale):

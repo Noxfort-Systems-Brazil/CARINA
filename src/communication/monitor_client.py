@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/communication/monitor_client.py
-# Author: Gabriel Moraes
-# Date: 2026-03-03 (Refactored 2026-07-31 for SRP)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 MonitorClient acts as the Facade/Orchestrator integrating CARINA with the external
@@ -33,10 +17,7 @@ from communication.monitor_payload import MonitorPayloadBuilder
 from utils.locale_manager_backend import LocaleManagerBackend
 from utils.settings_manager import SettingsManager
 
-try:
-    from transports import BaseMonitorTransport, _log_monitor_healthcheck, create_monitor_transport
-except ImportError:
-    from src.transports import BaseMonitorTransport, _log_monitor_healthcheck, create_monitor_transport
+from transports import BaseMonitorTransport, _log_monitor_healthcheck, create_monitor_transport
 
 
 class MonitorClient:
@@ -50,14 +31,7 @@ class MonitorClient:
     ) -> "MonitorClient":
         if cls._instance is None:
             if settings_manager is None:
-                try:
-                    from src.utils.settings_manager import SettingsManager
-
-                    settings_manager = SettingsManager()
-                except Exception:
-                    from utils.settings_manager import SettingsManager
-
-                    settings_manager = SettingsManager()
+                settings_manager = SettingsManager()
             cls(settings_manager=settings_manager, locale_manager=locale_manager)
         return cls._instance
 
@@ -141,7 +115,7 @@ class MonitorClient:
             try:
                 self.report_incident(category="SOFTWARE", level="CRITICAL", message=shutdown_message)
             except Exception as e:
-                logging.error(f"[{self.__class__.__name__}] Failed to send shutdown message: {e}")
+                logging.error(f"[{self.__class__.__name__}] Failed to send shutdown message: {e}", exc_info=True)
 
         self.enabled = False
         if self.transport:
@@ -163,8 +137,6 @@ class MonitorClient:
 
         # Persist monitor_enabled = True so CARINA stays constantly connected across restarts
         try:
-            from src.utils.settings_manager import SettingsManager
-
             sm = SettingsManager()
             curr = sm.load_settings()
             curr["monitor_enabled"] = "True"
@@ -172,7 +144,7 @@ class MonitorClient:
             curr["monitor_mqtt_port"] = str(self.port)
             sm.save_settings(curr)
         except Exception as err:
-            logging.error(f"[{self.__class__.__name__}] Failed to persist monitor_enabled setting: {err}")
+            logging.error(f"[{self.__class__.__name__}] Failed to persist monitor_enabled setting: {err}", exc_info=True)
 
         _log_monitor_healthcheck("MANUAL CONNECT REQUEST", self.is_connected, True, self.host, self.port)
         self.transport.setup()
@@ -186,14 +158,12 @@ class MonitorClient:
 
         # Persist monitor_enabled = False on explicit manual disconnect
         try:
-            from src.utils.settings_manager import SettingsManager
-
             sm = SettingsManager()
             curr = sm.load_settings()
             curr["monitor_enabled"] = "False"
             sm.save_settings(curr)
         except Exception as err:
-            logging.error(f"[{self.__class__.__name__}] Failed to persist monitor_enabled setting: {err}")
+            logging.error(f"[{self.__class__.__name__}] Failed to persist monitor_enabled setting: {err}", exc_info=True)
 
         _log_monitor_healthcheck("MANUAL DISCONNECT REQUEST", False, False, self.host, self.port)
         msg = self.locale_manager.get_string(
@@ -223,7 +193,7 @@ class MonitorClient:
                 try:
                     self.transport.ensure_connected()
                 except Exception as err:
-                    logging.error(f"[{self.__class__.__name__}] Healthcheck reconnect attempt error: {err}")
+                    logging.error(f"[{self.__class__.__name__}] Healthcheck reconnect attempt error: {err}", exc_info=True)
 
             if counter % self._heartbeat_interval == 0:
                 self.send_instant_heartbeat()
@@ -241,7 +211,7 @@ class MonitorClient:
             if self.transport.publish(self.topic_telemetry, payload, qos=1, timeout=2.0):
                 logging.debug(f"[{self.__class__.__name__}] Instant heartbeat published to Monitor.")
         except Exception as e:
-            logging.error(f"[{self.__class__.__name__}] Failed to send heartbeat: {e}")
+            logging.error(f"[{self.__class__.__name__}] Failed to send heartbeat: {e}", exc_info=True)
 
     def report_incident(self, category: str, level: str, message: str) -> bool:
         """
@@ -265,5 +235,5 @@ class MonitorClient:
                 logging.info(f"[{self.__class__.__name__}] Sent Incident ({level}): {message}")
             return success
         except Exception as e:
-            logging.error(f"[{self.__class__.__name__}] Failed to send incident report: {e}")
+            logging.error(f"[{self.__class__.__name__}] Failed to send incident report: {e}", exc_info=True)
             return False

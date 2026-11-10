@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sas/analyzer_engine.py
-# Author: Gabriel Moraes
-# Date: July 03, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import gc
@@ -73,7 +57,7 @@ class AnalyzerEngine:
                 unit = section.get("analysis_interval_unit", "days").strip().lower()
                 required_seconds = max(value, 1) * self.UNIT_TO_SECONDS.get(unit, 86400)
         except Exception as e:
-            logging.warning(f"[ANALYZER_ENGINE] Could not read analysis frequency settings: {e}")
+            logging.warning(f"[ANALYZER_ENGINE] Could not read analysis frequency settings: {e}", exc_info=True)
         return required_seconds
 
     def run_analysis(
@@ -95,7 +79,7 @@ class AnalyzerEngine:
 
                 db_manager = DatabaseManager(self.locale_manager)
             except Exception as e:
-                logging.error(f"[ANALYZER_ENGINE] Failed to initialize DatabaseManager: {e}")
+                logging.error(f"[ANALYZER_ENGINE] Failed to initialize DatabaseManager: {e}", exc_info=True)
 
         from utils.paths import get_base_output_dir
 
@@ -181,7 +165,7 @@ class AnalyzerEngine:
             self.db_data_queue.put({"type": "log_report", "payload": log_payload})
             logging.info(lm.get_string("sas_engine.run.report_sent_to_db"))
         except Exception as e:
-            logging.error(lm.get_string("sas_engine.run.db_queue_error", error=e))
+            logging.error(lm.get_string("sas_engine.run.db_queue_error", error=e), exc_info=True)
 
         if "analysis_results" in analysis_result and analysis_result["analysis_results"]:
             self._generate_planning_map(analysis_result["analysis_results"], net_file_path)
@@ -201,7 +185,7 @@ class AnalyzerEngine:
                             dur_min = round((max_dt - min_dt).total_seconds() / 60.0, 1)
                             time_window_str = f"De {min_dt.strftime('%d/%m/%Y %H:%M:%S')} até {max_dt.strftime('%d/%m/%Y %H:%M:%S')} (Duração: {dur_min:.1f} min)"
                     except Exception as ex_tw:
-                        logging.warning(f"[ANALYZER_ENGINE] Could not fetch collection time window: {ex_tw}")
+                        logging.warning(f"[ANALYZER_ENGINE] Could not fetch collection time window: {ex_tw}", exc_info=True)
 
                 docx_path, generated_text = report_gen.generate_docx_report(
                     analysis_results=analysis_result["analysis_results"],
@@ -235,7 +219,7 @@ class AnalyzerEngine:
                 )
                 logging.info("[ANALYZER_ENGINE] Analysis report sent to UI IPC queue.")
             except Exception as e:
-                logging.error(f"[ANALYZER_ENGINE] Failed to send report to IPC queue: {e}")
+                logging.error(f"[ANALYZER_ENGINE] Failed to send report to IPC queue: {e}", exc_info=True)
 
         if calibration_data_points:
             from sas.heatmap_calibrator import HeatmapCalibrator

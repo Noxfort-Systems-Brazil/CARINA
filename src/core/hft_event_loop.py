@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/core/hft_event_loop.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import time
@@ -28,12 +12,21 @@ class HftEventLoop:
     and failsafe ticking.
     """
 
-    def __init__(self, ai_pipe_conn, failsafe_manager, request_processor, sds_data_queue):
+    def __init__(
+        self,
+        ai_pipe_conn,
+        failsafe_manager,
+        request_processor,
+        sds_data_queue,
+        yellow_schedule_manager=None,
+    ):
         self.ai_pipe_conn = ai_pipe_conn
         self.failsafe_manager = failsafe_manager
         self.request_processor = request_processor
         self.sds_data_queue = sds_data_queue
+        self.yellow_schedule_manager = yellow_schedule_manager
         self.is_running = True
+        self._last_schedule_check = 0.0
 
     def run_loop(self):
         logging.info("[HftEventLoop] Entering main HFT processing loop...")
@@ -53,7 +46,7 @@ class HftEventLoop:
                     self.is_running = False
                     break
                 except Exception as e:
-                    logging.error(f"[HftEventLoop] Pipe poll error: {e}")
+                    logging.error(f"[HftEventLoop] Pipe poll error: {e}", exc_info=True)
                     break
 
             # --- FAILSAFE MONITORING (In-Process Synapse Silence Detection) ---
@@ -71,14 +64,24 @@ class HftEventLoop:
                             )
                         )
                     except Exception as e:
-                        logging.error(f"[HftEventLoop] Error sending failsafe update: {e}")
+                        logging.error(f"[HftEventLoop] Error sending failsafe update: {e}", exc_info=True)
+
+            # --- YELLOW SCHEDULE MONITORING (Time-of-day Flashing Control) ---
+            now_ts = time.time()
+            if self.yellow_schedule_manager and (now_ts - self._last_schedule_check >= 1.0):
+                self._last_schedule_check = now_ts
+                try:
+                    override_mgr = getattr(self.request_processor, "override_manager", None)
+                    self.yellow_schedule_manager.tick(override_manager=override_mgr)
+                except Exception as e_sched:
+                    logging.error(f"[HftEventLoop] Error in yellow schedule tick: {e_sched}", exc_info=True)
 
             try:
                 self.request_processor.process_queues(
                     sumo_conn=None, is_ai_healthy=not self.failsafe_manager.failsafe_active
                 )
             except Exception as e_proc:
-                logging.error(f"[HftEventLoop] Error in processing loop: {e_proc}")
+                logging.error(f"[HftEventLoop] Error in processing loop: {e_proc}", exc_info=True)
 
             time.sleep(0.05)
 

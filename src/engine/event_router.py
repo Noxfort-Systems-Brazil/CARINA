@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/event_router.py
-# Author: Gabriel Moraes
-# Date: April 15, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import time
@@ -128,18 +112,36 @@ class EventRouter:
 
         elif module == "hardware" and func == "toggle_connection":
             action = args[2] if len(args) > 2 else "toggle"
-            is_conn = self.trainer.connection_manager.toggle_connection(args[0], args[1], action=action)
-            if not is_conn and getattr(self.trainer, "action_supervisor", None):
-                self.trainer.action_supervisor.cleanup_intersection(args[0])
+            conn_mgr = getattr(self.trainer, "connection_manager", None)
+            if not conn_mgr and hasattr(self.step_processor, "action_supervisor"):
+                conn_mgr = getattr(self.step_processor.action_supervisor, "connection_manager", None)
+
+            if conn_mgr:
+                is_conn = conn_mgr.toggle_connection(args[0], args[1], action=action)
+                supervisor = getattr(self.trainer, "action_supervisor", None) or getattr(
+                    self.step_processor, "action_supervisor", None
+                )
+                if not is_conn and supervisor:
+                    supervisor.cleanup_intersection(args[0])
+            else:
+                logging.error("[EventRouter] Cannot toggle connection: HardwareConnectionManager not available.")
 
         elif module == "hardware" and func == "apply_override":
-            if self.trainer.action_supervisor:
-                self.trainer.action_supervisor.apply_hardware_override(args[0], args[1])
+            supervisor = getattr(self.trainer, "action_supervisor", None) or getattr(
+                self.step_processor, "action_supervisor", None
+            )
+            if supervisor:
+                supervisor.apply_hardware_override(args[0], args[1])
+            else:
+                logging.error("[EventRouter] Cannot apply override: ActionSupervisor not available.")
 
         elif module == "fenix" and func == "reconcile_stages":
-            if getattr(self.trainer, "state_reconciler", None):
+            reconciler = getattr(self.trainer, "state_reconciler", None) or getattr(
+                self.step_processor, "state_reconciler", None
+            )
+            if reconciler:
                 stages = args[0] if args and isinstance(args[0], dict) else {}
-                self.trainer.state_reconciler.reconcile_with_field(stages)
+                reconciler.reconcile_with_field(stages)
 
         elif module == "system" and func == "shutdown":
             self.trainer.is_running = False

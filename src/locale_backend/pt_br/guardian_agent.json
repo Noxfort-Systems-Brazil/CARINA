@@ -6,6 +6,7 @@
     "pae_without": "sem PAE",
     "reasons": {
       "spillback": "Risco elevado de transbordamento detectado (Neural)",
+      "spillback_exploratory": "Intervenção exploratória de spillback (Treino/Exploração)",
       "neuro_passed": "Auditoria Neuro-Simbólica aprovada",
       "min_yellow": "Limites mínimos de Amarelo",
       "min_green": "Limites mínimos de Verde",

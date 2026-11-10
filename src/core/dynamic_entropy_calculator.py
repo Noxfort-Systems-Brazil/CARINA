@@ -1,24 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/core/dynamic_entropy_calculator.py
-# Author: Gabriel Moraes
-# Date: May 30, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import math
+from typing import Optional
 
 
 class DynamicEntropyCalculator:
@@ -27,16 +12,50 @@ class DynamicEntropyCalculator:
     Ensures that AI certainty requirements respect urban engineering safety ceilings.
     """
 
-    def __init__(self, e_max: float = 1.8, e_ideal: float = 0.1) -> None:
+    def __init__(
+        self,
+        n_actions: int = 2,
+        e_max: Optional[float] = None,
+        e_ideal: float = 0.1,
+        normalize: bool = False,
+    ) -> None:
         """
         Initializes the dynamic entropy calculator.
 
         Args:
-            e_max: Safety ceiling (maximum chaos allowed for urban traffic safety).
-            e_ideal: Absolute certainty limit (perfect convergence).
+            n_actions: Number of discrete actions in the policy action space (default: 2 — ADVANCE/KEEP).
+            e_max: Safety ceiling (maximum chaos allowed). If None or higher than the theoretical
+                   maximum entropy ln(n_actions) (or 1.0 if normalize=True), it is clamped to
+                   prevent impossible entropy thresholds where random policies would be promoted.
+            e_ideal: Absolute certainty limit (perfect convergence, default: 0.1).
+            normalize: If True, operates on normalized entropy in the range [0.0, 1.0].
         """
-        self.e_max = e_max
-        self.e_ideal = e_ideal
+        self.n_actions = max(2, int(n_actions))
+        self.normalize = bool(normalize)
+        self.max_theoretical_entropy = 1.0 if self.normalize else math.log(self.n_actions)
+
+        if e_max is None:
+            self.e_max = self.max_theoretical_entropy
+        else:
+            # Prevent impossible thresholds: e_max can never exceed theoretical maximum entropy
+            self.e_max = min(float(e_max), self.max_theoretical_entropy)
+
+        self.e_ideal = max(0.0, min(float(e_ideal), self.e_max))
+
+    def normalize_entropy(self, entropy: float) -> float:
+        """
+        Normalizes raw Shannon entropy (in nats) to [0.0, 1.0] by dividing by ln(n_actions).
+
+        Args:
+            entropy: Shannon entropy in nats.
+
+        Returns:
+            Normalized entropy value in [0.0, 1.0].
+        """
+        max_ent = math.log(self.n_actions)
+        if max_ent <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0, float(entropy) / max_ent))
 
     def calculate_threshold(self, configured_episodes: int, is_adult_transition: bool = False) -> float:
         """

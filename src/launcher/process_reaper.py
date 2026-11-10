@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/launcher/process_reaper.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import multiprocessing
@@ -51,13 +35,21 @@ class ProcessReaper:
                 ai_conn.send(("system", "shutdown", (), {}))
             logging.info("Shutdown signal sent to CentralController and AI_Process.")
         except Exception as e:
-            logging.error(f"Error shutting down IPC connections: {e}")
+            logging.error(f"Error shutting down IPC connections: {e}", exc_info=True)
 
         # 1b. Signal Go Hardware Gateway to release all controls and terminate
         try:
             from src.drivers.go_gateway_client import GoGatewayClient
 
             GoGatewayClient.get_instance().stop()
+        except Exception:
+            pass
+
+        # 1c. Stop standalone SDS/CCO process if active
+        try:
+            from src.sds.sds_process_starter import SDSProcessStarter
+
+            SDSProcessStarter.get_instance().stop()
         except Exception:
             pass
 

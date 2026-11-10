@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# File: tests/unit/test_local_agent.py
-# Author: Gabriel Moraes
-# Date: 2026-04-16
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import sys
 from unittest.mock import MagicMock, patch
@@ -58,8 +42,6 @@ def local_agent(base_hyperparams, mock_locale):
         patch.object(la.optim, "AdamW") as mock_optim,
         patch.object(la.torch.amp, "GradScaler") as mock_scaler,
     ):
-
-        # Ignoring the real model creation to not depend on torch in the test
         agent = LocalAgent(
             tlight_id="TL_1",
             n_observations=5,
@@ -97,10 +79,8 @@ def test_save_checkpoint(mock_save, local_agent):
     filepath = "/tmp/fake_cp.pt"
     local_agent.save_checkpoint(filepath, maturity_stage="TEEN")
 
-    # Validates that save method was called (and tensors were mocked correctly)
     mock_save.assert_called_once()
 
-    # The checkpoint dict passed in save args
     saved_data = mock_save.call_args[0][0]
     assert saved_data["maturity_stage"] == "TEEN"
     assert saved_data["n_observations"] == 5
@@ -110,7 +90,6 @@ def test_save_checkpoint(mock_save, local_agent):
 @patch.object(la.torch, "load")
 def test_load_checkpoint(mock_load, local_agent):
     """Tests that load_checkpoint rescues the state and maturity safely."""
-    # Mocked return from torch.load
     mock_load.return_value = {
         "episodes_done": 100,
         "steps_done": 500,
@@ -132,12 +111,10 @@ def test_load_checkpoint(mock_load, local_agent):
 @patch.object(la, "Categorical")
 def test_choose_action(mock_categorical, local_agent):
     """Tests simple forward action generation."""
-    # Mock return shape from actor_critic (probs, state_value)
     mock_probs = MagicMock()
     mock_value = MagicMock()
     local_agent.policy_net.return_value = (mock_probs, mock_value)
 
-    # Mock of distribution
     mock_dist = MagicMock()
     mock_dist.sample.return_value = "action_mock"
     mock_dist.log_prob.return_value = "log_prob_mock"
@@ -155,20 +132,17 @@ def test_choose_action(mock_categorical, local_agent):
 
 def test_pae_augmentation(local_agent):
     """Tests PAE tree fusion with input tensor if PAE exists."""
-    # Mock Shared PAE
     mock_pae = MagicMock()
     mock_pae.latent_dim = 3
     local_agent.shared_pae = mock_pae
     local_agent.pae_latent_dim = 3
 
-    # Fake tensor shape = [batch=1, seq_len=4, n_obs=5]
     with patch.object(la.torch, "cat") as mock_cat:
         with patch.object(la.torch, "no_grad"):
             fake_state = np.zeros((1, 4, 5))
             fake_tensor = MagicMock()
             local_agent._augment_with_pae(fake_tensor)
 
-            # Ensures it requested and used measurements in _augment_with_pae
             mock_pae.encode.assert_called()
             mock_cat.assert_called()
 
@@ -179,31 +153,23 @@ def test_choose_action_thinking_cache(local_agent):
     state2 = torch.tensor([[[1.0, 2.0, 3.0, 4.0, 5.0]]], dtype=torch.float32)
     state3 = torch.tensor([[[5.0, 4.0, 3.0, 2.0, 1.0]]], dtype=torch.float32)
 
-    # Mock policy_net outputs
     local_agent.policy_net = MagicMock()
     mock_probs1 = torch.tensor([[0.8, 0.2]])
     mock_val1 = torch.tensor([[0.5]])
     mock_probs2 = torch.tensor([[0.1, 0.9]])
     mock_val2 = torch.tensor([[0.9]])
 
-    # We will configure side_effect to return different values on consecutive calls
     local_agent.policy_net.side_effect = [(mock_probs1, mock_val1), (mock_probs2, mock_val2)]
 
-    # First decision (new state)
     dec1 = local_agent.choose_action(state1)
-
-    # Second call (identical state) -> should return cached dec1
     dec2 = local_agent.choose_action(state2)
 
-    # Policy net should have been called only once
     assert local_agent.policy_net.call_count == 1
     assert dec1[0] == dec2[0]
 
-    # Third call (different state) -> should run policy net again
     dec3 = local_agent.choose_action(state3)
     assert local_agent.policy_net.call_count == 2
 
-    # Test cache reset on done
     local_agent.memory = MagicMock()
     local_agent.xai_memory = MagicMock()
     act_mock = MagicMock()

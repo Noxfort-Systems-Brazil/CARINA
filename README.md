@@ -8,14 +8,14 @@ aliases: [Projeto CARINA, Root]
 <img src="docs/assets/carina-logo.png" alt="CARINA CORE Logo" width="130" />
 
 # CARINA CORE
-### Cognitive Autonomous Real-time Intersection Network Architecture
+### Controlled Artificial Road-traffic Intelligence Network Architecture
 *Noxfort Systems — A State Of Art Company*
 
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat&logo=github)](https://github.com/Noxfort-Systems-Brazil/CARINA)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat&logo=python&logoColor=white)](https://python.org/)
 [![Go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![License](https://img.shields.io/badge/License-AGPL_v3-blue?style=flat)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 [![CARINA GitHub Repository Card](https://github-readme-stats.vercel.app/api/pin/?username=Noxfort-Systems-Brazil&repo=CARINA&theme=dark)](https://github.com/Noxfort-Systems-Brazil/CARINA)
 
@@ -27,7 +27,7 @@ aliases: [Projeto CARINA, Root]
 
 </div>
 
-**CARINA** is a massively distributed Deep Reinforcement Learning ecosystem designed for real-time traffic control and smart city orchestration. Bypassing Python's Global Interpreter Lock (GIL) via 8 concurrent OS processes, it integrates a Tactical PPO agent, an ST-GATv2 Lite Graph Coordinator, a Global Consultant Agent (PAE 128-channel), and a Guardian Agent (D3QN) to provide 100% ABNT-compliant forensic auditability and neuro-symbolic safety.
+**CARINA** is a massively distributed Deep Reinforcement Learning ecosystem designed for real-time traffic control and smart city orchestration. Bypassing Python's Global Interpreter Lock (GIL) via 8 concurrent OS processes, it integrates a Tactical PPO agent, an ST-GATv2 Lite Graph Coordinator (Strategist Agent), a shared Predictive Autoencoder (PAE), and a Guardian Agent (D3QN) to provide 100% ABNT-compliant forensic auditability and neuro-symbolic safety.
 
 ---
 
@@ -38,23 +38,24 @@ Explore the full architecture, internal mechanics, and developer guides for the 
 | Card / Subsystem | Focus Area | Direct Link |
 | :--- | :--- | :---: |
 | 📚 **Documentation Hub** | Central Index & Navigation for all technical docs | [Explore Hub](docs/CARINA_MOC.md) |
-| 🏛️ **Core Architecture** | 8 Concurrent OS microservices, ST-GATv2 Lite & Consultant PAE | [View Blueprint](ARCHITECTURE.md) |
+| 🏛️ **Core Architecture** | 8 Concurrent OS microservices, ST-GATv2 Lite & Universal PAE | [View Blueprint](ARCHITECTURE.md) |
 | ⚡ **Synapse HFT API** | Sub-millisecond gRPC telemetry & Protobuf IPC specifications | [View API Reference](docs/API_REFERENCE.md) |
-| 🧠 **Neural Formulations** | PPO-TCN, ST-GATv2 Lite, Cross-Attention & Consultant PAE | [View Research](docs/RESEARCH_NOTES.md) |
+| 🧠 **Neural Formulations** | PPO-TCN, ST-GATv2 Lite & Predictive Autoencoder (PAE) | [View Research](docs/RESEARCH_NOTES.md) |
 | 🚦 **Hardware Drivers** | Physical controllers (NTCIP 1202, UTMC2, SNMP Client & Traps) | [View Drivers](docs/HARDWARE_DRIVERS.md) |
 | 🛡️ **Safety Firewall & Watchdog** | Guardian D3QN Vetoes, Symbolic rules & Watchdog | [View Safety Guide](docs/SAFETY_AND_WATCHDOG.md) |
-| 📊 **Engineering Warrants** | MUTCD / FHWA Traffic Signal Warrants 1, 2, 3, 7, 8 | [View Warrants](docs/TRAFFIC_ENGINEERING_WARRANTS.md) |
+| 🚑 **Emergency Preemption (EVP)** | Autonomous green corridors, kinematics gates & Web Gateway | [View EVP Guide](docs/EVP_AND_PREEMPTION.md) |
+| 📊 **Engineering Warrants** | MUTCD / FHWA Traffic Signal Warrants 1, 2, 3, 4 | [View Warrants](docs/TRAFFIC_ENGINEERING_WARRANTS.md) |
 | 📈 **MFD & Traffic Analytics** | Network density-flow curves, capacity drop & gating | [View MFD Guide](docs/MFD_AND_ANALYTICS.md) |
 | 🗄️ **Database & Schemas** | PostgreSQL Delta Storage (97.9% reduction), 12-Factor Setup | [View DB Specs](docs/DATABASE_AND_SCHEMAS.md) |
 | 🔍 **Explainable AI (XAI)** | Captum Integrated Gradients, 5 Formal Equations & Audits | [View XAI & SAS](docs/XAI_AND_SAS.md) |
 | 📄 **Report Blocks Engine** | ABNT NBR 14724 Word (.docx) Builder & OMML Math Equations | [View Reports](docs/REPORT_BLOCKS_AND_TEMPLATES.md) |
-| 🤖 **Small Language Models** | Local Qwen3 1.7B / llama.cpp Offline Textual Justification | [View SLM Guide](docs/SLM_AND_LOCAL_LLM.md) |
-| 🖥️ **Flet UI & Planning** | Native desktop UI, Planning Canvas, System Tray & SDS | [View UI Guide](docs/UI_AND_DASHBOARD.md) |
+| 🤖 **Small Language Models** | Local Qwen3.5 2B / llama.cpp Offline Textual Justification | [View SLM Guide](docs/SLM_AND_LOCAL_LLM.md) |
+| 🖥️ **UI, CCO & Dashboard** | Native Flet desktop app, React 18 CCO Videowall & Mobile | [View UI Guide](docs/UI_AND_DASHBOARD.md) |
 | 🗺️ **Rendering & Heatmaps** | Vector Map Rendering & Asynchronous Heatmap Interpolation | [View Rendering](docs/RENDERING_AND_HEATMAPS.md) |
-| 🔐 **Security & Auth** | User accounts, salted bcrypt hashing & brute-force lockdown | [View Security](docs/SECURITY_AND_AUTH.md) |
+| 🔐 **Security & Auth** | User accounts, salted PBKDF2 hashing & brute-force lockdown | [View Security](docs/SECURITY_AND_AUTH.md) |
 | 🛠️ **Developer Guides** | Agent development, settings configuration & setup | [View Guides](docs/DEVELOPER_GUIDES.md) |
-| 🧪 **Testing & Validation** | Pytest suite, coverage reports & Guardian safety mocks | [View Guidelines](docs/TESTING.md) |
-| 🚀 **Deployment & Packaging** | Docker containerization, Systemd services & Debian packages | [View Deployment](docs/DEPLOYMENT_AND_PACKAGING.md) |
+| 🧪 **Testing & Validation** | Pytest suite (656 tests), coverage reports & Guardian safety mocks | [View Guidelines](docs/TESTING.md) |
+| 🚀 **Deployment & Packaging** | Docker containerization & Systemd service daemons | [View Deployment](docs/DEPLOYMENT_AND_PACKAGING.md) |
 
 ---
 
@@ -62,14 +63,18 @@ Explore the full architecture, internal mechanics, and developer guides for the 
 
 - **Tactical Layer (PPO-TCN Edge AI):** Hyper-focused on local intersection throughput with sub-millisecond ($< 0.5\text{ ms}$) execution.
 - **Strategic Layer (ST-GATv2 Lite):** Dynamic spatiotemporal graph attention coordinating Green Waves across urban avenues.
-- **Global Consultant Layer (PAE 128-channel):** Event-triggered background mentor projecting future traffic states ($t + \Delta t$).
+- **Predictive Layer (Universal PAE):** Shared high-capacity physical representation engine projecting future spatiotemporal states ($t + \Delta t$).
 - **Guardian Layer (Neuro-Symbolic D3QN):** Inviolable safety firewall validating or vetoing actions against traffic codes and spillback risks.
 - **Explainable AI (XAI Engine):** Google Captum Integrated Gradients exporting ABNT NBR 14724 reports with 5 formal neural equations and Guardian veto audit tables.
 - **PostgreSQL Delta Storage:** Non-blocking async queue with 1-byte Smallint enums and run-length encoding achieving **97.9% storage reduction** (~380 MB/day for 200 intersections).
 - **Go Hardware Gateway (Industrial Safety):** Dedicated, compiled CGO-free Go binary (`bin/carina-go`) handling field controller I/O (NTCIP 1202 & UTMC2 over UDP 161/162) with zero host open ports via OS pipe NDJSON IPC and atomic fail-safe reversion on disconnect.
+- **Emergency Vehicle Preemption (EVP Subsystem):** Autonomous green corridors with two-factor activation (geometric approach gates $60\text{--}160\text{ m}$ + siren detection), direct SNMP phase holds via Go gateway, Tailscale mesh Web Gateway (port 2201, HTTP 204 ingestion), and real-time CCO videowall streaming.
+- **Web CCO & Modern UI/UX (React 18 & Go Gateway):** Real-time web videowall and field mobile app with Clean Architecture, SSE streaming (< 50ms latency), mobile bottom sheet with swipe-down gestures, day/night shift theme switcher (☀️/🌙), animated green corridor trajectories, and quick search auto-focus camera flight.
 - **Polymorphic Monitoring & Transports:** Dynamic dual-mode telemetry dispatcher supporting MQTT brokers and HTTP/HTTPS REST/Webhook cloud endpoints (Ngrok, Cloud services) with automatic protocol resolution and incident deduplication.
 - **Modular Settings Subsystem (SOLID):** Decoupled configuration architecture combining typed schemas (`SettingsSchema`), INI storage, and 12-Factor `.env` secret providers with backward-compatible facades.
 - **F.E.N.I.X. Self-Healing Subsystem (High Availability):** Autonomous process supervisor (`FenixSupervisor`) monitoring AI engine health, with windowed exponential backoff crash recovery and zero-collision stage boundary handover.
+- **Intra-Phase PBT & Developmental Maturation:** Evolutionary Population-Based Training with strict cohort isolation (`TEEN` $\leftrightarrow$ `TEEN`, `ADULT` $\leftrightarrow$ `ADULT`), childhood shadow shielding, and empirical fluid dynamics graduation margins ($\delta^*$).
+- **Physical Reward Balancing (HCM Traffic Physics):** Dynamic Characteristic Travel Time link scaling ($\tau$) eliminating dimensional scale disparities between queue delay penalties and vehicle throughput incentives.
 
 ---
 
@@ -93,6 +98,6 @@ python carina.py
 <div align="center">
   <img src="docs/assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="48" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
-  <i>Cognitive Autonomous Real-time Intersection Network Architecture • CARINA CORE v1.2.0</i><br/>
-  <small>Licensed under the <a href="LICENSE">GNU Affero General Public License v3.0</a>. © 2026 Noxfort Systems.</small>
+  <i>Controlled Artificial Road-traffic Intelligence Network Architecture • CARINA CORE v1.2.0</i><br/>
+  <small>Licensed under the <a href="LICENSE">GNU Affero General Public License v3.0 or later</a> (SPDX: <code>AGPL-3.0-or-later</code>). © 2026 Noxfort Systems.</small>
 </div>

@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# File: tests/unit/test_strategist_agent.py
-# Author: Gabriel Moraes
-# Date: 2026-04-16
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import sys
 from unittest.mock import MagicMock, patch
@@ -92,7 +76,7 @@ def test_strategist_topology_builder(mock_adam, mock_gat, mock_readnet, mock_exi
 
     # source_nodes = [0, 0]
     # target_nodes = [1, 2]
-    # edge_index.shape deve ser [2, 2]
+    # edge_index.shape should be [2, 2]
     assert tuple(edges_tensor.shape) == (2, 2)
     # Sources list
     assert edges_tensor[0][0].item() == 0
@@ -121,3 +105,58 @@ def test_strategic_vectors_generation(mock_adam, mock_gat, mock_readnet, mock_ex
 
     result = agent.get_strategic_vectors(fake_node_features)
     assert tuple(result.shape) == (3, 4)
+
+
+def test_st_gatv2_lite_causal_temporal_layers():
+    """Verifies that STGATv2Lite correctly instantiates causal TCN and GATv2 layers with edge dimensions."""
+    from src.models.st_gatv2_lite import STGATv2Lite, TemporalConvNetLite
+
+    model = STGATv2Lite(
+        input_dim=10,
+        hidden_dim=16,
+        output_dim=8,
+        heads=2,
+        edge_dim=3,
+        pred_dim=10,
+    )
+
+    assert model.input_dim == 10
+    assert model.hidden_dim == 16
+    assert model.output_dim == 8
+    assert model.edge_dim == 3
+    assert model.pred_dim == 10
+    assert isinstance(model.tcn, TemporalConvNetLite)
+    assert hasattr(model, "conv1")
+    assert hasattr(model, "conv2")
+    assert hasattr(model, "pred_head")
+
+
+@patch.object(sa.os.path, "exists", return_value=True)
+@patch.object(sa.sumolib.net, "readNet")
+@patch.object(sa, "GATv2Lite")
+@patch.object(sa.optim, "Adam")
+def test_strategist_agent_wrapper_methods(mock_adam, mock_gat, mock_readnet, mock_exists, mock_sumo_net):
+    """Tests .to(), .eval(), .train(), __call__(), and update() on StrategistAgent."""
+    mock_readnet.return_value = mock_sumo_net
+    agent = StrategistAgent(input_dim=10, hidden_dim=8, output_dim=4, map_path="dummy.xml", device="cpu")
+
+    # Configure mock output
+    mock_out = torch.zeros((3, 4))
+    agent.model.return_value = mock_out
+
+    # Wrappers
+    assert agent.eval() is agent
+    assert agent.train() is agent
+    assert agent.to("cpu") is agent
+
+    # Callable __call__
+    x = torch.rand((3, 10))
+    out = agent(x)
+    assert tuple(out.shape) == (3, 4)
+
+    # Update step
+    loss_mock = MagicMock()
+    loss_mock.item.return_value = 0.42
+    loss_val = agent.update(loss_mock)
+    assert loss_val == 0.42
+

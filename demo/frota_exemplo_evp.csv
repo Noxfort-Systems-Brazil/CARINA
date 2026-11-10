@@ -1,0 +1,5 @@
+vehicle_id,corporation,plate,device_id,ip_address,port,protocol,auth_token,description,is_active
+SAMU-01,SAMU,BRA2E19,IMEI-864209041234567,10.8.0.15,8085,HTTP,sec_token_samu_01,Ambulância UTI Avançada SAMU,true
+SAMU-02,SAMU,BRA2E20,IMEI-864209041234568,10.8.0.16,8085,HTTP,sec_token_samu_02,Ambulância Suporte Básico SAMU,true
+BOMBEIRO-01,BOMBEIRO,SPB1930,IMEI-864209041234569,10.8.0.20,8085,HTTP,sec_token_bomb_01,Auto Bomba Salvamento,true
+POLICIA-01,POLICIA,PMM1900,IMEI-864209041234570,10.8.0.30,8085,HTTP,sec_token_pol_01,Viatura Ronda Ostensiva,true

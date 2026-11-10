@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/handlers/tray_handler.py
-# Author: Gabriel Moraes
-# Date: 2026-03-21
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 System Tray Icon Handler for CARINA.
@@ -124,7 +108,7 @@ class TrayHandler:
                 try:
                     self._tray_icon.run()
                 except Exception as e:
-                    logger.warning(f"[TrayHandler] Tray backend issue (expected on some Linux distros): {e}")
+                    logger.warning(f"[TrayHandler] Tray backend issue (expected on some Linux distros): {e}", exc_info=True)
 
             self._thread = threading.Thread(
                 target=safe_run,
@@ -137,7 +121,7 @@ class TrayHandler:
             return True
 
         except Exception as e:
-            logger.error(f"[TrayHandler] Failed to start tray icon: {e}")
+            logger.error(f"[TrayHandler] Failed to start tray icon: {e}", exc_info=True)
             return False
 
     def stop(self):
@@ -157,7 +141,7 @@ class TrayHandler:
             try:
                 self._on_restore()
             except Exception as e:
-                logger.error(f"[TrayHandler] Error in restore callback: {e}")
+                logger.error(f"[TrayHandler] Error in restore callback: {e}", exc_info=True)
 
     def _handle_quit(self, icon=None, item=None):
         """Called when user clicks 'Encerrar' from the tray menu."""
@@ -167,4 +151,4 @@ class TrayHandler:
             try:
                 self._on_quit()
             except Exception as e:
-                logger.error(f"[TrayHandler] Error in quit callback: {e}")
+                logger.error(f"[TrayHandler] Error in quit callback: {e}", exc_info=True)

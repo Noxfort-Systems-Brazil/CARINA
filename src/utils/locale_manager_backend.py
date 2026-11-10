@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/utils/locale_manager_backend.py (FIXED: 'default' support)
-# Author: Gabriel Moraes
-# Date: December 17, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -50,7 +34,7 @@ class LocaleManagerBackend:
             initial_lang_code = settings.get("language") or "pt_br"
             logging.info(f"Lendo idioma de settings.ini: '{initial_lang_code}'")
         except Exception as e:
-            logging.warning(f"Erro ao ler idioma de settings.ini: {e}")
+            logging.warning(f"Erro ao ler idioma de settings.ini: {e}", exc_info=True)
             initial_lang_code = "pt_br"
 
         self.load_language(initial_lang_code)
@@ -68,7 +52,7 @@ class LocaleManagerBackend:
                         with open(file_path, "r", encoding="utf-8") as f:
                             merged_data.update(json.load(f))
                     except Exception as e:
-                        logging.error(f"[LocaleManagerBackend] Erro ao ler '{file_path}': {e}")
+                        logging.error(f"[LocaleManagerBackend] Erro ao ler '{file_path}': {e}", exc_info=True)
             return merged_data
 
         # File name follows the pattern 'pt_br_backend.json' or 'pt_br.json' depending on suffix
@@ -88,7 +72,7 @@ class LocaleManagerBackend:
             with open(file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            logging.error(f"[LocaleManagerBackend] Erro ao ler '{file_path}': {e}")
+            logging.error(f"[LocaleManagerBackend] Erro ao ler '{file_path}': {e}", exc_info=True)
             return {}
 
     def load_language(self, lang_code: str):
@@ -103,10 +87,10 @@ class LocaleManagerBackend:
         self.current_lang_code = lang_code
 
         if self.current_lang_data:
-            logging.info(f"Arquivo do idioma '{lang_code}' carregado com sucesso para o backend.")
+            logging.info(f"Language file '{lang_code}' successfully loaded for backend.")
 
     def get_language(self) -> str:
-        """Retorna o código do idioma atual."""
+        """Returns current language code."""
         return getattr(self, "current_lang_code", self.fallback_lang_code)
 
     def _get_nested_value(self, data: Dict, keys: List[str]) -> str | None:
@@ -120,11 +104,11 @@ class LocaleManagerBackend:
 
     def get_string(self, key: str, default: str = None, **kwargs) -> str:
         """
-        Obtém string traduzida.
+        Retrieves translated string.
         Args:
-            key: Chave 'secao.subsecao'
-            default: Texto a retornar se a chave não existir (Evita crash)
-            **kwargs: Variáveis para formatar a string (ex: agent_id=1)
+            key: 'section.subsection' key
+            default: Fallback text if key does not exist (prevents crash)
+            **kwargs: Variables to format string (e.g. agent_id=1)
         """
         keys = key.split(".")
 
@@ -147,7 +131,7 @@ class LocaleManagerBackend:
             try:
                 return val.format(**kwargs)
             except Exception as e:
-                logging.warning(f"[LocaleBackend] Erro de formatação na chave '{key}': {e}")
+                logging.warning(f"[LocaleBackend] Erro de formatação na chave '{key}': {e}", exc_info=True)
                 return val
 
         return val

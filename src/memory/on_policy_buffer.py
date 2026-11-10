@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/memory/on_policy_buffer.py (NEW FILE)
-# Author: Gabriel Moraes
-# Date: August 19, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the OnPolicyBuffer class.
@@ -43,15 +27,15 @@ class OnPolicyBuffer:
 
     def push(self, state_sequence, action, log_prob, reward, done, state_value):
         """
-        Adiciona uma única transição ao buffer.
+        Adds a single transition to the buffer.
 
         Args:
-            state_sequence: A sequência de estados que levou à decisão.
-            action: A ação tomada pelo agente.
-            log_prob: O log da probabilidade da ação tomada.
-            reward (float): A recompensa recebida após a ação.
-            done (bool): Se o episódio terminou após a ação.
-            state_value: O valor do estado estimado pelo Crítico.
+            state_sequence: State sequence that led to the decision.
+            action: Action taken by the agent.
+            log_prob: Log probability of the action taken.
+            reward (float): Reward received after the action.
+            done (bool): Whether the episode terminated after the action.
+            state_value: State value estimated by the Critic.
         """
         self.states.append(state_sequence)
         self.actions.append(action)
@@ -62,12 +46,12 @@ class OnPolicyBuffer:
 
     def get_batch(self) -> tuple:
         """
-        Converte os dados armazenados em tensores PyTorch e os retorna.
-        Assume que as sequências de estado já têm tamanho uniforme.
+        Converts stored data to PyTorch tensors and returns them.
+        Assumes state sequences already have uniform shape.
 
         Returns:
-            tuple: Uma tupla contendo os tensores de estados, ações, log_probs,
-                   recompensas (lista), dones (lista) e valores de estado.
+            tuple: A tuple containing state tensors, actions, log_probs,
+                   rewards (list), dones (list), and state values.
         """
         # Converting to numpy array first is efficient
         states_np = np.array(self.states, dtype=np.float32)
@@ -85,7 +69,7 @@ class OnPolicyBuffer:
         return states_t, actions_t.squeeze(), log_probs_t.squeeze(), self.rewards, self.dones, state_values_t.squeeze()
 
     def clear(self):
-        """Limpa o buffer. Deve ser chamado após cada ciclo de aprendizado."""
+        """Clears the buffer. Must be called after each learning cycle."""
         self.actions = []
         self.states = []
         self.log_probs = []

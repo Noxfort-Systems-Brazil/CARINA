@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/transports/mqtt_transport.py
-# Author: Gabriel Moraes
-# Date: 2026-09-12 (SOLID Refactoring)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 MonitorMqttTransport handles lower-level MQTT socket lifecycle, reconnection, and publishing.
@@ -49,6 +33,8 @@ class MonitorMqttTransport(BaseMonitorTransport):
         self._host, self._port = EndpointResolver.parse_mqtt_host_port(host, default_port=port)
         self.client: Optional[mqtt.Client] = None
         self._is_connected = False
+        self._reconnect_lock = threading.Lock()
+        self._is_reconnecting = False
 
     @staticmethod
     def parse_host_port(host_str: str, default_port: int = 1883) -> Tuple[str, int]:
@@ -121,7 +107,7 @@ class MonitorMqttTransport(BaseMonitorTransport):
             self.client.connect(self.host, self.port, keepalive=60)
             self.client.loop_start()
         except Exception as e:
-            logging.error(f"[{self.__class__.__name__}] Connection attempt to MQTT Broker failed: {e}")
+            logging.error(f"[{self.__class__.__name__}] Connection attempt to MQTT Broker failed: {e}", exc_info=True)
             self._is_connected = False
 
     def ensure_connected(self) -> bool:
@@ -171,7 +157,18 @@ class MonitorMqttTransport(BaseMonitorTransport):
             logging.warning(
                 f"[{self.__class__.__name__}] Unexpected disconnect from MQTT Broker (code: {reason_code}). Triggering auto-reconnect..."
             )
-            threading.Thread(target=self.ensure_connected, daemon=True).start()
+            with self._reconnect_lock:
+                if not self._is_reconnecting:
+                    self._is_reconnecting = True
+
+                    def _reconnect_task():
+                        try:
+                            self.ensure_connected()
+                        finally:
+                            with self._reconnect_lock:
+                                self._is_reconnecting = False
+
+                    threading.Thread(target=_reconnect_task, daemon=True, name="MQTTReconnectThread").start()
 
     def publish(self, topic: str, payload: str, qos: int = 1, timeout: float = 2.0) -> bool:
         """Publishes a payload to the given topic."""
@@ -182,7 +179,7 @@ class MonitorMqttTransport(BaseMonitorTransport):
             info.wait_for_publish(timeout=timeout)
             return True
         except Exception as e:
-            logging.error(f"[{self.__class__.__name__}] Failed to publish to topic {topic}: {e}")
+            logging.error(f"[{self.__class__.__name__}] Failed to publish to topic {topic}: {e}", exc_info=True)
             return False
 
     def disconnect(self) -> None:

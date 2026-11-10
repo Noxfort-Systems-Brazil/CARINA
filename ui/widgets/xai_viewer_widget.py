@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/xai_viewer_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-19
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -148,17 +132,17 @@ class XaiViewerWidget(ft.Column):
             options.append(ft.dropdown.Option(key=str(aid), text=f"Cruzamento ID {aid}"))
         self.agent_dropdown.options = options
 
-        if not current or (current != "ALL" and current not in [str(a) for a in agent_ids]):
+        if not current or (str(current) != "ALL" and str(current) not in [str(a) for a in agent_ids]):
             self.agent_dropdown.value = "ALL"
             self.selected_agent_id = "ALL"
         else:
-            self.selected_agent_id = current
+            self.agent_dropdown.value = str(current)
+            self.selected_agent_id = str(current)
 
         if not self.is_analyzing:
             self.analyze_btn.disabled = self.agent_dropdown.value is None
         if self.page:
             self.agent_dropdown.update()
-        if self.page:
             self.analyze_btn.update()
 
     def _on_agent_selected(self, e):

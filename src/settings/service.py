@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/settings/service.py
-# Author: Gabriel Moraes
-# Date: 2026-09-12
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 High-level settings orchestrator service implementing ISettingsReader and ISettingsWriter.
@@ -28,16 +12,11 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-try:
-    from settings.env_provider import DotenvSecretProvider
-    from settings.ini_storage import IniFileStorage
-    from settings.interfaces import IEnvironmentProvider, ISettingsReader, ISettingsStorage, ISettingsWriter
-    from settings.schema import SettingsSchema
-except ImportError:
-    from src.settings.env_provider import DotenvSecretProvider
-    from src.settings.ini_storage import IniFileStorage
-    from src.settings.interfaces import IEnvironmentProvider, ISettingsReader, ISettingsStorage, ISettingsWriter
-    from src.settings.schema import SettingsSchema
+from settings.defaults import DEFAULT_SETTINGS_MAP
+from settings.env_provider import DotenvSecretProvider
+from settings.ini_storage import IniFileStorage
+from settings.interfaces import IEnvironmentProvider, ISettingsReader, ISettingsStorage, ISettingsWriter
+from settings.schema import SettingsSchema
 
 
 class SettingsService(ISettingsReader, ISettingsWriter):
@@ -74,8 +53,27 @@ class SettingsService(ISettingsReader, ISettingsWriter):
         """Reads and returns the low-level ConfigParser instance from storage."""
         return self.storage.read_config()
 
-    def get(self, key: str, default: Any = None) -> Any:
-        """Retrieves a single configuration value by key."""
+    def get(self, *args, **kwargs) -> Any:
+        """Retrieves a configuration value by key.
+        Supports modern get(key, default=None) and legacy ConfigParser-style
+        get(section, key, fallback=None).
+        """
+        if len(args) >= 3:
+            key = args[1]
+            default = args[2]
+        elif len(args) == 2:
+            if "fallback" in kwargs:
+                key = args[1]
+                default = kwargs["fallback"]
+            else:
+                key = args[0]
+                default = args[1]
+        elif len(args) == 1:
+            key = args[0]
+            default = kwargs.get("default", kwargs.get("fallback", None))
+        else:
+            return None
+
         settings = self.load_settings()
         return settings.get(key, default)
 
@@ -118,7 +116,7 @@ class SettingsService(ISettingsReader, ISettingsWriter):
             )
             return {}
 
-        settings_dict: Dict[str, Any] = {}
+        settings_dict: Dict[str, Any] = dict(DEFAULT_SETTINGS_MAP)
 
         # 1. Read mapped keys from sections
         for key, section in self.schema.key_map.items():
@@ -140,10 +138,17 @@ class SettingsService(ISettingsReader, ISettingsWriter):
         # 3. 12-Factor App: Apply environment variable overrides
         env_overrides = self.env_provider.get_overrides()
         for settings_key, env_val in env_overrides.items():
-            settings_dict[settings_key] = env_val
+            if self.schema.is_boolean_key(settings_key):
+                settings_dict[settings_key] = str(env_val).strip().lower() in ("true", "1", "yes", "on")
+            else:
+                settings_dict[settings_key] = env_val
 
         # 4. Normalize report aliases (xai_ <-> report_)
         return self.schema.normalize_report_aliases(settings_dict)
+
+    def get_defaults(self) -> Dict[str, Any]:
+        """Returns a copy of the canonical default settings dictionary."""
+        return dict(DEFAULT_SETTINGS_MAP)
 
     def save_settings(self, new_settings: Dict[str, Any]) -> bool:
         """Updates and persists the provided settings dictionary."""
@@ -190,6 +195,7 @@ class SettingsService(ISettingsReader, ISettingsWriter):
                     "db_port": "CARINA_DB_PORT",
                     "db_name": "CARINA_DB_NAME",
                     "db_schema": "CARINA_DB_SCHEMA",
+                    "gateway_enabled": "CARINA_GATEWAY_ENABLED",
                 },
             )
             for key, val in new_settings.items():

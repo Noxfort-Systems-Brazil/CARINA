@@ -1,25 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/advanced_system_card.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o AdvancedSystemCard, um widget componente para a tela de Configurações.
+Defines the AdvancedSystemCard, a component widget for the Settings screen.
 """
 
 from typing import Any, Dict
@@ -31,7 +15,7 @@ from ui.handlers.locale_manager import LocaleManager
 
 class AdvancedSystemCard(ft.Card):
     """
-    Um Card que encapsula as configurações avançadas de Treinamento e Sistema.
+    A Card encapsulating advanced Training and System settings.
     """
 
     def __init__(self, initial_values: Dict[str, Any]):
@@ -42,7 +26,6 @@ class AdvancedSystemCard(ft.Card):
 
         # --- Controls ---
         self.title_text = ft.Text(size=18, weight=ft.FontWeight.BOLD)
-        self.tf_pbt_frequency = ft.TextField(value=initial_values.get("pbt_frequency", "10"), input_filter=float_filter)
         self.tf_pbt_exploitation = ft.TextField(
             value=initial_values.get("pbt_exploitation", "25"), input_filter=float_filter
         )
@@ -87,7 +70,6 @@ class AdvancedSystemCard(ft.Card):
                 [
                     self.title_text,
                     ft.Divider(),
-                    self.tf_pbt_frequency,
                     self.tf_pbt_exploitation,
                     self.tf_watchdog_grace,
                     ft.Divider(height=1, thickness=0.5),
@@ -99,7 +81,6 @@ class AdvancedSystemCard(ft.Card):
 
     def get_values(self) -> Dict[str, Any]:
         return {
-            "pbt_frequency": self.tf_pbt_frequency.value,
             "pbt_exploitation": self.tf_pbt_exploitation.value,
             "watchdog_grace": self.tf_watchdog_grace.value,
             "analysis_interval_value": self.tf_analysis_interval_value.value,
@@ -107,7 +88,6 @@ class AdvancedSystemCard(ft.Card):
         }
 
     def set_values(self, values: Dict[str, Any]):
-        self.tf_pbt_frequency.value = values.get("pbt_frequency", "10")
         self.tf_pbt_exploitation.value = values.get("pbt_exploitation", "25")
         self.tf_watchdog_grace.value = values.get("watchdog_grace", "30")
         self.tf_analysis_interval_value.value = str(values.get("analysis_interval_value", "7"))
@@ -116,9 +96,8 @@ class AdvancedSystemCard(ft.Card):
             self.update()
 
     def update_translations(self, lm: LocaleManager):
-        """Atualiza os textos deste card com base no LocaleManager."""
+        """Updates texts in this card based on the LocaleManager."""
         self.title_text.value = lm.get_string("settings_view.advanced_system_card.title")
-        self.tf_pbt_frequency.label = lm.get_string("settings_view.advanced_system_card.pbt_frequency")
         self.tf_pbt_exploitation.label = lm.get_string("settings_view.advanced_system_card.pbt_exploitation")
         self.tf_watchdog_grace.label = lm.get_string("settings_view.advanced_system_card.watchdog_grace")
         self.analysis_interval_label.value = lm.get_string("settings_view.advanced_system_card.analysis_interval_label")

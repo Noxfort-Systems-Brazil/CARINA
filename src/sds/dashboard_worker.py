@@ -1,38 +1,15 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/sds/dashboard_worker.py (MODIFIED FOR TRANSLATION)
-# Author: Gabriel Moraes
-# Date: October 2, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
 import logging
 import os
-import sys
 import threading
 import time
 from multiprocessing import Queue
 
 import psutil
-
-# Adds the 'src' directory to the path to allow imports from other modules
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 from sds.dashboard_orchestrator import Orchestrator
 from utils.locale_manager_backend import LocaleManagerBackend
@@ -76,7 +53,7 @@ def run_sds_worker(
     monitor_thread.start()
 
     try:
-        from src.utils.paths import get_base_output_dir
+        from utils.paths import get_base_output_dir
 
         log_dir = os.path.join(get_base_output_dir(), "logs", "sds_worker")
         os.makedirs(log_dir, exist_ok=True)
@@ -87,6 +64,7 @@ def run_sds_worker(
             sds_data_queue, settings, ui_command_queue, locale_manager, ui_telemetry_queue=ui_telemetry_queue
         )
 
+        # Runs the SDS orchestrator directly (telemetry decoupled from CCO)
         orchestrator.run()
 
     # --- CHANGE 3: Translate the exception and termination logs ---

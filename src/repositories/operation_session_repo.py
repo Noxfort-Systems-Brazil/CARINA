@@ -1,14 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: src/repositories/operation_session_repo.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 from typing import TYPE_CHECKING, Optional
@@ -48,7 +40,7 @@ class OperationSessionRepository:
             conn.commit()
             return True
         except Exception as e:
-            logging.error(f"[OperationSessionRepo] Error ensuring table exists: {e}")
+            logging.error(f"[OperationSessionRepo] Error ensuring table exists: {e}", exc_info=True)
             try:
                 conn.rollback()
             except Exception:
@@ -73,7 +65,7 @@ class OperationSessionRepository:
             conn.commit()
             return sid
         except Exception as e:
-            logging.error(f"[OperationSessionRepo] Error starting operation session: {e}")
+            logging.error(f"[OperationSessionRepo] Error starting operation session: {e}", exc_info=True)
             try:
                 conn.rollback()
             except Exception:
@@ -98,7 +90,7 @@ class OperationSessionRepository:
             conn.commit()
             return True
         except Exception as e:
-            logging.error(f"[OperationSessionRepo] Error ending operation session {session_id}: {e}")
+            logging.error(f"[OperationSessionRepo] Error ending operation session {session_id}: {e}", exc_info=True)
             try:
                 conn.rollback()
             except Exception:

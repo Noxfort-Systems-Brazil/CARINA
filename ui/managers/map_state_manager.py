@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/managers/map_state_manager.py
-# Author: Gabriel Moraes
-# Date: September 24, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the MapStateManager.
@@ -68,29 +52,37 @@ class MapStateManager:
         self.highlight_foreground: cv.Path | None = None
         self.highlight_aura: ft.Container | None = None
 
-    def check_widget_hit(self, x: float, y: float) -> str | None:
+    def check_widget_hit(self, x: float, y: float, padding: float = 4.0) -> str | None:
         """
-        Checks if a given coordinate hits any of the registered interactive widgets.
+        Checks if a given coordinate hits any of the registered interactive widgets
+        with an optional hit-test padding in pixels.
         Returns the ID of the widget if hit, otherwise None.
         """
         for widget_id, widget in self.interactive_widgets.items():
-            left, top = widget.left, widget.top
-            right, bottom = left + widget.width, top + widget.height
+            left = (widget.left or 0.0) - padding
+            top = (widget.top or 0.0) - padding
+            right = (widget.left or 0.0) + (widget.width or 0.0) + padding
+            bottom = (widget.top or 0.0) + (widget.height or 0.0) + padding
             if left <= x <= right and top <= y <= bottom:
                 return widget_id
         return None
 
     def get_closest_widget_distance(self, x: float, y: float) -> Tuple[str | None, float]:
         """
-        Calculates the distance from a given map coordinate to the center of each
+        Calculates the distance from a given map coordinate to the bounding box of each
         interactive widget, returning (closest_widget_id, min_distance).
+        If (x, y) is inside the widget bounding box, distance is 0.0.
         """
         min_dist = float("inf")
         closest_id = None
         for widget_id, widget in self.interactive_widgets.items():
-            cx = (widget.left or 0.0) + (widget.width or 0.0) / 2.0
-            cy = (widget.top or 0.0) + (widget.height or 0.0) / 2.0
-            dist = math.hypot(x - cx, y - cy)
+            left = widget.left or 0.0
+            top = widget.top or 0.0
+            right = left + (widget.width or 0.0)
+            bottom = top + (widget.height or 0.0)
+            dx = max(left - x, 0.0, x - right)
+            dy = max(top - y, 0.0, y - bottom)
+            dist = math.hypot(dx, dy)
             if dist < min_dist:
                 min_dist = dist
                 closest_id = widget_id

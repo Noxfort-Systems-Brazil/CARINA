@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+- **Unconsumed Consultant Agent (`src/agents/consultant_agent.py`)**: Removed obsolete background mentor agent whose cache was never consumed by decision or safety layers. The underlying `PredictiveAutoencoder` (`src/models/pae.py`) remains active as a direct physical representation model.
+- **Dead Cross-Attention Module (`src/models/cross_attention.py`)**: Removed dead cross-attention module; neural fusion is performed via direct spatiotemporal tensor concatenation and TCN/MLP processing.
+
+### Changed
+- **Consolidation into Canonical 3-Agent Architecture**: Streamlined the multi-agent hierarchy into three clear, orthogonal roles:
+  1. `LocalAgent` (Tactical PPO-TCN, sub-second execution at each junction)
+  2. `GuardianAgent` (Safety D3QN + CTB symbolic safety vetoes)
+  3. `StrategistAgent` (Spatiotemporal network coordination via ST-GATv2 Lite running every 5s)
+- **Decoupled Strategic Coordinator (`src/core/strategic_coordinator.py`)**: Removed background consultant dispatch while preserving graph telemetry aggregation, PAE feature extraction, and topological scaling.
+- **Documentation & Report Harmonization**: Updated core architecture blueprints, multilingual documentation (PT-BR, EN, ES, FR), MOC knowledge graphs, developer guides, READMEs, XAI report section definitions, and OMML equation templates.
+
+---
+
 ## [1.2.0] - 2026-09-25
 
 ### Added

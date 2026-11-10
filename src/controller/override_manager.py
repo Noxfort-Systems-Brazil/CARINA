@@ -1,41 +1,18 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/override_manager.py (Refactored with robust TraCIException import)
-# Author: Gabriel Moraes
-# Date: October 26, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
 import os
-import sys  # Import sys for path manipulation
 from typing import TYPE_CHECKING, Dict, Tuple
-
-# Add 'src' directory to path (kept)
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     # Assume LocaleManagerBackend is in src/utils
     from utils.locale_manager_backend import LocaleManagerBackend
 
 
-class EnvironmentConnectionException(Exception):
+class EnvironmentConnectionException(RuntimeError):
     pass
 
 
@@ -61,7 +38,7 @@ class OverrideManager:
             return
 
         # Recalculate project_root here too to ensure
-        from src.utils.paths import get_base_output_dir
+        from utils.paths import get_base_output_dir
 
         scenario_dir = os.path.join(get_base_output_dir(), "results", scenario_name)
         os.makedirs(scenario_dir, exist_ok=True)

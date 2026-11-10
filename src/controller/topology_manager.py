@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/topology_manager.py
-# Author: Gabriel Moraes
-# Date: April 15, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -29,10 +13,10 @@ from typing import Any, Dict, Optional
 from utils.map_processor import MapProcessor
 
 
-class TopologyManager:
+class ControllerTopologyCoordinator:
     """
-    Responsável pelo carregamento, extração estrutural e cache contínuo
-    da topologia de rede e dos 'Maturity Phases' (Estados de Maturidade) dos Agentes.
+    Responsible for loading, structural extraction, and continuous caching
+    of network topology and Agent 'Maturity Phases' in the CentralController.
     """
 
     def __init__(self, project_root: str, ai_pipe_conn: Connection, sds_data_queue: Queue):
@@ -50,7 +34,7 @@ class TopologyManager:
         """Attempts to load existing topology to restore maturity cache AND notify AI/UI to load map."""
         try:
             session_name = "hft_live_session"
-            from src.utils.paths import get_base_output_dir
+            from utils.paths import get_base_output_dir
 
             maps_dir = os.path.join(get_base_output_dir(), "results", session_name, "maps")
             json_path = os.path.join(maps_dir, "map_topology.json")
@@ -88,14 +72,14 @@ class TopologyManager:
                     try:
                         self.agent_maturity_cache = MapProcessor.extract_topology_to_json(net_xml_path, json_path)
                     except Exception as e:
-                        logging.error(f"Error extracting JSON topology: {e}")
+                        logging.error(f"Error extracting JSON topology: {e}", exc_info=True)
 
                 # 2. NOTIFY UI (This fixes the 'Waiting for Connection' issue)
                 try:
                     self.sds_data_queue.put(("initial_map_geometry", {"net_file": net_xml_path}))
                     logging.info("[CentralController] 'initial_map_geometry' event sent to SDS queue (Restored State).")
                 except Exception as e:
-                    logging.error(f"Error notifying UI during restore: {e}")
+                    logging.error(f"Error notifying UI during restore: {e}", exc_info=True)
 
                 # Give AI a brief moment to digest the map before traffic hits
                 time.sleep(0.5)
@@ -103,11 +87,11 @@ class TopologyManager:
                 logging.warning("[CentralController] No .net.xml map found. AI might not initialize correctly.")
 
         except Exception as e:
-            logging.warning(f"[CentralController] Failed to restore state: {e}")
+            logging.warning(f"[CentralController] Failed to restore state: {e}", exc_info=True)
 
     def handle_new_map(self, map_path: str, maps_output_dir: str, telemetry_aggregator: Any):
         """
-        Processa um recarregamento completo de mapa de uma nova fonte.
+        Processes a full map reload from a new source.
         """
         logging.info(f"Processing new map: {map_path}")
 
@@ -130,11 +114,17 @@ class TopologyManager:
             self.ai_pipe_conn.send(("custom", "load_map", (map_path,), {}))
             self.net_file_path = map_path  # Store for FailsafeManager
         except Exception as e:
-            logging.error(f"Error notifying AI about new map: {e}")
+            logging.error(f"Error notifying AI about new map: {e}", exc_info=True)
 
         # 3. Notify UI (SDS)
         try:
             self.sds_data_queue.put(("initial_map_geometry", {"net_file": map_path}))
             logging.info("'initial_map_geometry' event sent to SDS queue.")
         except Exception as e:
-            logging.error(f"Error notifying UI about new map: {e}")
+            logging.error(f"Error notifying UI about new map: {e}", exc_info=True)
+
+
+# Backward-compatibility alias
+TopologyManager = ControllerTopologyCoordinator
+
+__all__ = ["ControllerTopologyCoordinator", "TopologyManager"]

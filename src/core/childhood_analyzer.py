@@ -1,37 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/core/childhood_analyzer.py (FIXED)
-# Author: Gabriel Moraes
-# Date: October 3, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
 import os
-import sys
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
 import numpy as np
-
-# Add 'src' directory to path to allow absolute imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -93,14 +70,20 @@ class ChildhoodAnalyzer:
 
     def run_analysis(self, episode_metrics: list) -> tuple:
         """
-        Executa a análise com base nas métricas dos episódios da infância.
+        Runs analysis based on childhood episode metrics.
         """
         lm = self.locale_manager
-        # Defines traffic profiles based on rules
+        # Defines traffic profiles based on rules, falling back to classical urban peak hours
         traffic_profiles = {}
         if not self.peak_hours_rules:
-            logging.info(lm.get_string("childhood_analyzer.run.no_rules_warning"))
-            traffic_profiles = {day: {str(h): "low" for h in range(24)} for day in range(7)}
+            logging.info(lm.get_string("childhood_analyzer.run.no_rules_warning", default="No peak rules configured. Using standard urban peak hours fallback."))
+            for day in range(7):
+                traffic_profiles[day] = {}
+                for hour in range(24):
+                    if day < 5 and hour in (6, 7, 8, 17, 18, 19):
+                        traffic_profiles[day][str(hour)] = "peak"
+                    else:
+                        traffic_profiles[day][str(hour)] = "low"
         else:
             for day in range(7):
                 traffic_profiles[day] = {}

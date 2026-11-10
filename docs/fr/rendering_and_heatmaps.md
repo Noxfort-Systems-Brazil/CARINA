@@ -70,9 +70,11 @@ Les pondérations et seuils des cartes thermiques sont configurés dans [`config
 [HEATMAP_SCALING]
 weight_occupancy = 1.0
 weight_waiting_time = 1.5
-weight_queue_length = 2.0
-gaussian_kernel_radius = 24
-color_ramp = viridis  # Supported: viridis, plasma, turbo, traffic_light
+weight_flow = 1.0
+saturation_threshold = 0.85
+lane_aggregation_strategy = max
+heatmap_strategy = combined
+heatmap_saturation = 1.0
 ```
 
 ---
@@ -81,5 +83,5 @@ color_ramp = viridis  # Supported: viridis, plasma, turbo, traffic_light
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

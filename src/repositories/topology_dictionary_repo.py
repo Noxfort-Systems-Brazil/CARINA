@@ -1,19 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-
-# File: src/repositories/topology_dictionary_repo.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from psycopg2.extras import execute_values
+try:
+    from psycopg2.extras import execute_values
+except ImportError:
+    execute_values = None
 
 if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
@@ -34,26 +29,43 @@ class TopologyDictionaryRepository:
         conn = self.engine.get_connection()
         if not conn:
             return False
+        is_pg = getattr(self.engine, "db_type", "sqlite") == "postgres"
         try:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS topology_dictionary (
-                        id BIGSERIAL PRIMARY KEY,
-                        element_type VARCHAR(20) NOT NULL,
-                        raw_net_id VARCHAR(255) UNIQUE NOT NULL,
-                        numeric_id BIGINT NOT NULL,
-                        custom_name VARCHAR(255) NOT NULL,
-                        from_node VARCHAR(100),
-                        to_node VARCHAR(100),
-                        is_bidirectional_pair BOOLEAN DEFAULT FALSE
-                    );
-                    """
-                )
+                if is_pg:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS topology_dictionary (
+                            id BIGSERIAL PRIMARY KEY,
+                            element_type VARCHAR(20) NOT NULL,
+                            raw_net_id VARCHAR(255) UNIQUE NOT NULL,
+                            numeric_id BIGINT NOT NULL,
+                            custom_name VARCHAR(255) NOT NULL,
+                            from_node VARCHAR(100),
+                            to_node VARCHAR(100),
+                            is_bidirectional_pair BOOLEAN DEFAULT FALSE
+                        );
+                        """
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS topology_dictionary (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            element_type VARCHAR(20) NOT NULL,
+                            raw_net_id VARCHAR(255) UNIQUE NOT NULL,
+                            numeric_id BIGINT NOT NULL,
+                            custom_name VARCHAR(255) NOT NULL,
+                            from_node VARCHAR(100),
+                            to_node VARCHAR(100),
+                            is_bidirectional_pair BOOLEAN DEFAULT FALSE
+                        );
+                        """
+                    )
             conn.commit()
             return True
         except Exception as e:
-            logging.error(f"[TopologyDictionaryRepo] Error ensuring table exists: {e}")
+            logging.error(f"[TopologyDictionaryRepo] Error ensuring table exists: {e}", exc_info=True)
             try:
                 conn.rollback()
             except Exception:
@@ -61,7 +73,7 @@ class TopologyDictionaryRepository:
             return False
 
     def bulk_save_topology_elements(self, elements: List[Dict[str, Any]]) -> bool:
-        """Saves or updates topology dictionary elements in PostgreSQL."""
+        """Saves or updates topology dictionary elements in PostgreSQL or SQLite."""
         if not elements:
             return True
         conn = self.engine.get_connection()
@@ -81,23 +93,40 @@ class TopologyDictionaryRepository:
             for el in elements
         ]
 
-        query = """
-            INSERT INTO topology_dictionary (
-                element_type, raw_net_id, numeric_id, custom_name, from_node, to_node, is_bidirectional_pair
-            ) VALUES %s
-            ON CONFLICT (raw_net_id) DO UPDATE SET
-                numeric_id = EXCLUDED.numeric_id,
-                from_node = EXCLUDED.from_node,
-                to_node = EXCLUDED.to_node,
-                is_bidirectional_pair = EXCLUDED.is_bidirectional_pair;
-        """
         try:
             with conn.cursor() as cursor:
-                execute_values(cursor, query, batch, page_size=500)
+                if getattr(self.engine, "db_type", "sqlite") == "postgres":
+                    from psycopg2.extras import execute_values
+
+                    query_pg = """
+                        INSERT INTO topology_dictionary (
+                            element_type, raw_net_id, numeric_id, custom_name, from_node, to_node, is_bidirectional_pair
+                        ) VALUES %s
+                        ON CONFLICT (raw_net_id) DO UPDATE SET
+                            custom_name = EXCLUDED.custom_name,
+                            numeric_id = EXCLUDED.numeric_id,
+                            from_node = EXCLUDED.from_node,
+                            to_node = EXCLUDED.to_node,
+                            is_bidirectional_pair = EXCLUDED.is_bidirectional_pair;
+                    """
+                    execute_values(cursor, query_pg, batch, page_size=500)
+                else:
+                    query_sqlite = """
+                        INSERT INTO topology_dictionary (
+                            element_type, raw_net_id, numeric_id, custom_name, from_node, to_node, is_bidirectional_pair
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (raw_net_id) DO UPDATE SET
+                            custom_name = excluded.custom_name,
+                            numeric_id = excluded.numeric_id,
+                            from_node = excluded.from_node,
+                            to_node = excluded.to_node,
+                            is_bidirectional_pair = excluded.is_bidirectional_pair;
+                    """
+                    cursor.executemany(query_sqlite, batch)
             conn.commit()
             return True
         except Exception as e:
-            logging.error(f"[TopologyDictionaryRepo] Bulk save topology elements failed: {e}")
+            logging.error(f"[TopologyDictionaryRepo] Bulk save topology elements failed: {e}", exc_info=True)
             try:
                 conn.rollback()
             except Exception:
@@ -122,7 +151,7 @@ class TopologyDictionaryRepository:
             conn.commit()
             return True
         except Exception as e:
-            logging.error(f"[TopologyDictionaryRepo] Failed to update custom name for {raw_net_id}: {e}")
+            logging.error(f"[TopologyDictionaryRepo] Failed to update custom name for {raw_net_id}: {e}", exc_info=True)
             try:
                 conn.rollback()
             except Exception:

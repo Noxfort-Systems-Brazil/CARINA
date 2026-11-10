@@ -1,30 +1,14 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_engine_optimizers.py
-# Author: Gabriel Moraes
-# Date: September 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from unittest.mock import MagicMock
 
 import pytest
 import torch
 
-from engine.dqn_optimizer import DQNOptimizer
-from engine.ppo_optimizer import PPOOptimizer
+from optimizer.dqn_optimizer import DQNOptimizer
+from optimizer.ppo_optimizer import PPOOptimizer
 
 
 def test_dqn_optimizer_initialization():
@@ -90,3 +74,88 @@ def test_ppo_optimizer_reload_hyperparameters():
     optimizer.load_hyperparameters({"gamma": 0.92, "k_epochs": 2})
     assert optimizer.gamma == 0.92
     assert optimizer.k_epochs == 2
+
+
+def test_ppo_optimizer_step_execution():
+    """PPOOptimizer executes step successfully, ensuring states are placed on the optimizer device."""
+    device = torch.device("cuda" if hasattr(torch, "cuda") and torch.cuda.is_available() else "cpu")
+    scaler = None
+    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+        scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
+
+    optimizer = PPOOptimizer({"k_epochs": 2}, device=device, scaler=scaler)
+
+    batch_size = 4
+    seq_len = 4
+    obs_dim = 10
+
+    if hasattr(torch, "nn") and hasattr(torch.nn, "Linear") and isinstance(torch.nn.Linear, type):
+        policy_net = torch.nn.Linear(obs_dim, 2).to(device)
+        opt = torch.optim.Adam(policy_net.parameters(), lr=1e-3)
+    else:
+        policy_net = MagicMock()
+        policy_net.parameters.return_value = [torch.zeros(1, requires_grad=True)] if hasattr(torch, "zeros") else []
+        opt = MagicMock()
+
+    # Old states provided on CPU as returned by OnPolicyBuffer
+    if hasattr(torch, "randn"):
+        old_states = torch.randn(batch_size, seq_len, obs_dim, device="cpu")
+        old_actions = torch.zeros(batch_size, dtype=torch.long, device="cpu")
+        old_log_probs = torch.zeros(batch_size, dtype=torch.float32, device="cpu")
+        rewards = [1.0] * batch_size
+        dones = [False] * batch_size
+        old_state_values = torch.zeros(batch_size, dtype=torch.float32, device="cpu")
+    else:
+        old_states = MagicMock()
+        old_actions = MagicMock()
+        old_log_probs = MagicMock()
+        rewards = [1.0] * batch_size
+        dones = [False] * batch_size
+        old_state_values = MagicMock()
+
+    memory_batch = (old_states, old_actions, old_log_probs, rewards, dones, old_state_values)
+
+    evaluated_states_device = []
+
+    def evaluate_fn(states, actions):
+        if hasattr(states, "device"):
+            dev_type = states.device.type if hasattr(states.device, "type") else str(states.device)
+            evaluated_states_device.append(dev_type)
+        if hasattr(torch, "zeros") and callable(policy_net):
+            out = policy_net(states[:, -1, :])
+            log_prob = out[:, 0]
+            val = out[:, 1]
+            entropy = torch.zeros(batch_size, device=device)
+            return log_prob, val, entropy
+        return MagicMock(), MagicMock(), MagicMock()
+
+    loss = optimizer.step(
+        policy_net=policy_net,
+        optimizer=opt,
+        memory_batch=memory_batch,
+        evaluate_fn=evaluate_fn,
+    )
+
+    assert isinstance(loss, (float, int)) or hasattr(loss, "_mock_name")
+    if hasattr(torch, "randn"):
+        expected_dev = device.type if hasattr(device, "type") else str(device)
+        assert evaluated_states_device[0] == expected_dev
+
+
+def test_optimizers_scaler_auto_detection():
+    """Verifies that DQNOptimizer and PPOOptimizer automatically configure GradScaler based on device."""
+    cpu_device = torch.device("cpu")
+    dqn_cpu = DQNOptimizer({}, cpu_device)
+    ppo_cpu = PPOOptimizer({}, cpu_device)
+
+    assert dqn_cpu.scaler.is_enabled() is False
+    assert ppo_cpu.scaler.is_enabled() is False
+
+    if torch.cuda.is_available():
+        cuda_device = torch.device("cuda")
+        dqn_cuda = DQNOptimizer({}, cuda_device)
+        ppo_cuda = PPOOptimizer({}, cuda_device)
+        assert dqn_cuda.scaler.is_enabled() is True
+        assert ppo_cuda.scaler.is_enabled() is True
+
+

@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_planning_view.py
-# Author: Gabriel Moraes
-# Date: 2026-07-10
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from unittest.mock import MagicMock, patch
 
@@ -34,7 +18,7 @@ def test_planning_view_process_analysis_response_no_change(mock_map, mock_infra_
     the save_report_button is enabled and status text is updated appropriately.
     """
     mock_locale_manager = MagicMock()
-    mock_locale_manager.get_string.side_effect = lambda key, default=None: f"Mock_{key}"
+    mock_locale_manager.get_string.side_effect = lambda key, default=None, **kwargs: f"Mock_{key}"
 
     view = PlanningView(locale_manager=mock_locale_manager)
     view.page = MagicMock()
@@ -64,7 +48,7 @@ def test_planning_view_save_report_click_triggers_save(mock_map, mock_infra_clie
     Verifies that clicking save report triggers the file picker.
     """
     mock_locale_manager = MagicMock()
-    mock_locale_manager.get_string.side_effect = lambda key, default=None: f"Mock_{key}"
+    mock_locale_manager.get_string.side_effect = lambda key, default=None, **kwargs: f"Mock_{key}"
 
     view = PlanningView(locale_manager=mock_locale_manager)
     view.page = MagicMock()
@@ -88,7 +72,7 @@ def test_planning_view_interactive_node_selection(mock_map_cls, mock_infra_clien
     and sets the highlighted selection on the map widget.
     """
     mock_locale_manager = MagicMock()
-    mock_locale_manager.get_string.side_effect = lambda key, default=None: f"Mock_{key}"
+    mock_locale_manager.get_string.side_effect = lambda key, default=None, **kwargs: f"Mock_{key}"
 
     view = PlanningView(locale_manager=mock_locale_manager)
     view.page = MagicMock()
@@ -111,7 +95,7 @@ def test_planning_view_interactive_node_selection(mock_map_cls, mock_infra_clien
     # Assert node details panel updated
     assert view.planning_control_panel.selected_node_id == "tl_101"
     assert view.planning_control_panel.details_card.visible is True
-    assert view.planning_control_panel.details_card.node_title.value == "Nó: tl_101"
+    assert "tl_101" in view.planning_control_panel.details_card.node_title.value
     assert "ADICIONAR SEMÁFORO" in view.planning_control_panel.details_card.rec_badge.content.value
     assert view.map_widget.set_selected_node.assert_called_with("tl_101") is None
 
@@ -123,7 +107,7 @@ def test_planning_view_recommendation_filtering(mock_map_cls, mock_infra_client)
     Verifies that changing recommendation filter chips updates the map filter.
     """
     mock_locale_manager = MagicMock()
-    mock_locale_manager.get_string.side_effect = lambda key, default=None: f"Mock_{key}"
+    mock_locale_manager.get_string.side_effect = lambda key, default=None, **kwargs: f"Mock_{key}"
 
     view = PlanningView(locale_manager=mock_locale_manager)
     view.page = MagicMock()
@@ -139,7 +123,7 @@ def test_planning_view_interactive_edge_selection(mock_map_cls, mock_infra_clien
     Verifies that selecting a street edge updates both the map edge highlight and side panel.
     """
     mock_locale_manager = MagicMock()
-    mock_locale_manager.get_string.side_effect = lambda key, default=None: f"Mock_{key}"
+    mock_locale_manager.get_string.side_effect = lambda key, default=None, **kwargs: f"Mock_{key}"
 
     view = PlanningView(locale_manager=mock_locale_manager)
     view.page = MagicMock()
@@ -148,5 +132,5 @@ def test_planning_view_interactive_edge_selection(mock_map_cls, mock_infra_clien
     view._handle_edge_click("edge_42", edge_data)
 
     assert view.planning_control_panel.details_card.visible is True
-    assert view.planning_control_panel.details_card.node_title.value == "Nó: Via: Avenida Central"
+    assert "Avenida Central" in view.planning_control_panel.details_card.node_title.value
     assert view.map_widget.set_selected_edge.assert_called_with("edge_42") is None

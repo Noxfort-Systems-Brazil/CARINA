@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/router/map_event_router.py
-# Author: Gabriel Moraes
-# Date: June 13, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the MapEventRouter.
@@ -62,19 +46,46 @@ class MapEventRouter:
 
     def handle_map_tap(self, e: ft.TapEvent):
         """Converts tap coordinates and routes the click to elements with smart disambiguation."""
+        if getattr(e, "local_x", None) is None or getattr(e, "local_y", None) is None:
+            return
+
         map_x, map_y = self.interaction_handler.get_map_coordinates(e.local_x, e.local_y)
         scale = self.interaction_handler.scale.scale if self.interaction_handler.scale.scale > 0 else 1.0
+
+        # 0. Check Emergency Vehicle Hit (highest priority interactive element)
+        if getattr(self, "evp_overlay_manager", None) and self.evp_overlay_manager.vehicle_markers:
+            for v_id, marker in self.evp_overlay_manager.vehicle_markers.items():
+                if not getattr(marker, "visible", True):
+                    continue
+                m_cx = (getattr(marker, "left", 0.0) or 0.0) + (marker.width / 2.0)
+                m_cy = (getattr(marker, "top", 0.0) or 0.0) + (marker.height / 2.0)
+                dist_v = ((map_x - m_cx) ** 2 + (map_y - m_cy) ** 2) ** 0.5
+                if dist_v <= (24.0 / scale):
+                    if self.evp_overlay_manager.on_vehicle_click:
+                        v_data = {
+                            "vehicle_id": marker.vehicle_id,
+                            "corporation": marker.corporation,
+                            "latitude": marker.latitude,
+                            "longitude": marker.longitude,
+                            "speed_kmh": marker.speed_kmh,
+                            "heading_deg": marker.heading_deg,
+                            "siren_active": marker.siren_active,
+                            "is_evp_triggered": marker.is_evp_triggered,
+                        }
+                        self.evp_overlay_manager.on_vehicle_click(v_data)
+                    return
 
         # 1. Check Traffic Light / Interactive Widget Hit
         hit_tl_id = None
         dist_tl = float("inf")
+        box_hit_id = None
         if self.state_manager:
-            box_hit_id = self.state_manager.check_widget_hit(map_x, map_y)
+            box_hit_id = self.state_manager.check_widget_hit(map_x, map_y, padding=4.0)
             closest_tl_id, dist_tl_val = self.state_manager.get_closest_widget_distance(map_x, map_y)
             if box_hit_id:
                 hit_tl_id = box_hit_id
-                dist_tl = dist_tl_val
-            elif closest_tl_id and dist_tl_val <= (16.0 / scale):
+                dist_tl = 0.0
+            elif closest_tl_id and dist_tl_val <= (18.0 / scale):
                 hit_tl_id = closest_tl_id
                 dist_tl = dist_tl_val
 
@@ -89,8 +100,10 @@ class MapEventRouter:
 
         # 3. Disambiguate when both or either element is hit
         if hit_tl_id and hit_street:
-            # If click was very close to traffic light center (direct hit on light) or closer to light than street line
-            if dist_tl <= (12.0 / scale) or dist_tl < dist_street:
+            # If the user clicked inside/on the traffic light box (or padding),
+            # the traffic light is the foreground element and takes precedence over streets underneath.
+            # Otherwise, whichever element is closer to the tap wins.
+            if box_hit_id or dist_tl < dist_street:
                 self.handle_interactive_click(hit_tl_id)
             else:
                 self.street_interaction_handler.select_edge(closest_edge_id)

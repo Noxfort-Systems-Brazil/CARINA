@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/slm/revision_engine.py
-# Author: Gabriel Moraes
-# Date: July 29, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -55,7 +39,7 @@ class SLMRevisionEngine:
                     rev_opts = rev_db.get("OFFICIAL_TEXT_REVISION", {})
                     return rev_opts.get(lang_key, rev_opts.get("pt_br", rev_opts.get("en", default_inst)))
         except Exception as e:
-            logging.warning(f"[SLMRevisionEngine] Could not load slm_revision_prompts.json: {e}")
+            logging.warning(f"[SLMRevisionEngine] Could not load slm_revision_prompts.json: {e}", exc_info=True)
         return default_inst
 
     @staticmethod
@@ -117,5 +101,5 @@ class SLMRevisionEngine:
             )
             return revised_text
         except Exception as e:
-            logging.warning(f"[SLM_REVISION] Neural revision failed: {e}. Returning original draft.")
+            logging.warning(f"[SLM_REVISION] Neural revision failed: {e}. Returning original draft.", exc_info=True)
             return draft_text.strip()

@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/controller/connection_manager.py
-# Author: Gabriel Moraes
-# Date: 2026-02-22
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Manages hardware connections between CARINA logic and physical traffic light controllers.
@@ -116,8 +100,21 @@ class HardwareConnectionManager:
 
         ui_data = []
         for tl_id in self.known_intersections:
-            if tl_id in self.active_connections and getattr(self.active_connections[tl_id], "is_connected", False):
-                driver_instance = getattr(self.active_connections[tl_id], "hardware_driver", None)
+            possible_ids = [str(tl_id)]
+            if str(tl_id).startswith("tl_"):
+                possible_ids.append(str(tl_id).replace("tl_", ""))
+            else:
+                possible_ids.append(f"tl_{tl_id}")
+
+            active_driver = None
+            for pid in possible_ids:
+                drv = self.active_connections.get(pid)
+                if drv and getattr(drv, "is_connected", False):
+                    active_driver = drv
+                    break
+
+            if active_driver:
+                driver_instance = getattr(active_driver, "hardware_driver", None)
                 status = (
                     driver_instance.get_protocol_name()
                     if driver_instance and hasattr(driver_instance, "get_protocol_name")
@@ -126,27 +123,43 @@ class HardwareConnectionManager:
             else:
                 status = "disconnected"
 
-            ui_data.append({"agent_id": tl_id, "ip_address": self.saved_ips.get(tl_id, ""), "status": status})
+            ip_val = ""
+            for pid in possible_ids:
+                if pid in self.saved_ips and self.saved_ips[pid]:
+                    ip_val = self.saved_ips[pid]
+                    break
+
+            ui_data.append({"agent_id": tl_id, "ip_address": ip_val, "status": status})
 
         return ui_data
 
-    def toggle_connection(self, intersection_id: str, ip_address: str = None, action: str = "toggle") -> bool:
+    def toggle_connection(
+        self,
+        intersection_id: str,
+        ip_address: str = None,
+        action: str = "toggle",
+        save_to_db: bool = True,
+    ) -> bool:
         """Delegates connection toggle operations to ConnectionOperationHandler."""
         return self.op_handler.toggle_connection(
             intersection_id=intersection_id,
             ip_address=ip_address,
             action=action,
             green_stages_provider=self.get_green_stages_for_intersection,
+            save_to_db=save_to_db,
         )
 
     def export_csv_template(self, filepath: str) -> bool:
         """Delegates CSV template creation to ConnectionConfigRepository."""
         return ConnectionConfigRepository.export_csv_template(filepath, self.saved_ips, self.known_intersections)
 
-    def import_csv_config(self, filepath: str) -> Tuple[int, int]:
+    def import_csv_config(self, filepath: str, save_to_db: bool = True) -> Tuple[int, int]:
         """Delegates CSV parsing and bulk connection to ConnectionOperationHandler."""
         return self.op_handler.import_csv_and_bulk_connect(
-            filepath=filepath, known_intersections=self.known_intersections, toggle_func=self.toggle_connection
+            filepath=filepath,
+            known_intersections=self.known_intersections,
+            toggle_func=self.toggle_connection,
+            save_to_db=save_to_db,
         )
 
     def shutdown_all(self) -> None:

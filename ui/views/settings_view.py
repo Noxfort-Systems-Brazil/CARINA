@@ -1,40 +1,31 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-# File: ui/views/settings_view.py
-# Author: Gabriel Moraes
-# Date: 2026-02-22
-
-from typing import Callable, List
-
+from typing import Callable, List, Optional
 import flet as ft
 
 from ui.clients.settings_client import SettingsClient
 from ui.dialogs.confirmation_dialog_manager import ConfirmationDialogManager
 from ui.handlers.locale_manager import LocaleManager
 from ui.handlers.settings_handler import SettingsHandler
+from ui.presenters.settings_view_presenter import SettingsViewPresenter
 
 
 class SettingsView(ft.Container):
+    """
+    Settings Modal View component.
+    Declarative container delegating business actions, validation,
+    and save coordination to SettingsViewPresenter (MVP / Clean Architecture).
+    """
+
     def __init__(
         self,
         locale_manager: LocaleManager,
         settings_client: SettingsClient,
         tab_definitions: list,
         warning_text_ref: ft.Text,
+        handler: Optional[SettingsHandler] = None,
     ):
         super().__init__(expand=True, padding=10)
 
@@ -43,12 +34,15 @@ class SettingsView(ft.Container):
         self.tab_definitions = tab_definitions
         self.warning_text = warning_text_ref
 
-        self.handler = SettingsHandler()
+        self.handler = handler or SettingsHandler()
         self.dialog_manager: ConfirmationDialogManager | None = None
+        self._is_saving: bool = False
 
         # Injected properties
         self.hardware_handler = None
         self.hardware_card = None
+        self.evp_handler = None
+        self.evp_card = None
         self.account_card = None
 
         # Gather all cards for polymorphic operations
@@ -77,14 +71,25 @@ class SettingsView(ft.Container):
             spacing=15,
         )
 
+    @property
+    def subsystem_handlers(self) -> List[tuple]:
+        handlers = []
+        if self.hardware_handler:
+            handlers.append((self.hardware_handler, self.hardware_card))
+        if self.evp_handler:
+            handlers.append((self.evp_handler, self.evp_card))
+        return handlers
+
     def did_mount(self):
         if self.page:
             self.dialog_manager = ConfirmationDialogManager(self.page, self.locale_manager)
-            if self.hardware_handler and self.hardware_card:
-                self.hardware_handler.mount(self.page, self.hardware_card)
+            for handler, card in self.subsystem_handlers:
+                if card and hasattr(handler, "mount") and callable(handler.mount):
+                    handler.mount(self.page, card)
 
-            # Ensure any cards with file pickers are registered to the page overlay immediately on view mount
             for card in self.all_cards:
+                if hasattr(card, "mount") and callable(card.mount):
+                    card.mount(self.page)
                 if hasattr(card, "logo_file_picker") and card.logo_file_picker not in self.page.overlay:
                     self.page.overlay.append(card.logo_file_picker)
 
@@ -96,7 +101,6 @@ class SettingsView(ft.Container):
         self.restore_button.text = lm.get_string("settings_view.restore_button")
         self.warning_text.value = lm.get_string("settings_view.warning_text")
 
-        # Polymorphic update of Tabs (OCP)
         for idx, tab_spec in enumerate(self.tab_definitions):
             tab_text = lm.get_string(tab_spec["title_key"], tab_spec["default_title"])
             if tab_spec.get("is_dynamic_fallback"):
@@ -104,7 +108,6 @@ class SettingsView(ft.Container):
             else:
                 self.tabs.tabs[idx].text = tab_text
 
-        # Polymorphic update of Cards (OCP)
         for card in self.all_cards:
             if hasattr(card, "update_translations"):
                 card.update_translations(lm)
@@ -118,100 +121,97 @@ class SettingsView(ft.Container):
     def _load_initial_settings(self, settings: dict = None):
         if settings is None:
             settings = self.handler.get_current_settings()
-        for card in self.all_cards:
-            if hasattr(card, "set_values"):
-                card.set_values(settings)
-        if self.page:
-            self.update()
+        SettingsViewPresenter.load_initial_settings(self.all_cards, settings, self.page)
+
+    def validate_all_fields(self) -> bool:
+        return SettingsViewPresenter.validate_all_fields(self.all_cards)
+
+    def has_unsaved_changes(self) -> bool:
+        return SettingsViewPresenter.has_unsaved_changes(
+            all_cards=self.all_cards,
+            hardware_handler=self.hardware_handler,
+            settings_handler=self.handler,
+            evp_handler=self.evp_handler,
+        )
+
+    def save_and_close(self, on_close: Optional[Callable] = None):
+        if not self.validate_all_fields():
+            info_title = self.locale_manager.get_string("settings_view.title")
+            info_content = self.locale_manager.get_string(
+                "settings_view.validation_error_message",
+                default="Erro de validação: Por favor, corrija os erros nos campos destacados antes de salvar.",
+            )
+            if self.dialog_manager:
+                self.dialog_manager.show_info(title=info_title, content=info_content)
+            return
+
+        self._is_saving = True
+        try:
+            self._execute_save(on_success=on_close)
+        finally:
+            self._is_saving = False
 
     def _save_click(self, e):
         if not self.dialog_manager:
             return
 
-        # Validation pass
-        validation_failed = False
-        for card in self.all_cards:
-            if hasattr(card, "validate_fields"):
-                if not card.validate_fields():
-                    validation_failed = True
-                    if hasattr(card, "update") and hasattr(card, "page") and card.page:
-                        card.update()
-
-        if validation_failed:
+        if not self.validate_all_fields():
             info_title = self.locale_manager.get_string("settings_view.title")
-            info_content = "Erro de validação: Por favor, corrija os erros nos campos destacados antes de salvar."
-            if self.locale_manager:
-                info_content = self.locale_manager.get_string(
-                    "settings_view.validation_error_message", default=info_content
-                )
+            info_content = self.locale_manager.get_string(
+                "settings_view.validation_error_message",
+                default="Erro de validação: Por favor, corrija os erros nos campos destacados antes de salvar.",
+            )
             self.dialog_manager.show_info(title=info_title, content=info_content)
             return
 
+        self._is_saving = True
+
+        def _on_confirm():
+            try:
+                self._execute_save()
+            finally:
+                self._is_saving = False
+
+        def _on_cancel():
+            self._is_saving = False
+
         title = self.locale_manager.get_string("dialogs.confirm_action_title")
         content = self.locale_manager.get_string("dialogs.save_settings_content")
-        self.dialog_manager.show(title=title, content=content, on_confirm=self._execute_save)
+        self.dialog_manager.show(
+            title=title, content=content, on_confirm=_on_confirm, on_cancel=_on_cancel
+        )
 
     def discard_changes(self):
-        """
-        Reverts all card values and page theme back to the last saved settings.
-        Called when the settings dialog is closed without saving or when opened.
-        """
-        saved_settings = self.handler.get_current_settings()
-        self._load_initial_settings(saved_settings)
-        if self.page:
-            is_dark = saved_settings.get("theme_dark", True)
-            if isinstance(is_dark, str):
-                is_dark = is_dark.lower() in ("true", "1", "yes")
-            self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
-            self.page.update()
-
-    def _execute_save(self):
-        if not self.page or not self.settings_client:
+        if getattr(self, "_is_saving", False):
             return
-
-        new_settings_values = {}
-        for card in self.all_cards:
-            if hasattr(card, "get_values"):
-                new_settings_values.update(card.get_values())
-
-        payload_to_send = self.handler.prepare_settings_for_save(new_settings_values)
-        self.settings_client.save_settings(payload_to_send)
-
-        # Ensure page theme matches the newly saved setting
-        if self.page and "theme_dark" in new_settings_values:
-            is_dark = new_settings_values.get("theme_dark", True)
-            if isinstance(is_dark, str):
-                is_dark = is_dark.lower() in ("true", "1", "yes")
-            self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
-
-        info_title = self.locale_manager.get_string("settings_view.title")
-        info_content = self.locale_manager.get_string(
-            "settings_view.settings_saved_restart",
-            default="As configurações foram salvas. Por favor, reinicie a aplicação para que todas as alterações tenham efeito.",
+        SettingsViewPresenter.discard_changes(
+            self.all_cards, self.subsystem_handlers, self.handler, self.page
         )
 
-        self.dialog_manager.show_info(title=info_title, content=info_content)
-        self.page.update()
+    def _execute_save(self, on_success: Optional[Callable] = None):
+        SettingsViewPresenter.execute_save(
+            all_cards=self.all_cards,
+            subsystem_handlers=self.subsystem_handlers,
+            settings_handler=self.handler,
+            settings_client=self.settings_client,
+            locale_manager=self.locale_manager,
+            dialog_manager=self.dialog_manager,
+            page=self.page,
+            on_success=on_success,
+        )
 
     def save_silently(self):
-        if not self.settings_client:
-            return
-        new_settings_values = {}
-        for card in self.all_cards:
-            if hasattr(card, "get_values"):
-                new_settings_values.update(card.get_values())
-        payload_to_send = self.handler.prepare_settings_for_save(new_settings_values)
-        self.settings_client.save_settings(payload_to_send)
+        SettingsViewPresenter.save_silently(
+            all_cards=self.all_cards,
+            subsystem_handlers=self.subsystem_handlers,
+            settings_handler=self.handler,
+            settings_client=self.settings_client,
+        )
 
     def _restore_click(self, e):
-        if not self.page:
-            return
-        default_settings = self.handler.get_default_settings()
-        self._load_initial_settings(default_settings)
-        msg = self.locale_manager.get_string(
-            "settings_view.settings_restored_default",
-            default="Configurações restauradas para os valores padrão!",
+        SettingsViewPresenter.restore_defaults(
+            all_cards=self.all_cards,
+            settings_handler=self.handler,
+            locale_manager=self.locale_manager,
+            page=self.page,
         )
-        self.page.snack_bar = ft.SnackBar(content=ft.Text(msg))
-        self.page.snack_bar.open = True
-        self.page.update()

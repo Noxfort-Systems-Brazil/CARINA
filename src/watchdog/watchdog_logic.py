@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/watchdog/watchdog_logic.py
-# Author: Gabriel Moraes
-# Date: 2026-06-11
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import time
@@ -31,7 +15,13 @@ class Watchdog:
     If the time since the last heartbeat exceeds the threshold, it triggers a safety fallback.
     """
 
-    def __init__(self, timeout_ms: int = 300, grace_period_sec: float = 10.0, locale_manager=None):
+    def __init__(
+        self,
+        timeout_ms: int = 300,
+        grace_period_sec: float = 10.0,
+        locale_manager=None,
+        on_fenix_trigger: Optional[Callable[[], None]] = None,
+    ):
         """
         Initialize the Watchdog.
 
@@ -40,6 +30,7 @@ class Watchdog:
                                triggering fail-safe mode.
             grace_period_sec (float): The initial grace period in seconds during startup.
             locale_manager: Optional LocaleManagerBackend instance.
+            on_fenix_trigger: Optional callback invoked when watchdog failsafe is triggered.
         """
         if timeout_ms <= 300:
             timeout_ms = 300
@@ -54,7 +45,7 @@ class Watchdog:
         # Callbacks for state transitions
         self._on_fallback_activate: Optional[Callable[[], None]] = None
         self._on_fallback_deactivate: Optional[Callable[[], None]] = None
-        self._on_fenix_trigger: Optional[Callable[[], None]] = None
+        self._on_fenix_trigger: Optional[Callable[[], None]] = on_fenix_trigger
 
         # --- Flapping Detection ---
         self._consecutive_triggers = 0
@@ -87,7 +78,23 @@ class Watchdog:
         """
         self._on_fallback_activate = on_activate
         self._on_fallback_deactivate = on_deactivate
-        self._on_fenix_trigger = on_fenix_trigger
+        if on_fenix_trigger is not None:
+            self._on_fenix_trigger = on_fenix_trigger
+
+    def update_timeout(self, timeout_ms: int) -> None:
+        """
+        Updates the heartbeat silence timeout threshold dynamically.
+        Enforces the minimum 300ms real-time safety floor.
+        """
+        safe_timeout_ms = max(300, int(timeout_ms))
+        self._timeout_seconds = safe_timeout_ms / 1000.0
+        logger.info(
+            self._get_string(
+                "watchdog.timeout_updated",
+                default="Watchdog timeout dynamically updated to {timeout}ms.",
+                timeout=safe_timeout_ms,
+            )
+        )
 
     def register_heartbeat(self):
         """
@@ -125,21 +132,36 @@ class Watchdog:
 
         return True
 
-    def _trigger_failsafe(self, elapsed_time: float):
+    def trigger_dnn_error(self, error: Optional[object] = None):
+        """
+        Explicitly triggers Fail-Safe due to a confirmed Deep Neural Network (DNN) error.
+        Activates Fixed-Time mode and invokes F.E.N.I.X. crash recovery supervisor.
+        """
+        logger.critical(
+            f"[Watchdog] 🚨 DNN Error detected: {error}. Activating FIXED-TIME mode and F.E.N.I.X. supervisor."
+        )
+        self._trigger_failsafe(elapsed_time=0.0, is_dnn_error=True)
+
+    def _trigger_failsafe(self, elapsed_time: float, is_dnn_error: bool = False):
         self._is_fail_safe_active = True
         self._consecutive_triggers += 1
         self._total_triggers += 1
 
-        logger.critical(
-            self._get_string(
-                "watchdog.triggered",
-                default="WATCHDOG TRIGGERED: Synapse silence detected ({elapsed:.1f}ms > {threshold:.0f}ms). Switching to FIXED-TIME mode. [triggers: {consecutive} consecutive, {total} total]",
-                elapsed=elapsed_time * 1000,
-                threshold=self._timeout_seconds * 1000,
-                consecutive=self._consecutive_triggers,
-                total=self._total_triggers,
+        if is_dnn_error:
+            logger.critical(
+                "[Watchdog] FAILSAFE TRIGGERED: DNN error encountered. Switching to FIXED-TIME mode and requesting FENIX recovery."
             )
-        )
+        else:
+            logger.critical(
+                self._get_string(
+                    "watchdog.triggered",
+                    default="WATCHDOG TRIGGERED: Synapse silence detected ({elapsed:.1f}ms > {threshold:.0f}ms). Switching to FIXED-TIME mode. [triggers: {consecutive} consecutive, {total} total]",
+                    elapsed=elapsed_time * 1000,
+                    threshold=self._timeout_seconds * 1000,
+                    consecutive=self._consecutive_triggers,
+                    total=self._total_triggers,
+                )
+            )
 
         # Flapping detection: if we keep triggering and recovering rapidly, something is wrong
         if self._consecutive_triggers >= self._FLAPPING_THRESHOLD:
@@ -151,6 +173,7 @@ class Watchdog:
                 )
             )
 
+        # Fixed-Time / Fallback is ALWAYS activated (both on time trigger and on DNN error)
         if self._on_fallback_activate:
             try:
                 self._on_fallback_activate()
@@ -161,13 +184,16 @@ class Watchdog:
                         default="Error executing Watchdog activation callback: {error}",
                         error=e,
                     )
-                )
+                , exc_info=True)
 
-        if self._on_fenix_trigger:
+        # FENIX mode is triggered ONLY if this is a DNN error (timer trigger does NOT activate Fenix)
+        if is_dnn_error and self._on_fenix_trigger:
             try:
                 self._on_fenix_trigger()
             except Exception as e:
-                logger.error(f"[Watchdog] Error executing Fenix resurrection trigger: {e}")
+                logger.error(f"[Watchdog] Error executing Fenix resurrection trigger: {e}", exc_info=True)
+        elif not is_dnn_error:
+            logger.debug("[Watchdog] Timeout was due to heartbeat silence (Synapse). FENIX trigger skipped.")
 
     def _recover_system(self):
         self._is_fail_safe_active = False
@@ -194,7 +220,7 @@ class Watchdog:
                         default="Error executing Watchdog deactivation callback: {error}",
                         error=e,
                     )
-                )
+                , exc_info=True)
 
     @property
     def is_in_failsafe(self) -> bool:

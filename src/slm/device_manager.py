@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/slm/device_manager.py
-# Author: Gabriel Moraes
-# Date: July 29, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 from typing import Tuple
@@ -51,7 +35,7 @@ class SLMDeviceManager:
                         )
                         return "cpu", 0
                 except Exception as e:
-                    logging.warning(f"[SLMDeviceManager] Failed CUDA check: {e}. Falling back to CPU.")
+                    logging.warning(f"[SLMDeviceManager] Failed CUDA check: {e}. Falling back to CPU.", exc_info=True)
                     return "cpu", 0
             return device_setting, resolved_layers
 
@@ -73,11 +57,11 @@ class SLMDeviceManager:
                         logging.info("[SLMDeviceManager] Low VRAM detected (<3GB). Running on CPU.")
                         return "cpu", 0
                 except Exception as e:
-                    logging.warning(f"[SLMDeviceManager] Error checking VRAM: {e}. Using GPU fallback.")
+                    logging.warning(f"[SLMDeviceManager] Error checking VRAM: {e}. Using GPU fallback.", exc_info=True)
                     return "gpu", -1
             else:
                 logging.info("[SLMDeviceManager] CUDA not available. Running on CPU.")
                 return "cpu", 0
         except Exception as e:
-            logging.warning(f"[SLMDeviceManager] Torch check failed: {e}. Running on CPU.")
+            logging.warning(f"[SLMDeviceManager] Torch check failed: {e}. Running on CPU.", exc_info=True)
             return "cpu", 0

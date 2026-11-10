@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/utils/map_processor.py
-# Author: Gabriel Moraes - Noxfort Systems
-# Date: 12/24/2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import json
 import logging
@@ -61,12 +45,18 @@ class MapProcessor:
             for edge in net.getEdges():
                 from_node = edge.getFromNode()
                 to_node = edge.getToNode()
+                raw_name = edge.getName() if hasattr(edge, "getName") else None
+                edge_name = raw_name if raw_name else edge.getID()
                 edges_list.append(
                     {
                         "id": edge.getID(),
+                        "name": edge_name,
                         "from": from_node.getID() if from_node else None,
                         "to": to_node.getID() if to_node else None,
                         "shape": list(edge.getShape()),
+                        "lanes": edge.getLaneNumber() if hasattr(edge, "getLaneNumber") else 1,
+                        "speed": edge.getSpeed() if hasattr(edge, "getSpeed") else 13.89,
+                        "length": edge.getLength() if hasattr(edge, "getLength") else 0.0,
                     }
                 )
 

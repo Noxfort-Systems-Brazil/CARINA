@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/step_timer.py
-# Author: Gabriel Moraes
-# Date: April 15, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import time
@@ -24,8 +8,8 @@ import time
 
 class StepTimer:
     """
-    Componente dedicado (SRP) para cronometrar latências de operações
-    críticas em tempo real (HFT) e exibir métricas uniformemente.
+    Dedicated component (SRP) for timing critical real-time (HFT)
+    operation latencies and reporting metrics uniformly.
 
     Supports two usage modes:
     - HFT Mode (no args): Used by StepProcessor with start_phase/stop_phase API.
@@ -71,7 +55,7 @@ class StepTimer:
     # ==========================================
 
     def start_step(self):
-        """Inicia o relógio geral do passo HFT."""
+        """Starts the overall HFT step timer."""
         self.t_total_start = time.perf_counter()
 
         self.t_extraction = 0.0
@@ -85,7 +69,7 @@ class StepTimer:
         self._current_phase_t0 = time.perf_counter()
 
     def stop_phase(self, phase_name: str):
-        """Acumula o tempo processado sob o medidor nomeado."""
+        """Accumulates processed time under the named timer."""
         delta = time.perf_counter() - self._current_phase_t0
         if phase_name == "extraction":
             self.t_extraction += delta

@@ -30,46 +30,60 @@ Antes de implantar ou alterar a programação de um semáforo, engenheiros munic
   │(Estratégias Warrants)│      │(Matemática de Volume)│
   └──────────┬───────────┘      └──────────────────────┘
              │
-             ├──> Warrant 1: Volume Veicular em Oito Horas
-             ├──> Warrant 2: Volume Veicular em Quatro Horas
-             ├──> Warrant 3: Volume e Atraso na Hora de Pico
-             ├──> Warrant 7: Histórico de Sinistros e Taxa Crítica
-             └──> Warrant 8: Coordenação de Rede Viária
+             ├──> Warrant 1: VolumeWarrant (Volumes da Tabela MUTCD 4C-1)
+             ├──> Warrant 2: DelayWarrant (Atraso Excessivo D)
+             ├──> Warrant 3: QueueWarrant (Fila Estatística P95)
+             └──> Warrant 4: SaturationWarrant (Grau de Saturação X = v/c)
 ```
 
 ---
 
-## 2. Critérios MUTCD Implementados em `src/analysis/`
+## 2. Estratégias de Warrants Implementadas (`src/analysis/warrant_strategies.py`)
 
-### 2.1 Warrant 1: Volume Veicular em Oito Horas (`warrant_strategies.py`)
-Avalia se o volume veicular nas vias que se cruzam atinge os limites mínimos estabelecidos durante quaisquer 8 horas de um dia típico:
-- **Condição A (Volume Veicular Mínimo):** Os volumes das vias principal e secundária superam os volumes horários críticos $V_{principal} \ge 500\text{ veíc/h}$ e $V_{secundaria} \ge 150\text{ veíc/h}$.
-- **Condição B (Interrupção do Fluxo Contínuo):** O volume na via principal é tão elevado que o tráfego da via secundária sofre atraso excessivo para cruzar ($V_{principal} \ge 750\text{ veíc/h}$ e $V_{secundaria} \ge 75\text{ veíc/h}$).
+O CARINA estrutura sua análise de engenharia viária utilizando o **Padrão Strategy** orquestrado pelo [`WarrantEvaluator`](../../src/analysis/warrant_evaluator.py):
 
-### 2.2 Warrant 2: Volume Veicular em Quatro Horas
-Aplica-se quando o volume nas vias principal e secundária satisfaz as curvas de 4 horas do MUTCD modeladas em `src/analysis/warrant_math.py`.
+### 2.1 Warrant 1: Volume Veicular (`VolumeWarrant`)
+Avalia os volumes de tráfego das aproximações utilizando a equação fundamental do fluxo de tráfego:
+$$q = k \times (v \times 3.6)$$
+- **Limiares da Tabela MUTCD 4C-1:** Avalia a quantidade de faixas e velocidade limite:
+  - **1 Faixa Via Principal / 1 Faixa Via Secundária:** Condição A: $V_{principal} \ge 500\text{ veíc/h}$, $V_{secundaria} \ge 150\text{ veíc/h}$. Condição B: $V_{principal} \ge 750\text{ veíc/h}$, $V_{secundaria} \ge 75\text{ veíc/h}$.
+  - **2+ Faixas Via Principal / 2+ Faixas Via Secundária:** Condição A: $V_{principal} \ge 600\text{ veíc/h}$, $V_{secundaria} \ge 200\text{ veíc/h}$. Condição B: $V_{principal} \ge 900\text{ veíc/h}$, $V_{secundaria} \ge 100\text{ veíc/h}$.
+- **Fator de Redução de 70% para Alta Velocidade:** Se a velocidade regulamentada da via principal for superior a $70\text{ km/h}$ ($19.44\text{ m/s}$), todos os limiares de volume são multiplicados por $0.70$ (ex.: $500 \to 350\text{ veíc/h}$, $150 \to 105\text{ veíc/h}$).
 
-### 2.3 Warrant 3: Volume e Atraso na Hora de Pico
-Avalia se as condições de tráfego durante a hora de maior volume do dia causam atrasos extremos ou riscos severos:
-- O atraso total por tempo parado experimentado pelo tráfego em uma aproximação secundária é igual ou superior a 4 veículos-hora (para pista simples).
-- O volume na aproximação atinge ou supera 100 veículos por hora.
+### 2.2 Warrant 2: Atraso Operacional (`DelayWarrant`)
+Quantifica o atraso real experimentado pelo tráfego nas aproximações secundárias em relação ao tempo de viagem em fluxo livre:
+$$D = \frac{L}{v_{\text{real}}} - \frac{L}{v_{\text{limit}}}$$
+- Avalia se o atraso médio supera o limiar de tolerância:
+$$D_{avg} > D_{\text{threshold}}$$
+- Limiar padrão: `unacceptable_delay = 90.0 s`.
 
-### 2.4 Warrant 7: Histórico de Sinistros de Trânsito
-Avalia se a implantação semafórica reduzirá a ocorrência de colisões e atropelamentos:
-- Medidas alternativas de menor impacto não foram suficientes para reduzir os sinistros.
-- Registro de cinco ou mais colisões no período de 12 meses do tipo suscetível a redução por sinalização semafórica (ex.: colisões em ângulo reto / transversais).
+### 2.3 Warrant 3: Fila Estatística P95 (`QueueWarrant`)
+Audita o acúmulo de veículos em fila através do percentil 95 para prevenir retenções arteriais (*spillback*):
+- Calcula o comprimento de fila empírico de 95º percentil $P95(Q)$ sobre as amostras coletadas.
+- O critério é satisfeito se:
+$$P95(Q) > Q_{\text{threshold}}$$
+- Limiar padrão: `max_queue_p95 = 15` veículos.
 
-### 2.5 Warrant 8: Coordenação em Rede Viária
-Justifica a semaforização para incentivar a concentração e organização dos fluxos veiculares em corredores arteriais coordenados em rede.
+### 2.4 Warrant 4: Grau de Saturação (`SaturationWarrant`)
+Avalia a razão volume/capacidade ($v/c$) em todas as faixas de aproximação do cruzamento:
+$$X = \frac{q}{N \times f_{\text{ideal}}}$$
+Onde:
+- $q$: Volume médio espacial ($\text{veíc/h}$).
+- $N$: Número de faixas de rolamento.
+- $f_{\text{ideal}}$: Fluxo de saturação ideal por faixa ($1800\text{ veíc/h/faixa}$).
+- O critério é satisfeito se a razão máxima de saturação exceder a capacidade crítica:
+$$X_{\max} > X_{\text{critical}}$$
+- Limiar padrão: `saturation_critical = 0.85` ($85\%$ da capacidade).
 
 ---
 
 ## 3. Utilitários Matemáticos (`warrant_math.py`)
 
 Localizados em `src/analysis/warrant_math.py`:
-- **Cálculo da Velocidade de 85º Percentil:** Avalia se os limites operacionais exigem fator de redução de 70% nos limiares volumétricos (aplicável quando a via principal opera a $> 70\text{ km/h}$ ou em comunidades rurais isoladas).
-- **Razão de Fluxo Crítico:** Calcula o fluxo de saturação por faixa e o grau de saturação ($X = v/c$).
-- **Acumulação por Janela Deslizante:** Agrega amostras de séries temporais em intervalos horários estáveis para auditoria forense.
+- **`compute_volume_q(density, speed)`:** Calcula o volume de fluxo $q = k \times (v \times 3.6)$.
+- **`compute_delay(length, v_real, v_limit)`:** Calcula o atraso veicular real em função da velocidade limite.
+- **`compute_p95(values)`:** Calcula o percentil 95 estatístico da fila.
+- **`compute_saturation_ratio(volume, num_lanes, ideal_flow)`:** Calcula o grau de saturação ($X = v/c$).
 
 ---
 

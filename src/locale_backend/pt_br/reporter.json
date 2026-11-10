@@ -23,6 +23,7 @@
     "calib_status_done": "Concluída",
     "calib_status_ongoing": "Em Andamento",
     "override_suffix_alert": " - Modo Alerta",
-    "override_suffix_off": " - Desativado"
+    "override_suffix_off": " - Desativado",
+    "override_suffix_evp": " - 🚨 Preempção EVP ({vehicle})"
   }
 }

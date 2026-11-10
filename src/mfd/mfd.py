@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/engine/mfd/mfd.py
-# Author: Gabriel Moraes
-# Date: June 15, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Macroscopic Fundamental Diagram (MFD) — Facade Orchestrator.
@@ -30,11 +14,12 @@ itself. It delegates each responsibility to the appropriate specialist.
 
 import logging
 from typing import Any, Dict, List, Optional
+import xml.etree.ElementTree as ET
 
 import sumolib
 
 from mfd.calculator import MFDCalculator
-from mfd.classifier import MFDClassifier
+from mfd.classifier import MFDClassifier, NetworkState
 from mfd.snapshot import MFDSnapshot
 from mfd.tracker import MFDTracker
 
@@ -114,7 +99,7 @@ class MacroscopicFundamentalDiagram:
                 f"total network length: {self._total_network_length:.1f}m"
             )
 
-        except Exception as e:
+        except (OSError, ET.ParseError, ValueError, RuntimeError) as e:
             logger.error(f"[MFD] Failed to load topology from {net_file_path}: {e}", exc_info=True)
             self._topology_loaded = False
 
@@ -197,3 +182,13 @@ class MacroscopicFundamentalDiagram:
         """Resets all MFD state for a new session. Preserves topology."""
         self._tracker.reset()
         logger.info("[MFD] State reset. Topology preserved.")
+
+
+__all__ = [
+    "MacroscopicFundamentalDiagram",
+    "MFDSnapshot",
+    "MFDCalculator",
+    "MFDTracker",
+    "NetworkState",
+    "MFDClassifier",
+]

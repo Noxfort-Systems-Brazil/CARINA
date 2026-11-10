@@ -1,25 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/street_info_widget.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o StreetInfoWidget.
+Defines the StreetInfoWidget.
 """
 
 from typing import Callable, Dict
@@ -33,7 +17,7 @@ from ui.managers.alias_manager import AliasManager
 
 class StreetInfoWidget(ft.Card):
     """
-    Um Card que exibe os dados de uma rua e pode ser escondido.
+    A Card that displays street data and can be hidden.
     """
 
     def __init__(
@@ -113,14 +97,14 @@ class StreetInfoWidget(ft.Card):
         )
 
     def did_mount(self):
-        """Chamado quando o widget é montado na página."""
+        """Called when the widget is mounted on the page."""
         self.update_translations(self.locale_manager)
         if self.page:
             self.update()
 
     # --- CHANGE 3: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
-        """Atualiza todos os textos deste widget com base no LocaleManager."""
+        """Updates all texts in this widget based on LocaleManager."""
         self.locale_manager = lm
         self.street_id_text_template = lm.get_string("dashboard_view.street_info_title_prefix")
         self.street_id_text.label = self.street_id_text_template
@@ -137,11 +121,12 @@ class StreetInfoWidget(ft.Card):
 
     def update_and_show(self, street_id: str, street_data: Dict):
         """
-        Atualiza os campos de texto com novos dados e torna o widget visível.
+        Updates text fields with new data and makes the widget visible.
         """
         # --- CHANGE 4: Use the translation template for dynamic text ---
         self._current_street_id = street_id
-        self.street_id_text.value = self.alias_manager.get_alias(street_id)
+        default_name = street_data.get("name") if isinstance(street_data, dict) else None
+        self.street_id_text.value = self.alias_manager.get_alias(street_id, default=default_name)
 
         congestion = street_data.get("congestion", 0.0)
         flow = street_data.get("flow", "--")
@@ -157,14 +142,14 @@ class StreetInfoWidget(ft.Card):
 
     def hide(self, e=None):
         """
-        Torna o widget invisível e notifica o pai.
+        Makes the widget invisible and notifies the parent.
         """
         self.visible = False
         if self.on_close:
             self.on_close()
 
     def _on_submit(self, e):
-        """Salva o novo nome (alias) para a rua."""
+        """Saves the new name (alias) for the street."""
         if self._current_street_id:
             self.alias_manager.set_alias(self._current_street_id, self.street_id_text.value)
             if self.page:

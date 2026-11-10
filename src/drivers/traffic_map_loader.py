@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/drivers/traffic_map_loader.py
-# Author: Gabriel Moraes
-# Date: 2026-09-25
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Loads and parses traffic light phase configurations from the SUMO network map (.net.xml / .net.xml.gz).
@@ -81,8 +65,9 @@ class TrafficMapLoader:
 
             root = tree.getroot()
             states: Dict[int, str] = {}
+            target_ids = {intersection_id, intersection_id.replace("tl_", ""), f"tl_{intersection_id}"}
             for tl in root.findall("tlLogic"):
-                if tl.get("id") == intersection_id:
+                if tl.get("id") in target_ids:
                     for idx, phase in enumerate(tl.findall("phase")):
                         state = phase.get("state")
                         if state:
@@ -97,5 +82,5 @@ class TrafficMapLoader:
                     id=intersection_id,
                     error=e,
                 )
-            )
+            , exc_info=True)
             return {}

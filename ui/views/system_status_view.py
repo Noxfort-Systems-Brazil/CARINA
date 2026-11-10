@@ -1,28 +1,12 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/views/system_status_view.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define a SystemStatusView.
+Defines the SystemStatusView.
 
-Nesta versão, a lógica de carregamento de dados foi movida para um cliente
-assíncrono (SystemStatusClient) para evitar o bloqueio da UI.
+In this version, data loading logic was moved to an asynchronous
+client (SystemStatusClient) to avoid blocking the UI.
 """
 
 from typing import Any, Dict
@@ -35,7 +19,7 @@ from ui.handlers.locale_manager import LocaleManager
 
 class SystemStatusView(ft.Container):
     """
-    Um widget que carrega e exibe o sumário do sistema de forma assíncrona.
+    A widget that loads and displays the system summary asynchronously.
     """
 
     def __init__(self, locale_manager: LocaleManager):
@@ -139,18 +123,18 @@ class SystemStatusView(ft.Container):
         # --- END OF CHANGE 2 ---
 
     def did_mount(self):
-        """Chamado quando o widget é montado na página."""
+        """Called when the widget is mounted on the page."""
         self.update_translations(self.locale_manager)
         # --- CHANGE 3: Starts data fetching asynchronously ---
         self.client.start_fetching_status()
 
     # --- CHANGE 4: New callback methods to process results ---
     def _on_status_loaded(self, response: Dict[str, Any]):
-        """Callback executado pelo cliente quando os dados são carregados."""
+        """Callback executed by the client when data is loaded."""
         self._update_ui_with_data(response)
 
     def _update_ui_with_data(self, response: Dict[str, Any]):
-        """Atualiza a UI na thread principal com os dados recebidos."""
+        """Updates the UI on the main thread with received data."""
         if not self.page:
             return
 
@@ -183,7 +167,7 @@ class SystemStatusView(ft.Container):
     # --- END OF CHANGE 4 ---
 
     def update_translations(self, lm: LocaleManager):
-        """Atualiza todos os textos deste widget."""
+        """Updates all texts in this widget."""
         self.title_text.value = lm.get_string("diagnostics_view.nav_system")
         self.hardware_card_title.value = lm.get_string("system_status_view.hardware_title")
         self.gpu_label.value = lm.get_string("system_status_view.gpu_label")

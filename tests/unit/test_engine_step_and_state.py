@@ -1,25 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: tests/unit/test_engine_step_and_state.py
-# Author: Gabriel Moraes
-# Date: September 2026
-
-# CARINA - Clean Architecture & SOLID Unit Test Suite
-# Tests for StateExtractor and StepProcessor (Synapse Frame Processing & Orchestration)
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from unittest.mock import MagicMock, patch
 
@@ -102,36 +83,48 @@ def test_state_extractor_with_mock_topology(mock_locale):
 def test_step_processor_orchestration(mock_locale):
     """Tests StepProcessor lifecycle, reset, and step execution with Synapse data."""
     mock_settings = MagicMock()
-    mock_agent_mgr = MagicMock()
-    mock_preprocessor = MagicMock()
-    mock_extractor = MagicMock()
+    mock_settings.getint.return_value = 100
+    mock_timer = MagicMock()
+    mock_evaluator = MagicMock()
+    mock_transition_mgr = MagicMock()
     mock_supervisor = MagicMock()
-    mock_authorizer = MagicMock()
-    mock_maturity_mgr = MagicMock()
-    mock_reward_comp = MagicMock()
+    mock_pae_trainer = MagicMock()
+    mock_mfd_processor = MagicMock()
+    mock_actuator = MagicMock()
+    mock_telemetry_pub = MagicMock()
     mock_cycle_mgr = MagicMock()
-    mock_pipe = MagicMock()
+    mock_episode_reporter = MagicMock()
 
     processor = StepProcessor(
         settings=mock_settings,
         locale_manager=mock_locale,
-        agent_manager=mock_agent_mgr,
-        input_preprocessor=mock_preprocessor,
-        state_extractor=mock_extractor,
+        step_timer=mock_timer,
+        agent_evaluator=mock_evaluator,
+        stage_transition_manager=mock_transition_mgr,
         action_supervisor=mock_supervisor,
-        action_authorizer=mock_authorizer,
-        maturity_manager=mock_maturity_mgr,
-        reward_computer=mock_reward_comp,
+        online_pae_trainer=mock_pae_trainer,
+        mfd_processor=mock_mfd_processor,
+        hardware_actuator=mock_actuator,
+        telemetry_publisher=mock_telemetry_pub,
         cycle_manager=mock_cycle_mgr,
-        pipe_conn=mock_pipe,
+        episode_reporter=mock_episode_reporter,
     )
 
     processor.set_current_phases({"TL1": 0})
     processor.set_guardians({"TL1": MagicMock()})
     assert processor.step_counter == 0
 
-    # Mock agent_evaluator output
-    processor.agent_evaluator.evaluate_agent = MagicMock(return_value=(1, "AUTONOMOUS", False, 12.5, 0.25, {}))
+    from engine.agent_evaluator import FleetDecisions
+
+    # Mock agent_evaluator output via FleetDecisions
+    mock_evaluator.evaluate_fleet.return_value = FleetDecisions(
+        actions={"TL1": 1},
+        lanes_state={"TL1": {}},
+        maturity_info={"TL1": "AUTONOMOUS"},
+        step_reward_sum=12.5,
+        guardian_vetoed_any=False,
+        metrics_delta={"TL1": (12.5, 0.25)},
+    )
 
     synapse_traffic_data = {"timestamp": 100.0, "edges": {"edge1": {"occupancy": 0.2}}}
     mock_agent = MagicMock()
@@ -141,8 +134,13 @@ def test_step_processor_orchestration(mock_locale):
 
     assert processor.step_counter == 1
     mock_supervisor.apply_actions.assert_called_once()
+    mock_transition_mgr.apply_software_transitions.assert_called_once()
+    mock_pae_trainer.train_step.assert_called_once()
+    mock_telemetry_pub.publish.assert_called_once()
 
     # Test reset state
     processor.reset_state()
     assert processor.step_counter == 0
     assert len(processor.current_stages) == 0
+    mock_pae_trainer.reset.assert_called_once()
+

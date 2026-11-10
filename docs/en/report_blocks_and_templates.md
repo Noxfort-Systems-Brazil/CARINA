@@ -59,7 +59,7 @@ CARINA structures forensic audit reports using the **Registry Pattern** via [`sr
 | Block Renderer | Class / Module | Purpose |
 | :--- | :--- | :--- |
 | **Executive Summary** | `ReportExecutiveSummaryRenderer` | High-level synthesis of network performance, average delay reductions, and throughput. |
-| **Formal Equations** | `ReportEquationsRenderer` | Renders the 5 formal neural equations (TCN, GATv2, Cross-Attention, D3QN, Captum). |
+| **Formal Equations** | `ReportEquationsRenderer` | Renders the formal neural equations (TCN, GATv2, PAE, D3QN, Captum). |
 | **Attribution Cards** | `ReportAnnexCardsRenderer` | Per-intersection feature attribution rankings (queue length, occupancy, speed). |
 | **Guardian Veto Audit** | `ReportGuardianTableRenderer` | Audit table querying PostgreSQL for all symbolic and neural safety vetoes. |
 | **Consolidated Summary**| `ReportConsolidatedSummaryRenderer` | Statistical overview comparing baseline vs AI performance metrics. |
@@ -68,11 +68,15 @@ CARINA structures forensic audit reports using the **Registry Pattern** via [`sr
 
 ## 4. Multi-Language Report Templates
 
-Report templates and section boilerplates are stored in [`config/templates/`](../../config/templates):
-- `config/templates/xai/xai_report_sections.json`: Structured section definitions.
-- `config/templates/xai/xai_categories.json`: Localized category tags.
-- `config/templates/omml_equation_templates.json`: Base templates for OMML equations.
-- `config/templates/xai/xai_table_templates.json`: Table headers and formatting definitions.
+Report templates and section boilerplates are organized by domain in [`config/templates/`](../../config/templates):
+- **Base Mathematical Formulas:**
+  - `config/templates/omml_equation_templates.json`: Base templates for OMML equations (PPO, TCN, ST-GATv2, PAE, D3QN, Captum).
+- **Explainable AI (XAI) Templates (`config/templates/xai/`):**
+  - `xai_report_sections.json`, `xai_categories.json`, `xai_equations.json`, `xai_card_templates.json`, `xai_table_templates.json`.
+- **Macroscopic Fundamental Diagram (MFD) Templates (`config/templates/mfd/`):**
+  - `mfd_report_sections.json`, `mfd_table_templates.json`, `mfd_audit_sheet_templates.json`, `mfd_classification_thresholds.json`, `mfd_prompts.json`, `mfd_summary_directives.json`, `mfd_fallback_defaults.json`.
+- **Smart Analysis System (SAS) Templates (`config/templates/sas/`):**
+  - `sas_report_sections.json`, `sas_intersection_templates.json`, `sas_recommendation_labels.json`, `sas_summary_directives.json`.
 
 ---
 
@@ -80,5 +84,5 @@ Report templates and section boilerplates are stored in [`config/templates/`](..
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Intelligent Mobility Engineering • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Licensed under AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Licensed under AGPLv3 or later (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

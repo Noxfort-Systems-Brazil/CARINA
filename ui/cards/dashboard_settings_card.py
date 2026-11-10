@@ -1,25 +1,9 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/widgets/dashboard_settings_card.py
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Define o DashboardSettingsCard, um widget componente para a tela de Configurações.
+Defines the DashboardSettingsCard, a component widget for the Settings screen.
 """
 
 from typing import Any, Dict
@@ -32,12 +16,12 @@ from ui.handlers.locale_manager import LocaleManager
 
 class DashboardSettingsCard(ft.Card):
     """
-    Um Card que encapsula as configurações de visualização e do dashboard.
+    A Card encapsulating visualization and dashboard settings.
     """
 
     def __init__(self, initial_values: Dict[str, Any]):
         """
-        Inicializa o Card com os valores fornecidos.
+        Initializes the Card with the provided values.
         """
         super().__init__()
 
@@ -70,7 +54,7 @@ class DashboardSettingsCard(ft.Card):
 
     def get_values(self) -> Dict[str, Any]:
         """
-        Retorna um dicionário com os valores atuais dos controles neste card.
+        Returns a dictionary with current control values in this card.
         """
         return {
             "heatmap_strategy": self.dd_heatmap_strategy.value,
@@ -79,7 +63,7 @@ class DashboardSettingsCard(ft.Card):
 
     def set_values(self, values: Dict[str, Any]):
         """
-        Atualiza os valores dos controles neste card com base no dicionário fornecido.
+        Updates control values in this card based on the provided dictionary.
         """
         self.dd_heatmap_strategy.value = values.get("heatmap_strategy", "max")
         self.tf_heatmap_saturation.value = values.get("heatmap_saturation", "100.0")
@@ -88,7 +72,7 @@ class DashboardSettingsCard(ft.Card):
 
     # --- CHANGE 2: New method to translate the widget ---
     def update_translations(self, lm: LocaleManager):
-        """Atualiza os textos deste card com base no LocaleManager."""
+        """Updates texts in this card based on the LocaleManager."""
         # Assuming corresponding keys exist in JSON files
         self.title_text.value = lm.get_string("settings_view.dashboard_card.title")
         self.dd_heatmap_strategy.label = lm.get_string("settings_view.dashboard_card.heatmap_strategy")

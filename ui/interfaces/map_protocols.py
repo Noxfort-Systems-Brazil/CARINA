@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/interfaces/map_protocols.py
-# Author: Gabriel Moraes
-# Date: 2026-06-19
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
@@ -98,7 +82,7 @@ class MapStateManagerProtocol(Protocol):
     selected_interactive_id: str | None
     interactive_widgets: Dict[str, Any]
 
-    def check_widget_hit(self, x: float, y: float) -> str | None: ...
+    def check_widget_hit(self, x: float, y: float, padding: float = 4.0) -> str | None: ...
 
     def get_closest_widget_distance(self, x: float, y: float) -> Tuple[str | None, float]: ...
 
@@ -138,7 +122,7 @@ class MapControlsAssemblerProtocol(Protocol):
     """Protocol defining interactive controls assembler."""
 
     def assemble_map_controls(
-        self, drawer: MapDrawerProtocol, canvas: cv.Canvas
+        self, drawer: MapDrawerProtocol, canvas: cv.Canvas, background_control: Optional[ft.Control] = None
     ) -> Tuple[List[ft.Control], Dict[str, Any]]: ...
 
 

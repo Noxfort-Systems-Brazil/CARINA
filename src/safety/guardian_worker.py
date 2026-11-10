@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/safety/guardian_worker.py (FIXED)
-# Author: Gabriel Moraes
-# Date: October 5, 2025
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
 Defines the logic for the Asynchronous Guardian process.
@@ -28,10 +12,10 @@ and sends veto signals back to the main process.
 import configparser
 import logging
 import os
-import sys
 import time
 from multiprocessing import Queue
 from queue import Empty, Full
+from typing import Dict, Tuple
 
 
 def run_guardian_worker(
@@ -46,16 +30,11 @@ def run_guardian_worker(
     """
     The entry point and main loop for the Asynchronous Guardian process.
     """
-    # Add 'src' directory to path to allow relative imports
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    src_path = os.path.join(project_root, "src")
-    if src_path not in sys.path:
-        sys.path.insert(0, src_path)
 
     import torch
 
     from agents.guardian_agent import GuardianAgent
-    from engine.dqn_optimizer import DQNOptimizer
+    from optimizer.dqn_optimizer import DQNOptimizer
 
     # --- PAE Universal (inference-only copy for subprocess) ---
     from models.pae import PredictiveAutoencoder
@@ -64,9 +43,10 @@ def run_guardian_worker(
     from utils.locale_manager_backend import LocaleManagerBackend
     from utils.logging_setup import setup_logging
 
-    # --- TensorCore (TF32) Hardware Acceleration Optimization (Process Independent) ---
+    # --- TensorCore (TF32/FP16) Hardware Acceleration Optimization (Process Independent) ---
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = True
     try:
         torch.set_float32_matmul_precision("high")
     except AttributeError:
@@ -74,7 +54,7 @@ def run_guardian_worker(
     # ------------------------------------------------------------
 
     # Configure a specific logger for this process
-    from src.utils.paths import get_base_output_dir
+    from utils.paths import get_base_output_dir
 
     log_dir = os.path.join(get_base_output_dir(), "logs", "guardian_worker")
     os.makedirs(log_dir, exist_ok=True)
@@ -125,9 +105,10 @@ def run_guardian_worker(
             shared_pae=shared_pae_worker,
         )
 
-    # Global Strategy Optimizer for the Worker
+    # Global Strategy Optimizer for the Worker (with AMP GradScaler)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dqn_optimizer = DQNOptimizer(hyperparams=guardian_config, device=device)
+    scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
+    dqn_optimizer = DQNOptimizer(hyperparams=guardian_config, device=device, scaler=scaler)
 
     logging.info(
         lm.get_string(
@@ -136,6 +117,8 @@ def run_guardian_worker(
             count=len(guardians),
         )
     )
+
+    prev_guardian_states: Dict[str, Tuple[torch.Tensor, int]] = {}
 
     # --- Main Loop ---
     while True:
@@ -156,21 +139,44 @@ def run_guardian_worker(
 
                 # THINKING MODE: Generate the Preemptive Veto Map
                 veto_map = {}
+                is_training_mode = (mode == "training")
                 for tl_id, guardian in guardians.items():
                     local_state = global_state.get(tl_id)
                     if not local_state:
                         continue
 
                     # Background Neural Inference: Predict Spillback Risk
-                    risk_score = guardian.evaluate_spillback_risk(local_state, tl_id)
-                    veto_map[tl_id] = risk_score
+                    risk_score = guardian.evaluate_spillback_risk(local_state, tl_id, is_training=is_training_mode)
+                    is_exploratory = guardian.is_exploratory_decision(tl_id)
+                    raw_thresh = getattr(guardian, "spillback_risk_threshold", 0.65)
+                    veto_thresh = float(raw_thresh) if isinstance(raw_thresh, (int, float)) else 0.65
+                    veto_map[tl_id] = {
+                        "risk": risk_score,
+                        "is_exploratory": is_exploratory,
+                        "veto_action": guardian.ACTION_KEEP_STAGE if risk_score >= veto_thresh else None,
+                    }
 
                     # Guardian Learning (if in training mode)
                     if mode == "training" and rewards:
-                        # Reconstructed Strategy Invocation (SOLID)
-                        # Assumes the transition gets pushed to memory somewhere else previously in the pipeline
+                        curr_seq = guardian._get_temporal_sequence(local_state, tl_id).squeeze(0)
+                        if tl_id in prev_guardian_states:
+                            prev_seq, prev_act = prev_guardian_states[tl_id]
+                            tl_reward = float(rewards.get(tl_id, 0.0))
+                            guardian.memory.push(prev_seq, prev_act, curr_seq, tl_reward)
+
+                        chosen_action = (
+                            guardian.ACTION_KEEP_STAGE if risk_score >= veto_thresh else guardian.ACTION_CHANGE_STAGE
+                        )
+                        if done:
+                            prev_guardian_states.pop(tl_id, None)
+                        else:
+                            prev_guardian_states[tl_id] = (curr_seq, chosen_action)
+
+                        raw_steps = getattr(guardian, "steps_done", 0)
+                        guardian.steps_done = (int(raw_steps) if isinstance(raw_steps, (int, float)) else 0) + 1
+
                         if len(guardian.memory) >= getattr(guardian, "batch_size", 128):
-                            loss = dqn_optimizer.step(
+                            dqn_optimizer.step(
                                 policy_net=guardian.policy_net,
                                 target_net=guardian.target_net,
                                 optimizer=guardian.optimizer,
@@ -179,8 +185,10 @@ def run_guardian_worker(
                                 forward_target=guardian.forward_target,
                             )
 
-                            # Soft Target Update heuristic
-                            if getattr(guardian, "steps_done", 0) % 1000 == 0:
+                            # Polyak soft target update every step (with fallback for legacy mocks)
+                            if hasattr(dqn_optimizer, "soft_update_target_net"):
+                                dqn_optimizer.soft_update_target_net(guardian.policy_net, guardian.target_net)
+                            elif guardian.steps_done % 1000 == 0:
                                 dqn_optimizer.update_target_net(guardian.policy_net, guardian.target_net)
 
                 # Broadcast Veto Map to Main Process (Zero-Latency check at inference time)

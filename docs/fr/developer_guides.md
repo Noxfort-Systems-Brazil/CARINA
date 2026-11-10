@@ -62,14 +62,14 @@ exploitation_percentile = 25
 learning_rate_range = 0.00001, 0.0005
 
 [MATURITY]
-auto_pacing_enabled = False
-auto_performance_margin_enabled = False
+auto_pacing_enabled = True
+auto_performance_margin_enabled = True
 child_phase_episodes = 1
 teen_phase_min_episodes = 1
 performance_margin = -100.0
 
 [REWARD_WEIGHTS]
-auto_reward_weights_enabled = False
+auto_reward_weights_enabled = True
 weight_waiting_time = -2.0
 weight_flow = 2.0
 
@@ -93,12 +93,19 @@ batch_size = 128
 [HEATMAP_SCALING]
 weight_occupancy = 1.0
 weight_waiting_time = 1.5
+weight_flow = 1.0
+saturation_threshold = 0.85
+lane_aggregation_strategy = max
+heatmap_strategy = combined
+heatmap_saturation = 1.0
 
 [REMOTE_GATEWAY]
-enabled = True
-port = 2201
-tailscale_enabled = False
-tailscale_hostname = carina-edge
+gateway_enabled = true
+cco_subdomain = cco
+evp_subdomain = evp
+evp_auth_token =
+cco_port = 2201
+evp_port = 8085
 
 [EVP]
 preemption_enabled = True
@@ -199,7 +206,12 @@ if agent_type == "CUSTOM_PPO":
 
 ## 3. Empaquetage & Distribution
 
-Les méthodes historiques d'empaquetage PyInstaller et paquets `.deb` via `build_installer.sh` ont été dépréciées et retirées. Une nouvelle méthode de déploiement et d'installation conteneurisée est prévue pour les prochaines versions.
+CARINA propose un script hermétique de compilation multi-étapes via Docker ([`scripts/build_deb.sh`](../../scripts/build_deb.sh)) qui compile l'interface web CCO (React), le binaire natif Go, prépare l'environnement virtuel Python isolé et génère un paquet Debian (`dist/carina_1.0.0_amd64.deb`).
+
+Pour compiler le paquet localement :
+```bash
+./scripts/build_deb.sh
+```
 
 Pour les instructions de déploiement et d'exécution, voir [Déploiement & Empaquetage](deployment_and_packaging.md).
 
@@ -255,5 +267,5 @@ La réponse attendue est `HTTP 204 No Content` ($< 1\text{ ms}$). Observez les j
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

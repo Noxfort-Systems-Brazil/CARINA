@@ -86,7 +86,7 @@ message ScenarioDefinition {
 
 ## 3. Spécifications des Files de Communication Inter-Processus (IPC)
 
-CARINA gère 10 canaux IPC bornés créés par le [`ProcessManager`](../../src/launcher/process_manager.py).
+CARINA coordonne 11 files IPC bornées et 1 connexion par tube duplex gérées par le [`ProcessManager`](../../src/launcher/process_manager.py) :
 
 | Nom de File | Taille Max | Processus Producteur | Processus Consommateur | Schéma de Charge Utile / Type de Message |
 | :--- | :---: | :--- | :--- | :--- |
@@ -175,7 +175,7 @@ La fonction factory [`create_monitor_transport()`](../../src/transports/factory.
 La passerelle web Go compilée expose une interface d'ingestion à haut débit et unidirectionnelle (sans attente de réponse) pour les balises GPS des véhicules de secours :
 
 - **Point de Terminaison :** `POST /api/v1/evp/telemetry` (alias : `POST /amb` ou `POST /amb/`)
-- **Port :** `2201` (Passerelle Web / Tailscale Funnel) ou `8085` (récepteur autonome Python)
+- **Port :** `2201` (Passerelle Web Go / Tailscale Funnel) ou `8085` (serveur Go EVP dédié [`src_go/evp_go/`](../../src_go/evp_go) / récepteur autonome)
 - **Réponse :** `204 No Content` (Retour immédiat pour une exécution sous la milliseconde)
 - **Schéma de la Charge Utile :**
   ```json
@@ -221,9 +221,36 @@ Disponibles sur le port `2201` de la passerelle web Go (et sécurisés via Tails
 
 ---
 
+## 9. Modules Utilitaires de Pacing, Maturation et Couverture Hebdomadaire
+
+Interfaces Python du cœur de CARINA pour la régulation temporelle et le cursus de maturation :
+
+### 9.1 `EpisodeStepCalculator` (`src.utils.episode_step_calculator`)
+Calcule dynamiquement le nombre de pas par épisode à partir de la topologie du réseau routier :
+- **`calculate(net_or_path: Union[str, Any], telemetry_delta_ms: float = 250.0) -> EpisodePacingResult`**
+  Parse le réseau SUMO, unifie les sens bidirectionnels, ignore les connecteurs internes (`:`), calcule la complexité topologique $C_{\text{topo}}$, le temps de relaxation sous-linéaire $T_{\text{physique}}$ et renvoie un `EpisodePacingResult` avec `episode_steps`, `duration_seconds` et les planchers hebdomadaires d'épisodes (`child_episodes_1_week`, `teen_episodes_1_week`).
+
+### 9.2 `WeeklyCoverageTracker` (`src.core.weekly_coverage_tracker`)
+Suit l'observation tout au long des 168 heures du calendrier réel ($7\text{ jours} \times 24\text{ heures}$) avec persistance atomique :
+- **`register_step(raw_timestamp: float) -> Tuple[int, int]`** : Enregistre les trames de télémétrie dans la matrice `(jour_semaine, heure)` selon les horodatages UNIX réels.
+- **`is_week_completed() -> bool`** : Renvoie `True` si l'ensemble des 168 créneaux horaires de la semaine a été couvert.
+- **`get_completion_ratio() -> float`** : Renvoie le ratio actuel de couverture hebdomadaire dans $[0.0, 1.0]$.
+- **`save_state() / load_state()`** : Sauvegarde et restaure atomiquement la progression sur disque (`weekly_coverage_{phase}.json`), tolérant les pauses et redémarrages du processus.
+
+### 9.3 `ActionAuthorizer` (`src.core.action_authorizer`)
+Autorise l'actionnement physique sur le matériel selon le stade de maturité et le calendrier réel :
+- **`is_action_authorized(agent_id: str, maturity: Maturity, sim_time: float, raw_timestamp: float = 0.0) -> Tuple[bool, str]`** : Détermine si l'agent est habilité à agir sur les contrôleurs physiques. Restreint les agents `TEEN` aux périodes hors pointe, imposant le mode ombre pendant les heures de pointe urbaines classiques (06h30-09h00 et 17h00-19h30 du lundi au vendredi) ou selon la planification dynamique de Synapse.
+- **`load_peak_schedule_json(schedule_data: dict) -> None`** : Charge les horaires de pointe dynamiques transmis par Synapse.
+
+### 9.4 `MaturityPacingCalculator` (`src.promotion.maturity_pacing_calculator`)
+- **`calculate_pacing(net: Any, tls_list: Any, settings: Any = None) -> Tuple[int, int, int, int]`** : Renvoie `(child_episodes, teen_episodes, child_steps, teen_steps)` borné par le plancher inviolable d'1 semaine ($E_{\text{semaine}} \times S \times \Delta t \ge 604\,800\text{ s}$).
+- **`apply_if_enabled(maturity_manager: Any, net: Any, tls_list: Any, settings: Any) -> bool`** : Injecte automatiquement les durées dynamiques calculées dans le `MaturityManager`.
+
+---
+
 <div align="center">
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

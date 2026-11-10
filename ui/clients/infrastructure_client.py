@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/clients/infrastructure_client.py (Pure In-Memory IPC Client)
-# Author: Gabriel Moraes
-# Date: 2026-06-09
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
 import os
@@ -27,8 +11,8 @@ from typing import Callable
 
 class InfrastructureClient:
     """
-    Escuta a fila de resultados IPC da análise de infraestrutura em uma thread separada,
-    garantindo comunicação 100% em memória sem criar arquivos de cache ou status no disco.
+    Listens to the infrastructure analysis IPC result queue in a separate thread,
+    guaranteeing 100% in-memory communication without creating cache or status files on disk.
     """
 
     def __init__(self, on_complete_callback: Callable[[dict], None], sas_result_queue=None):
@@ -51,7 +35,7 @@ class InfrastructureClient:
 
                 queue = getattr(ui_module, "sas_result_queue", None)
             except Exception as ex:
-                logging.error(f"[InfrastructureClient] Error resolving sas_result_queue dynamically: {ex}")
+                logging.error(f"[InfrastructureClient] Error resolving sas_result_queue dynamically: {ex}", exc_info=True)
 
         if queue is None:
             logging.error(

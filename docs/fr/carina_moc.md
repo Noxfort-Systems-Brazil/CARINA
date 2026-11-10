@@ -35,6 +35,13 @@ CARINA_CORE/
 │   ├── rules/                  # Règles de sécurité et cohérence sémantique (safety_rules.json, semantic_rules.json)
 │   └── templates/              # Modèles multilingues de rapports, MFD, SAS & XAI
 │
+├── packaging/                  # Empaquetage Hermétique Debian & Spécifications
+│   ├── Dockerfile.build        # Constructeur hermétique multi-étapes (Node, Go, Python, dpkg-deb)
+│   └── deb/                    # Fichiers de contrôle Debian, unités systemd & scripts post-installation
+│
+├── scripts/                    # Scripts de Compilation, Automatisation & Migrations
+│   └── build_deb.sh            # Générateur de paquets Debian conteneurisé
+│
 ├── proto/                      # Spécifications de Protocoles gRPC
 │   └── synapse_hft.proto       # Définitions Protobuf de télémétrie & d'actionnement haute fréquence
 │
@@ -47,15 +54,15 @@ CARINA_CORE/
 │   ├── RESEARCH_NOTES.md       # Formulations mathématiques PPO-TCN, PAE, GATv2 & DA SILVA
 │   ├── HARDWARE_DRIVERS.md     # Contrôleurs Physiques : NTCIP 1202, UTMC2 & intégration SNMP
 │   ├── SAFETY_AND_WATCHDOG.md  # Pare-feu de Sécurité Guardian, Règles de Veto & Watchdog
-│   ├── TRAFFIC_ENGINEERING_WARRANTS.md # Mandats de Feux MUTCD / FHWA 1, 2, 3, 7, 8
+│   ├── TRAFFIC_ENGINEERING_WARRANTS.md # Mandats de Feux MUTCD / FHWA 1, 2, 3, 4
 │   ├── MFD_AND_ANALYTICS.md    # Diagramme Fondamental Macroscopique & Dynamique de Densité Réseau
 │   ├── DATABASE_AND_SCHEMAS.md # Niveau de Persistance, Stockage Delta Asynchrone & Schémas SQL
 │   ├── XAI_AND_SAS.md          # IA Explicable, Gradients Intégrés Captum & Analyses SAS
 │   ├── REPORT_BLOCKS_AND_TEMPLATES.md # Constructeur Word ABNT (.docx) & Équations Mathématiques OMML
-│   ├── SLM_AND_LOCAL_LLM.md    # Intégration de LLM Local Hors Ligne (Qwen3 1.7B / llama.cpp)
+│   ├── SLM_AND_LOCAL_LLM.md    # Intégration de LLM Local Hors Ligne (Qwen3.5 2B / llama.cpp)
 │   ├── UI_AND_DASHBOARD.md     # Application Desktop Flet, Vue de Planification & Architecture SDS
 │   ├── RENDERING_AND_HEATMAPS.md # Rendu de Carte Vectorielle & Interpolation Asynchrone de Cartes Thermiques
-│   ├── SECURITY_AND_AUTH.md    # Comptes Utilisateurs, Hachage Bcrypt Salé & Verrouillage Anti-Force Brute
+│   ├── SECURITY_AND_AUTH.md    # Comptes Utilisateurs, Hachage PBKDF2 HMAC SHA-256 Salé & Verrouillage Anti-Force Brute
 │   ├── DEVELOPER_GUIDES.md     # Configuration Environnement, Hiérarchie d'Agents, Paramètres & Empaquetage
 │   ├── TESTING.md              # Suite de Tests Pytest, Mocks de Pilotes & Validation de Couverture
 │   └── DEPLOYMENT_AND_PACKAGING.md # Builds Docker, Démons Systemd & Paquets Debian
@@ -84,20 +91,22 @@ CARINA_CORE/
 │   ├── fenix/                  # Auto-Guérison F.E.N.I.X. & Superviseur de Processus (Supervisor, Runner, Reconciler)
 │   ├── handlers/               # Requêtes IA, commandes d'interface & gestionnaires de commandes Watchdog
 │   ├── launcher/               # ProcessManager, SingleInstanceLock & UITrayManager
+│   ├── manager/                # CycleManager, StageTransitionManager, TopologyManager & ServiceManager
 │   ├── maturity/               # MaturityManager, AgentMaturity, PromotionService, Config & Port
 │   ├── mfd/                    # Analyseur & Worker du Diagramme Fondamental Macroscopique (MFD)
-│   ├── models/                 # Architectures Neuronales (PAE, TCN, ST-GATv2 Lite, CrossAttention)
+│   ├── models/                 # Architectures Neuronales (PAE, TCN, ST-GATv2 Lite)
+│   ├── optimizer/              # Entraînement Basé sur la Population (PBT) & Réglage des Hyperparamètres
 │   ├── promotion/              # MaturityPacingCalculator, PerformanceMarginCalculator & PromotionEvaluator
 │   ├── rendering/              # StaticMapRenderer & AsyncHeatmapRenderer
 │   ├── repositories/           # StepDecisionRepo, FluidDynamicsRepo & CloudVaultRepo
 │   ├── safety/                 # Processus GuardianWorker & routage des signaux IPC
 │   ├── sas/                    # Smart Analysis System (Mandats d'Infrastructure Hors Ligne)
 │   ├── sds/                    # Smart Dashboard Service (Pont UI Flet & WebSockets)
+│   ├── security/               # Sous-système Découplé de Sécurité (Auth, PBKDF2, Lockdown, Dépôts)
 │   ├── settings/               # Paramètres Modulaires (Interfaces SOLID, schémas, INI & .env)
 │   ├── slm/                    # Petit Modèle de Langage (Inférence hors ligne Qwen3 / llama.cpp)
 │   ├── transports/             # Transports polymorphes (Base, HTTP, MQTT, EndpointResolver)
-│   ├── utils/                  # SettingsManager, MetricsManager, Chemins & Sous-système de Sécurité
-│   │   └── security/           # AuthService, UserService, Hacheur Bcrypt & LockdownManager
+│   ├── utils/                  # SettingsManager, MetricsManager, Chemins & Calcul d'Épisodes
 │   ├── watchdog/               # Moniteur de pulsation de processus temps réel & repli fail-safe
 │   └── xai/                    # Attribution par Gradients Intégrés, constructeur de rapports & worker
 │
@@ -122,19 +131,19 @@ CARINA_CORE/
 - **[Pilotes Matériels & Contrôleurs Physiques](hardware_drivers.md)** : Spécifications pour la passerelle matérielle Go compilée (`carina-go`), l'IPC par tubes anonymes standards NDJSON, NTCIP 1202 (ASC), la norme britannique UTMC / UTMC2, le client SNMP v2c/v3, le pool de connexions et la réversion de sécurité matérielle déterministe.
 - **[Référence API & Protocole HFT](api_reference.md)** : Spécifications complètes pour l'interface gRPC `Synapse HFT`, la télémétrie externe Monitor (MQTT/HTTP), les points de terminaison métriques Prometheus (port 8001) et les schémas de files IPC.
 - **[Architecture de Base de Données & Schémas](database_and_schemas.md)** : Spécifications pour `DatabaseWorker`, `StepDecisionWorker`, le pool de connexions, la configuration 12-Factor `.env` et le stockage delta PostgreSQL (réduction de 97.9%).
-- **[Sécurité & Authentification](security_and_auth.md)** : Gestion des comptes utilisateurs, hachage `bcrypt` avec sel, défense par verrouillage anti-force brute et contrôle d'accès basé sur les rôles.
+- **[Sécurité & Authentification](security_and_auth.md)** : Gestion des comptes utilisateurs, hachage `PBKDF2 HMAC SHA-256` avec sel, défense par verrouillage anti-force brute et contrôle d'accès basé sur les rôles.
 - **[Architecture Modulaire des Paramètres](architecture.md#4-architecture-modulaire-des-parametres-srcsettings)** : Sous-système de configuration SOLID découplant schémas, persistance INI et secrets 12-Factor `.env`.
 - **[Surveillance Polymorphe & Transports](architecture.md#5-surveillance-polymorphe--architecture-de-transport-srctransports)** : Télémétrie et flux d'incidents via courtiers MQTT et points de terminaison cloud HTTP/HTTPS REST/Ngrok.
 
 ### 2. Intelligence Artificielle & Sécurité Neuro-Symbolique
 - **[Recherche Neuronale & Formulations](research_notes.md)** : Formulations mathématiques approfondies pour PPO-TCN, projection latente $Z$ de l'auto-encodeur prédictif (PAE), flux de valeur/avantage Dueling DQN-TCN, attention sur graphes ST-GATv2 Lite et programme pédagogique de maturation DA SILVA.
-- **[Architecture de Sécurité, Watchdog & F.E.N.I.X.](safety_and_watchdog.md)** : Inventaire des règles de veto symbolique (SR-01 à SR-05), seuils de veto neuronal PAE, surveillance de pulsation temps réel par Watchdog (< 500 ms) et résurrection autonome de processus F.E.N.I.X. avec réconciliation d'état aux frontières propres.
+- **[Architecture de Sécurité, Watchdog & F.E.N.I.X.](safety_and_watchdog.md)** : Inventaire des règles de veto symbolique (SR-00 à SR-06), seuils de veto neuronal PAE, surveillance de pulsation temps réel par Watchdog (< 500 ms) et résurrection autonome de processus F.E.N.I.X. avec réconciliation d'état aux frontières propres.
 - **[IA Explicable, SAS & Analyses MFD](xai_and_sas.md)** : Détails opérationnels du pipeline modulaire XAI, attribution par gradients intégrés de Captum et audits municipaux médico-légaux.
 - **[Moteur de Blocs de Rapports & Générateur Word](report_blocks_and_templates.md)** : Génération automatisée de rapports Word (`.docx`) conformes à l'ABNT NBR 14724 avec formules LaTeX natives en Office Math Markup Language (OMML).
-- **[Petits Modèles de Langage (SLM)](slm_and_local_llm.md)** : Inférence LLM locale 100% hors ligne (Qwen3 1.7B / llama.cpp) générant des justifications textuelles médico-légales sans dépendances cloud.
+- **[Petits Modèles de Langage (SLM)](slm_and_local_llm.md)** : Inférence LLM locale 100% hors ligne (Qwen3.5 2B / llama.cpp) générant des justifications textuelles médico-légales sans dépendances cloud.
 
 ### 3. Physique du Trafic, Mandats & Graphiques
-- **[Mandats de Feux de Signalisation en Ingénierie du Trafic](traffic_engineering_warrants.md)** : Évaluation automatisée des mandats de feux réglementaires formels MUTCD / FHWA (Mandats 1, 2, 3, 7, 8) et des mandats d'infrastructure.
+- **[Mandats de Feux de Signalisation en Ingénierie du Trafic](traffic_engineering_warrants.md)** : Évaluation automatisée des mandats de feux réglementaires formels MUTCD / FHWA (Mandats 1 à 4) et des mandats d'infrastructure.
 - **[Diagramme Fondamental Macroscopique & Dynamique](mfd_and_analytics.md)** : Physique de flux-densité à l'échelle du réseau, densité critique ($K_{crit}$), régulation de périmètre (*perimeter gating*), détection de chute de capacité et mise en cache des filtres d'incidents.
 - **[Rendu de Carte & Cartes Thermiques](rendering_and_heatmaps.md)** : Analyse de carte vectorielle hors ligne à partir des réseaux SUMO `.net.xml` et cartes thermiques asynchrones par estimation de densité par noyau (KDE).
 
@@ -157,5 +166,5 @@ CARINA_CORE/
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
   <i>Ingénierie de Mobilité Intelligente • CARINA CORE v1.2.0</i><br/>
-  <small>© 2026 Noxfort Systems. Sous licence AGPLv3.</small>
+  <small>© 2026 Noxfort Systems. Sous licence AGPLv3 ou ultérieure (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

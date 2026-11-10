@@ -1,22 +1,6 @@
-# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture) is an open-source AI ecosystem for real-time, adaptive control of urban traffic light networks.
-# Copyright (C) 2026 Noxfort Systems
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: ui/handlers/network_event_handler.py
-# Author: Gabriel Moraes
-# Date: July 19, 2026
+# CARINA (Controlled Artificial Road-traffic Intelligence Network Architecture)
+# SPDX-FileCopyrightText: 2026 Noxfort Systems
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import flet as ft
 
@@ -64,6 +48,35 @@ class NetworkEventHandler:
             self.page.update()
         else:
             self.dashboard_view.update_live_data(data)
+            # Optimization Note: Broadcast to CCO is already performed directly
+            # by DashboardOrchestrator at the source, eliminating duplication and UI blocking in Flet.
+
+
+    def _broadcast_to_cco(self, data: dict):
+        """Dispatches live traffic and TLS updates to the CCO web videowall."""
+        try:
+            import json
+            import urllib.request
+
+            cco_body = json.dumps({"type": "congestion_update", **data}).encode("utf-8")
+            req = urllib.request.Request(
+                "http://127.0.0.1:2201/cco/broadcast",
+                data=cco_body,
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=0.15)
+            return
+        except Exception:
+            pass
+
+        try:
+            from src.drivers.go_gateway_client import GoGatewayClient
+
+            gw_client = GoGatewayClient.get_instance()
+            if gw_client.is_running():
+                gw_client.send_command("cco_broadcast", data={"type": "congestion_update", **data})
+        except Exception:
+            pass
 
     def handle_hardware_trap(self, event_data: dict):
         """Displays a prominent visual toast notification in Flet when a hardware/software trap arrives."""
