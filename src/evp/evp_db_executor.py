@@ -7,9 +7,11 @@ Transactional Database Executor for the EVP subsystem (DIP / Clean Architecture)
 Encapsulates connection lifecycle, cursors, and commits for PostgreSQL and SQLite.
 """
 
-from contextlib import contextmanager
 import logging
-from typing import Any, Callable, Generator, Optional
+import queue
+import threading
+from contextlib import contextmanager
+from typing import Any, Callable, Generator, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -64,3 +66,67 @@ class EVPDatabaseExecutor:
                     self._close_conn(conn)
                 except Exception as _exc:
                     logger.debug("[evp] Ignored recoverable error: %s", _exc)
+
+
+class AsyncTelemetryPersistQueue:
+    """Bounded latest-wins background writer batching EVP telemetry inserts off the GPS loop."""
+
+    def __init__(self, batch_fn: Callable[[List[Any]], Any], maxsize: int = 512, max_batch: int = 64):
+        self._batch_fn = batch_fn
+        self._max_batch = max(1, int(max_batch))
+        self._queue: queue.Queue = queue.Queue(maxsize=max(16, int(maxsize)))
+        self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._stopped = False
+
+    def enqueue(self, snapshot: Any) -> None:
+        with self._lock:
+            if self._stopped:
+                return
+            if self._thread is None or not self._thread.is_alive():
+                self._thread = threading.Thread(
+                    target=self._run,
+                    daemon=True,
+                    name="EVP-TelemetryWriter",
+                )
+                self._thread.start()
+        if self._queue.full():
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                pass
+        try:
+            self._queue.put_nowait(snapshot)
+        except queue.Full:
+            pass
+
+    def _run(self) -> None:
+        while not self._stopped:
+            first = self._queue.get()
+            if first is None:
+                break
+            batch = [first]
+            while len(batch) < self._max_batch:
+                try:
+                    nxt = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if nxt is None:
+                    self._stopped = True
+                    break
+                batch.append(nxt)
+            try:
+                self._batch_fn(batch)
+            except Exception as exc:
+                logger.error(f"[AsyncTelemetryPersistQueue] Erro no lote de telemetria: {exc}", exc_info=True)
+
+    def stop(self) -> None:
+        with self._lock:
+            self._stopped = True
+            t = self._thread
+        try:
+            self._queue.put_nowait(None)
+        except queue.Full:
+            pass
+        if t is not None and t.is_alive():
+            t.join(timeout=1.0)

@@ -26,15 +26,16 @@ class DatabaseConnectionTester:
         dbname: str = "carina_data",
     ) -> Tuple[bool, str]:
         """Performs a synchronous test query on the target database."""
+        conn = None
+        cursor = None
         try:
             if db_type == "sqlite":
                 db_dir = os.path.join(get_base_output_dir(), "results", "database")
                 os.makedirs(db_dir, exist_ok=True)
                 db_path = os.path.join(db_dir, dbname if dbname.endswith(".db") else f"{dbname}.db")
 
-                conn = sqlite3.connect(db_path)
+                conn = sqlite3.connect(db_path, timeout=10.0)
                 conn.execute("SELECT 1")
-                conn.close()
                 return True, ""
 
             elif db_type == "postgres":
@@ -50,12 +51,22 @@ class DatabaseConnectionTester:
                 )
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1;")
-                conn.close()
                 return True, ""
             else:
                 return False, f"Unknown database type: {db_type}"
         except Exception as e:
             return False, str(e)
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     @staticmethod
     def test_connection_async(

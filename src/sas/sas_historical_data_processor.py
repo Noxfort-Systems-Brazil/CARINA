@@ -32,8 +32,9 @@ class SASHistoricalDataProcessor:
                 junction_types, junction_incoming_edges = self.topology_parser.build(net_file_path)
             except Exception as e:
                 logging.warning(
-                    f"[SAS_HISTORICAL_PROCESSOR] Failed to parse net file topology ({e}). Will fallback to synthetic topology."
-                , exc_info=True)
+                    f"[SAS_HISTORICAL_PROCESSOR] Failed to parse net file topology ({e}). Will fallback to synthetic topology.",
+                    exc_info=True,
+                )
 
         true_traffic_light_ids = [j_id for j_id, j_type in junction_types.items() if j_type == "traffic_light"]
 
@@ -69,7 +70,10 @@ class SASHistoricalDataProcessor:
                         }
                         total_samples += int(row.get("total_samples") or 0)
         except Exception as e:
-            logging.warning(f"[SAS_HISTORICAL_PROCESSOR] Pushdown query failed ({e}), falling back to batch iteration.", exc_info=True)
+            logging.warning(
+                f"[SAS_HISTORICAL_PROCESSOR] Pushdown query failed ({e}), falling back to batch iteration.",
+                exc_info=True,
+            )
             edge_summaries = {}
             total_samples = 0
 
@@ -141,7 +145,7 @@ class SASHistoricalDataProcessor:
             edge_volumes_cache[edge_id] = avg_volume
             avg_delay = summary["delay_sum"] / summary["delay_cnt"] if summary["delay_cnt"] > 0 else 0.0
 
-            rep_queues = [TrafficMetricsCalculator.get_percentile(summary["queue_freq"], i / 100.0) for i in range(100)]
+            rep_queues = TrafficMetricsCalculator.compute_percentiles(summary["queue_freq"], 100)
 
             edge_len = float(summary["edge_length"]) if summary.get("edge_length") is not None else 0.0
             spd_lim = float(summary["speed_limit"]) if summary.get("speed_limit") is not None else 13.89

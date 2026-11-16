@@ -3,24 +3,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import configparser
-import json
 import logging
 import queue
 import threading
-import urllib.request
 from multiprocessing import Queue
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
+from sds.cco_broadcast_client import CCOBroadcastClient
 from sds.data_processor import DataProcessor
 from sds.websocket_server import WebSocketServer
 
 
 class Orchestrator:
     """The maestro that manages the workflow of the SDS service."""
-
 
     def __init__(
         self,
@@ -44,7 +42,7 @@ class Orchestrator:
         else:
             self.ws_server = None
 
-        self._http_opener = urllib.request.build_opener()
+        self._cco_client = CCOBroadcastClient(timeout=0.15)
         logging.info(lm.get_string("sds_orchestrator.init.orchestrator_created"))
 
     def run(self):
@@ -83,24 +81,18 @@ class Orchestrator:
                     elif self.ws_server:
                         self.ws_server.broadcast(ui_data_package)
 
-                    # Forward telemetry to Go Gateway (Videowall CCO SSE)
-                    try:
-                        cco_body = json.dumps({"type": "congestion_update", **ui_data_package}).encode("utf-8")
-                        req = urllib.request.Request(
-                            "http://127.0.0.1:2201/cco/broadcast",
-                            data=cco_body,
-                            headers={"Content-Type": "application/json", "Connection": "keep-alive"},
-                        )
-                        self._http_opener.open(req, timeout=0.15)
-                    except Exception:
-                        pass
-
+                    # Forward telemetry non-blocking (latest-wins) to Go Gateway (Videowall CCO SSE)
+                    self._cco_client.enqueue_broadcast(ui_data_package)
 
         except KeyboardInterrupt:
             logging.info(lm.get_string("sds_orchestrator.run.interrupt_received"))
         except Exception as e:
             logging.error(lm.get_string("sds_orchestrator.run.fatal_error", error=e), exc_info=True)
         finally:
+            try:
+                self._cco_client.close()
+            except Exception:
+                pass
             if hasattr(self, "ws_server") and self.ws_server:
                 try:
                     self.ws_server.stop()

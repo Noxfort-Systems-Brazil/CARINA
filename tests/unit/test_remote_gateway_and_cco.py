@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Noxfort Systems
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import threading
 import time
 import unittest
 from unittest.mock import MagicMock
@@ -67,8 +68,8 @@ class TestRemoteGatewayAndCCO(unittest.TestCase):
 
     def test_go_event_dispatcher_evp_telemetry(self):
         from src.drivers.go_event_dispatcher import GoEventDispatcher
-        from src.evp.evp_service import EVPService
         from src.evp.evp_models import CorporationType, RegisteredVehicle
+        from src.evp.evp_service import EVPService
 
         EVPService.get_instance().register_fleet_vehicle(
             RegisteredVehicle(vehicle_id="TEST-SAMU-99", corporation=CorporationType.SAMU)
@@ -128,16 +129,18 @@ class TestRemoteGatewayAndCCO(unittest.TestCase):
 
         # 1. Asynchronous connection test
         test_results = []
-        controller.test_connection_async(lambda ok, msg: test_results.append((ok, msg)))
-        time.sleep(0.1)
+        test_done = threading.Event()
+        controller.test_connection_async(lambda ok, msg: (test_results.append((ok, msg)), test_done.set()))
+        self.assertTrue(test_done.wait(timeout=2.0))
         self.assertTrue(len(test_results) > 0)
         self.assertTrue(test_results[0][0])
         mock_go.send_command.assert_called_with("tailscale_status", timeout=8.0)
 
         # 2. Asynchronous connection
         connect_results = []
-        controller.connect_gateway_async(lambda ok, msg: connect_results.append((ok, msg)))
-        time.sleep(0.15)
+        connect_done = threading.Event()
+        controller.connect_gateway_async(lambda ok, msg: (connect_results.append((ok, msg)), connect_done.set()))
+        self.assertTrue(connect_done.wait(timeout=2.0))
         self.assertTrue(len(connect_results) > 0)
         self.assertTrue(connect_results[0][0])
         mock_go.start.assert_called()

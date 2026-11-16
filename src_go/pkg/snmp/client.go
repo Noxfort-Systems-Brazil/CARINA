@@ -6,18 +6,18 @@ package snmp
 
 import (
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gosnmp/gosnmp"
 )
 
-// Client manages direct SNMPv2c communication over UDP with traffic light controllers.
+// Client manages direct SNMPv2c / SNMPv3 communication over UDP with traffic light controllers.
 type Client struct {
 	IPAddress string
 	Port      uint16
 	Community string
+	Config    SNMPConfig
 	Timeout   time.Duration
 	Retries   int
 
@@ -25,22 +25,28 @@ type Client struct {
 	client *gosnmp.GoSNMP
 }
 
-// NewClient instantiates a new configured SNMP client.
+// NewClient instantiates a new configured SNMPv2c client.
 func NewClient(ip string, port int, community string, timeoutSec int, retries int) *Client {
+	return NewClientWithConfig(ip, port, SNMPConfig{
+		Version:   "2c",
+		Community: community,
+	}, timeoutSec, retries)
+}
+
+// NewClientWithConfig instantiates a new SNMP client supporting SNMPv2c and SNMPv3.
+func NewClientWithConfig(ip string, port int, cfg SNMPConfig, timeoutSec int, retries int) *Client {
 	if timeoutSec <= 0 {
 		timeoutSec = 2
 	}
 	if retries < 0 {
 		retries = 1
 	}
-	if community == "" {
-		community = "public"
-	}
-
+	norm := cfg.Normalized()
 	return &Client{
 		IPAddress: ip,
 		Port:      uint16(port),
-		Community: community,
+		Community: norm.Community,
+		Config:    norm,
 		Timeout:   time.Duration(timeoutSec) * time.Second,
 		Retries:   retries,
 	}
@@ -51,13 +57,9 @@ func (c *Client) ensureConnected() error {
 		return nil
 	}
 
-	snmpObj := &gosnmp.GoSNMP{
-		Target:    c.IPAddress,
-		Port:      c.Port,
-		Community: c.Community,
-		Version:   gosnmp.Version2c,
-		Timeout:   c.Timeout,
-		Retries:   c.Retries,
+	snmpObj, err := BuildGoSNMP(c.IPAddress, c.Port, c.Config, c.Timeout, c.Retries)
+	if err != nil {
+		return err
 	}
 
 	if err := snmpObj.Connect(); err != nil {
@@ -72,14 +74,18 @@ func (c *Client) ensureConnected() error {
 func (c *Client) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.client != nil && c.client.Conn != nil {
-		_ = c.client.Conn.Close()
-		c.client = nil
-	}
+	c.closeLocked()
 }
 
-// Get executes a synchronous SNMP GET request for the given OID.
-func (c *Client) Get(oid string) (interface{}, error) {
+func (c *Client) closeLocked() {
+	if c.client != nil && c.client.Conn != nil {
+		_ = c.client.Conn.Close()
+	}
+	c.client = nil
+}
+
+// executeWithReconnect acquires the client mutex, ensures a live socket, and retries once after reconnect on error.
+func (c *Client) executeWithReconnect(op func(*gosnmp.GoSNMP) (*gosnmp.SnmpPacket, error)) (*gosnmp.SnmpPacket, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -87,117 +93,76 @@ func (c *Client) Get(oid string) (interface{}, error) {
 		return nil, err
 	}
 
-	pkt, err := c.client.Get([]string{oid})
+	pkt, err := op(c.client)
 	if err != nil {
-		// Attempt reconnection once if socket was broken
-		_ = c.client.Conn.Close()
-		c.client = nil
+		c.closeLocked()
 		if errConn := c.ensureConnected(); errConn == nil {
-			pkt, err = c.client.Get([]string{oid})
+			pkt, err = op(c.client)
 		}
 	}
+	return pkt, err
+}
 
+func (c *Client) getVariable(oid string) (gosnmp.SnmpPDU, error) {
+	pkt, err := c.executeWithReconnect(func(cli *gosnmp.GoSNMP) (*gosnmp.SnmpPacket, error) {
+		return cli.Get([]string{oid})
+	})
 	if err != nil {
-		return nil, fmt.Errorf("snmp get %s failed: %w", oid, err)
+		return gosnmp.SnmpPDU{}, fmt.Errorf("snmp get %s failed: %w", oid, err)
 	}
-
-	if len(pkt.Variables) == 0 {
-		return nil, fmt.Errorf("snmp get %s returned empty variables", oid)
+	if pkt == nil || len(pkt.Variables) == 0 {
+		return gosnmp.SnmpPDU{}, fmt.Errorf("snmp get %s returned empty variables", oid)
 	}
 
 	pdu := pkt.Variables[0]
-	switch pdu.Type {
-	case gosnmp.OctetString:
-		bytes, ok := pdu.Value.([]byte)
-		if ok {
-			return string(bytes), nil
-		}
-		return fmt.Sprintf("%v", pdu.Value), nil
-	case gosnmp.Integer, gosnmp.Counter32, gosnmp.Gauge32, gosnmp.TimeTicks, gosnmp.Counter64:
-		return gosnmp.ToBigInt(pdu.Value).Int64(), nil
-	default:
-		return pdu.Value, nil
+	if pdu.Type == gosnmp.NoSuchObject || pdu.Type == gosnmp.NoSuchInstance || pdu.Type == gosnmp.EndOfMibView {
+		return gosnmp.SnmpPDU{}, fmt.Errorf("snmp get %s returned MIB exception %v", oid, pdu.Type)
 	}
+	return pdu, nil
+}
+
+// Get executes a synchronous SNMP GET request for the given OID.
+func (c *Client) Get(oid string) (interface{}, error) {
+	pdu, err := c.getVariable(oid)
+	if err != nil {
+		return nil, err
+	}
+	return decodeGenericPDUValue(pdu), nil
+}
+
+// GetBitmask queries an OID expecting either a numeric integer or binary OCTET STRING bitmask (NTCIP 1202).
+func (c *Client) GetBitmask(oid string) (int64, error) {
+	pdu, err := c.getVariable(oid)
+	if err != nil {
+		return 0, err
+	}
+	return DecodeBitmaskPDU(pdu, true)
 }
 
 // GetInt executes a GET request and converts the return value to an integer (int64).
 func (c *Client) GetInt(oid string) (int64, error) {
-	val, err := c.Get(oid)
+	pdu, err := c.getVariable(oid)
 	if err != nil {
 		return 0, err
 	}
-
-	switch v := val.(type) {
-	case int64:
-		return v, nil
-	case int:
-		return int64(v), nil
-	case uint64:
-		return int64(v), nil
-	case string:
-		i, err := strconv.ParseInt(v, 10, 64)
-		if err != nil {
-			return 0, err
-		}
-		return i, nil
-	default:
-		return 0, fmt.Errorf("tipo não numérico retornado para OID %s: %T (%v)", oid, val, val)
-	}
+	return DecodeBitmaskPDU(pdu, false)
 }
 
 // Set executes an SNMP SET request for the given OID.
 func (c *Client) Set(oid string, value interface{}) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if err := c.ensureConnected(); err != nil {
+	pdu, err := buildSetPDU(oid, value)
+	if err != nil {
 		return err
 	}
 
-	pdu := gosnmp.SnmpPDU{
-		Name: oid,
-	}
-
-	switch v := value.(type) {
-	case int:
-		pdu.Type = gosnmp.Integer
-		pdu.Value = v
-	case int32:
-		pdu.Type = gosnmp.Integer
-		pdu.Value = int(v)
-	case int64:
-		pdu.Type = gosnmp.Integer
-		pdu.Value = int(v)
-	case float64:
-		pdu.Type = gosnmp.Integer
-		pdu.Value = int(v)
-	case string:
-		pdu.Type = gosnmp.OctetString
-		pdu.Value = []byte(v)
-	case []byte:
-		pdu.Type = gosnmp.OctetString
-		pdu.Value = v
-	default:
-		return fmt.Errorf("tipo não suportado para SNMP SET: %T", value)
-	}
-
-	pkt, err := c.client.Set([]gosnmp.SnmpPDU{pdu})
-	if err != nil {
-		// Attempt reconnection and resend once
-		_ = c.client.Conn.Close()
-		c.client = nil
-		if errConn := c.ensureConnected(); errConn == nil {
-			pkt, err = c.client.Set([]gosnmp.SnmpPDU{pdu})
-		}
-	}
-
+	pkt, err := c.executeWithReconnect(func(cli *gosnmp.GoSNMP) (*gosnmp.SnmpPacket, error) {
+		return cli.Set([]gosnmp.SnmpPDU{pdu})
+	})
 	if err != nil {
 		return fmt.Errorf("snmp set %s failed: %w", oid, err)
 	}
-
-	if pkt.Error != gosnmp.NoError {
+	if pkt != nil && pkt.Error != gosnmp.NoError {
 		return fmt.Errorf("snmp set status error %v at index %d", pkt.Error, pkt.ErrorIndex)
 	}
-
 	return nil
 }

@@ -21,8 +21,13 @@ CARINA governs safety-critical municipal infrastructure. Unauthorized access or 
    - `OPERATOR`: Routine intersection monitoring, manual signal phase calls, telemetry inspection, and read-only diagnostics.
    - `SUPERUSER`: Full administrative access, user creation/deletion, policy alteration, and lockdown clearing.
 4. **Hybrid Credential Storage (Offline-First & Relational):** Supports decoupled local JSON storage (`security.json` via [`JsonUserRepository`](../../src/security/json_user_repo.py)), relational database persistence (`system_users` and `system_security_state` tables via [`SqlUserRepository`](../../src/security/sql_user_repo.py)), and synchronized failover via [`HybridUserRepository`](../../src/security/hybrid_user_repo.py).
-5. **Field Encryption & Audit Trails:** Sensitive settings and credentials encrypted at rest via [`FieldEncryptor`](../../src/security/field_encryptor.py) and recorded through [`AuditLogger`](../../src/security/audit_logger.py).
-6. **12-Factor Secrets Isolation:** Absolute decoupling of sensitive secrets from source code via `.env`.
+5. **Field Encryption & Audit Trails:** Sensitive settings and credentials encrypted at rest via [`FieldEncryptor`](../../src/security/field_encryptor.py) and recorded through [`AuditLogger`](../../src/security/audit_logger.py) (with pooled transactional writes via `db_transaction`).
+6. **Transport, Endpoint & SQL Hardening:**
+   - **Synapse gRPC (`:50051`) Security ([`grpc_security.py`](../../src/communication/grpc_security.py)):** Supports TLS/mTLS (`grpc.ssl_server_credentials`) and constant-time Bearer / `x-carina-token` validation (`BearerTokenServerInterceptor`).
+   - **Fail-Closed Web Gateway & EVP Auth ([`auth.go`](../../src_go/web_gateway/auth.go), [`evp_http_server.go`](../../src_go/evp_go/evp_http_server.go)):** `gateway_enabled` defaults to `False` (returning `503 Service Unavailable` when inactive), enforces constant-time token matching (`subtle.ConstantTimeCompare`), explicit CORS (`CARINA_CCO_ALLOWED_ORIGIN`), and HTTPS/TLS termination.
+   - **SHA-256 Certificate Pinning ([`cco_tls_transport.py`](../../src/sds/cco_tls_transport.py)):** `PinnedHTTPSConnection` verifies CA trust and optionally pins the leaf certificate SHA-256 digest when SDS pushes `/cco/broadcast`.
+   - **Parameterized SQL Intervals:** PostgreSQL queries use `make_interval(...)` rather than string interpolation.
+7. **12-Factor Secrets Isolation:** Absolute decoupling of sensitive secrets from source code via `.env`.
 
 ```text
  Client (Desktop UI / CCO / CLI)
@@ -102,15 +107,33 @@ CARINA_MQTT_HOST=127.0.0.1                     # Local broker or https://tunnel.
 CARINA_MQTT_PORT=1883
 CARINA_MQTT_USER=
 CARINA_MQTT_PASSWORD=
+
+# --- Remote Gateway & CCO/EVP Transport Security ---
+CARINA_GATEWAY_ENABLED=False                   # Fail-closed until tokens are configured
+CARINA_EVP_AUTH_TOKEN=
+CARINA_CCO_AUTH_TOKEN=
+CARINA_CCO_ALLOWED_ORIGIN=                     # Explicit CORS origin for CCO endpoints
+CARINA_GATEWAY_TLS_CERT=
+CARINA_GATEWAY_TLS_KEY=
+CARINA_GATEWAY_TLS_CA=
+CARINA_GATEWAY_TLS_SERVER_NAME=
+
+# --- Synapse gRPC (:50051) Security ---
+CARINA_GRPC_AUTH_TOKEN=
+CARINA_GRPC_TLS_ENABLED=False
+CARINA_GRPC_TLS_CERT=
+CARINA_GRPC_TLS_KEY=
+CARINA_GRPC_TLS_CA=
+CARINA_GRPC_REQUIRE_CLIENT_CERT=False
 ```
 
 ---
 
 ## 4. Production Security Hardening Guidelines
 
-1. **Rotate SNMP Community Strings:** Never use the default string `"public"` in production deployments.
-2. **Restrict IPC & gRPC Bindings:** In production, bind gRPC (`50051`) and WebSocket (`8080`) interfaces to private local VLANs or `127.0.0.1` unless behind a TLS-terminating reverse proxy.
-3. **Database Least-Privilege:** Grant the application database user only `SELECT`, `INSERT`, and `UPDATE` on operational schemas.
+1. **Rotate SNMP Community Strings & Enable SNMPv3:** Avoid default `"public"` communities in production; prefer **SNMPv3 `AuthPriv`** (`SHA256` + `AES`) configured via `snmp_config` in `hardware_controller_connections`.
+2. **Enable gRPC & Web Gateway TLS + Tokens:** Never flip `CARINA_GATEWAY_ENABLED=True` in production without setting strong `CARINA_EVP_AUTH_TOKEN`, `CARINA_CCO_AUTH_TOKEN`, `CARINA_CCO_ALLOWED_ORIGIN`, and `CARINA_GRPC_AUTH_TOKEN` + TLS certificates.
+3. **Database Least-Privilege:** Grant the application database user only `SELECT`, `INSERT`, `UPDATE`, and `DELETE` (for retention purges) on operational schemas.
 4. **Physical Controller Fail-Safe:** Ensure all physical controllers have active internal time-of-day flash modes configured if communication drops.
 5. **Secure Permission on JSON Vault:** Ensure file permissions on `security.json` and `lockdown.flag` are restricted to the application service user (`chmod 600`).
 

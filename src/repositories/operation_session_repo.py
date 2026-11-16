@@ -5,6 +5,8 @@
 import logging
 from typing import TYPE_CHECKING, Optional
 
+from src.database.connection_pool import db_transaction
+
 if TYPE_CHECKING:
     from src.database.db_engine import DatabaseEngine
 
@@ -21,11 +23,10 @@ class OperationSessionRepository:
 
     def ensure_table_exists(self) -> bool:
         """Ensures that the operation_sessions table exists."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS operation_sessions (
@@ -37,23 +38,17 @@ class OperationSessionRepository:
                     );
                     """
                 )
-            conn.commit()
             return True
         except Exception as e:
             logging.error(f"[OperationSessionRepo] Error ensuring table exists: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return False
 
     def start_session(self) -> Optional[int]:
         """Registers a new operational session start_time in PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return None
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return None
                 cursor.execute(
                     """
                     INSERT INTO operation_sessions (start_time, status)
@@ -62,23 +57,19 @@ class OperationSessionRepository:
                     """
                 )
                 sid = cursor.fetchone()[0]
-            conn.commit()
             return sid
         except Exception as e:
             logging.error(f"[OperationSessionRepo] Error starting operation session: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return None
 
     def end_session(self, session_id: int, status: str = "FINALIZADO_NORMAL", error_msg: Optional[str] = None) -> bool:
         """Updates operation session end_time and status in PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn or not session_id:
+        if not session_id:
             return False
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
                 cursor.execute(
                     """
                     UPDATE operation_sessions
@@ -87,12 +78,7 @@ class OperationSessionRepository:
                     """,
                     (status, error_msg, session_id),
                 )
-            conn.commit()
             return True
         except Exception as e:
             logging.error(f"[OperationSessionRepo] Error ending operation session {session_id}: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return False

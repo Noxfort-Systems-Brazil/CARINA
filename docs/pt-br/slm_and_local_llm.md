@@ -65,9 +65,10 @@ Localizado em `src/slm/local_llama_transducer.py`:
 - Gerencia o offload de camadas para GPU (`n_gpu_layers = -1` para aceleração integral via CUDA).
 - Executa amostragem determinística (`temperature = 0.0`, `repeat_penalty = 1.05`) com limites dinâmicos de tokens para mitigar alucinações e repetições.
 
-### 2.3 Gerenciamento de Recursos (`device_manager.py` e `resource_manager.py`)
-- `src/slm/device_manager.py`: Mapeia o hardware disponível (NVIDIA CUDA, ROCm, Apple Metal ou threads de CPU).
-- `src/slm/resource_manager.py`: Gerencia alocações de contexto dinâmicas e purga a memória do cache KV imediatamente após a síntese dos relatórios.
+### 2.3 Gerenciamento de Dispositivos, Lock e Recursos (`device_manager.py`, `slm_lock.py`, `resource_manager.py`)
+- [`src/slm/device_manager.py`](../../src/slm/device_manager.py): Consulta a VRAM livre/total da GPU via `pynvml` leve antes de recorrer a `torch.cuda`, evitando que workers (`XAI_Worker`, `MFD_Worker`, `AnalysisService`) aloquem ~400 MB extras de contexto CUDA do PyTorch apenas para sondagem de VRAM.
+- [`src/slm/slm_lock.py`](../../src/slm/slm_lock.py): Fornece trava de arquivo consultiva reentrante entre processos (`slm_process_lock()` via `fcntl.flock` em `locks/slm_gguf.lock`), serializando o carregamento e a inferência do modelo GGUF 2B pesado entre `XAI_Worker`, `MFD_Worker` e `AnalysisService` para que workers concorrentes nunca disputem VRAM/RAM.
+- [`src/slm/model_loader.py`](../../src/slm/model_loader.py) e [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py): Gerenciam alocações de contexto GGUF, limpeza do cache KV e `unload()` determinístico via `ReportTransducerFactory.release_transducer()`. Sob `pytest`, o carregamento real do GGUF é ignorado por padrão, a menos que `CARINA_ALLOW_REAL_SLM=1` seja explicitamente exportada.
 
 ### 2.4 Motor de Revisão Factual (`revision_engine.py` e `output_sanitizer.py`)
 - `src/slm/revision_engine.py`: Extrai entidades numéricas e percentuais da prosa gerada e valida contra as tabelas do PostgreSQL para evitar desvios métricos.

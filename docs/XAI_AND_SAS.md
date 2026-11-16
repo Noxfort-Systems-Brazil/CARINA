@@ -24,10 +24,12 @@ In municipal traffic management, black-box AI decisions are legally unacceptable
 ```
 
 The XAI pipeline uses a modular multi-agent builder architecture:
+- [`src/xai/xai_worker.py`](../src/xai/xai_worker.py) & [`report_pipeline.py`](../src/xai/report_pipeline.py): Execute per-agent Captum attribution once and reuse the resulting `captum_result` cache (`precomputed_analyses`) across consolidated multi-agent report generation, gating heavy SLM textual synthesis (`run_slm`) strictly to the primary target agent under `slm_process_lock()` and accessing DB via `DatabaseManager.get_instance(..., enable_step_worker=False)`.
 - [`src/xai/multi_agent_report_builder.py`](../src/xai/multi_agent_report_builder.py): Coordinates the generation of municipal reports across all intersections.
-- [`src/xai/captum_attribution_engine.py`](../src/xai/captum_attribution_engine.py): Computes gradient attributions along the interpolation path from baseline to current input.
+- [`src/xai/captum_attribution_engine.py`](../src/xai/captum_attribution_engine.py): Computes gradient attributions along the interpolation path from baseline to current input with wrapped model parameter gradients frozen (`requires_grad_(False)`).
 - [`src/xai/network_attribution_aggregator.py`](../src/xai/network_attribution_aggregator.py): Aggregates feature importance across arterial avenues.
-- [`src/xai/report_block_registry.py`](../src/xai/report_block_registry.py): Dispatches report sections to specialized renderers.
+- [`src/xai/report_block_registry.py`](../src/xai/report_block_registry.py): Dispatches report sections to specialized renderers (with offscreen chart rendering via `mpl_utils.py`).
+- [`src/sas/sas_helpers.py`](../src/sas/sas_helpers.py) & [`sas_historical_data_processor.py`](../src/sas/sas_historical_data_processor.py): Compute 100 quantiles in a single pass via `TrafficMetricsCalculator.compute_percentiles` and avoid redundant synthetic sample expansion (`SyntheticSampleGenerator`).
 
 ---
 

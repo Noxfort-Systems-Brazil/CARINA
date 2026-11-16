@@ -46,11 +46,11 @@ class SDSProcessStarter:
         atexit.register(self.stop)
 
     def is_port_active(self, port: int = 2201, timeout: float = 0.5) -> bool:
-        """Checks if an HTTP service is responding on the specified port."""
+        """Checks if an HTTP/HTTPS WebGateway or SDS service is responding on the specified port."""
         try:
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/")
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.status in (200, 302, 307)
+            from sds.cco_broadcast_client import CCOBroadcastClient
+
+            return CCOBroadcastClient().probe_health(port=port, timeout=timeout)
         except Exception:
             return False
 
@@ -121,7 +121,9 @@ class SDSProcessStarter:
             if self._process is not None and self._started_by_us:
                 try:
                     if self._process.is_alive():
-                        logger.info(f"[SDSProcessStarter] Encerrando processo autônomo do SDS (PID {self._process.pid})...")
+                        logger.info(
+                            f"[SDSProcessStarter] Encerrando processo autônomo do SDS (PID {self._process.pid})..."
+                        )
                         self._process.terminate()
                         self._process.join(timeout=1.5)
                         if self._process.is_alive():

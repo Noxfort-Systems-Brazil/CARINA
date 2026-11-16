@@ -65,9 +65,10 @@ Located in [`src/slm/local_llama_transducer.py`](../../src/slm/local_llama_trans
 - Manages GPU layer offloading (`n_gpu_layers = -1` for full CUDA offload).
 - Executes greedy decoding (`temperature = 0.0`, `repeat_penalty = 1.05`) with dynamically clamped token limits to prevent hallucinations and repetition loops.
 
-### 2.3 Device & Resource Management (`device_manager.py` & `resource_manager.py`)
-- [`src/slm/device_manager.py`](../../src/slm/device_manager.py): Profiles available hardware (NVIDIA CUDA, ROCm, Apple Metal, or CPU threads).
-- [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py): Automatically manages context allocations and purges KV cache between report generation episodes.
+### 2.3 Device, Lock & Resource Management (`device_manager.py`, `slm_lock.py`, `resource_manager.py`)
+- [`src/slm/device_manager.py`](../../src/slm/device_manager.py): Queries free/total GPU VRAM via lightweight `pynvml` before falling back to `torch.cuda`, preventing workers (`XAI_Worker`, `MFD_Worker`, `AnalysisService`) from allocating an extra ~400 MB PyTorch CUDA context solely for VRAM probing.
+- [`src/slm/slm_lock.py`](../../src/slm/slm_lock.py): Provides reentrant inter-process advisory file locking (`slm_process_lock()` via `fcntl.flock` on `locks/slm_gguf.lock`) serializing heavy 2B GGUF model loading and inference across `XAI_Worker`, `MFD_Worker`, and `AnalysisService` so concurrent workers never contend for VRAM/RAM.
+- [`src/slm/model_loader.py`](../../src/slm/model_loader.py) & [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py): Manage GGUF context allocations, KV cache cleanup, and deterministic `unload()` via `ReportTransducerFactory.release_transducer()`. Under `pytest`, real GGUF loading is skipped by default unless `CARINA_ALLOW_REAL_SLM=1` is explicitly exported.
 
 ### 2.4 Factual Revision Engine (`revision_engine.py` & `output_sanitizer.py`)
 - [`src/slm/revision_engine.py`](../../src/slm/revision_engine.py): Extracts numerical entities from generated prose and verifies that they strictly match the underlying SQL database values.

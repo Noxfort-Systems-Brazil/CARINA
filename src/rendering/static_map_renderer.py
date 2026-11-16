@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from rendering.static_map_painter import StaticMapPainter
 from rendering.static_map_projector import StaticMapProjector
-from utils.paths import resource_path
 from utils.map_data_parser import parse_map_data
 from utils.map_generator import generate_map_data_files
+from utils.paths import resource_path
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
-import matplotlib.pyplot as plt
+from rendering.mpl_utils import close_offscreen_figure, create_offscreen_figure, render_figure_to_file
 
 
 class StaticMapRenderer:
@@ -45,39 +45,46 @@ class StaticMapRenderer:
         lm = self.locale_manager
         logging.info(lm.get_string("static_map_renderer.run.rendering_map", path=output_path))
 
-        fig, ax = plt.subplots(figsize=(12, 8), dpi=100)
-
-        # Coordinate projection
-        projector = StaticMapProjector(base_width=1200.0, base_height=800.0)
-        projector.compute_bounds_and_scale(nodes, edges)
-
-        # Apply basemap background if available
-        if basemap_path:
-            from rendering.static_map_background_painter import StaticMapBackgroundPainter
-            StaticMapBackgroundPainter.apply_background(ax, basemap_path, projector)
-
-        # Draw streets
-        StaticMapPainter.draw_streets(ax, edges, projector.map_to_canvas)
-
-        # Draw nodes and traffic light icons
-        StaticMapPainter.draw_nodes_and_traffic_lights(ax, nodes, icon_requests, projector.map_to_canvas)
-
-        # Chart style settings and limits
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["bottom"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.get_xaxis().set_ticks([])
-        ax.get_yaxis().set_ticks([])
-        ax.set_facecolor("#F7F7F7")
-
-        ax.set_xlim(0, 1200)
-        ax.set_ylim(0, 800)
-        plt.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
-
+        fig, ax = create_offscreen_figure((12, 8), dpi=100)
         try:
-            plt.savefig(
-                output_path, format="png", dpi=100, facecolor=ax.get_facecolor(), bbox_inches=None, pad_inches=0.0
+            # Coordinate projection
+            projector = StaticMapProjector(base_width=1200.0, base_height=800.0)
+            projector.compute_bounds_and_scale(nodes, edges)
+
+            # Apply basemap background if available
+            if basemap_path:
+                from rendering.static_map_background_painter import StaticMapBackgroundPainter
+
+                StaticMapBackgroundPainter.apply_background(ax, basemap_path, projector)
+
+            # Draw streets
+            StaticMapPainter.draw_streets(ax, edges, projector.map_to_canvas)
+
+            # Draw nodes and traffic light icons
+            StaticMapPainter.draw_nodes_and_traffic_lights(ax, nodes, icon_requests, projector.map_to_canvas)
+
+            # Chart style settings and limits
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.spines["bottom"].set_visible(False)
+            ax.spines["left"].set_visible(False)
+            ax.get_xaxis().set_ticks([])
+            ax.get_yaxis().set_ticks([])
+            ax.set_facecolor("#F7F7F7")
+
+            ax.set_xlim(0, 1200)
+            ax.set_ylim(0, 800)
+            fig.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
+
+            render_figure_to_file(
+                fig,
+                output_path,
+                close_fig=False,
+                format="png",
+                dpi=100,
+                facecolor=ax.get_facecolor(),
+                bbox_inches=None,
+                pad_inches=0.0,
             )
         except MemoryError as me:
             logging.critical(f"MemoryError ao salvar a imagem '{output_path}'.")
@@ -86,7 +93,7 @@ class StaticMapRenderer:
             logging.error(f"Erro inesperado ao salvar a imagem '{output_path}': {save_err}", exc_info=True)
             raise save_err
         finally:
-            plt.close(fig)
+            close_offscreen_figure(fig)
 
         logging.info(lm.get_string("static_map_renderer.run.render_complete", filename=os.path.basename(output_path)))
 

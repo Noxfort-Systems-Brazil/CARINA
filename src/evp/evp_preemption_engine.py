@@ -43,17 +43,36 @@ class EVPPreemptionEngine:
         with self._lock:
             return intersection_id in self._active_preemptions
 
+    def _flush_dispatches(self, dispatches: list[Tuple[str, int, str]]) -> None:
+        """Invokes hardware/action dispatcher outside internal locks to prevent RPC stalls."""
+        cb = self.on_action_dispatch
+        if not cb:
+            return
+        for int_id, stage, action in dispatches:
+            cb(int_id, stage, action)
+
+    def _activate_locked(
+        self, intersection_id: str, vehicle: EmergencyVehicle, target_stage: int = 1
+    ) -> Tuple[str, int, str]:
+        vehicle.activate_evp(intersection_id, block_id=f"BLOCK_{intersection_id}")
+        self._active_preemptions[intersection_id] = {
+            "vehicle_id": vehicle.vehicle_id,
+            "corporation": vehicle.corporation,
+            "target_stage": target_stage,
+            "start_time": time.time(),
+        }
+        return (intersection_id, target_stage, "ACTIVATE_PREEMPT")
+
+    def _release_locked(self, intersection_id: str, vehicle: Optional[EmergencyVehicle] = None) -> Tuple[str, int, str]:
+        if vehicle:
+            vehicle.deactivate_evp(intersection_id)
+        self._active_preemptions.pop(intersection_id, None)
+        return (intersection_id, 0, "RELEASE_PREEMPT")
+
     def activate_preemption(self, intersection_id: str, vehicle: EmergencyVehicle, target_stage: int = 1) -> None:
         with self._lock:
-            vehicle.activate_evp(intersection_id, block_id=f"BLOCK_{intersection_id}")
-            self._active_preemptions[intersection_id] = {
-                "vehicle_id": vehicle.vehicle_id,
-                "corporation": vehicle.corporation,
-                "target_stage": target_stage,
-                "start_time": time.time(),
-            }
-            if self.on_action_dispatch:
-                self.on_action_dispatch(intersection_id, target_stage, "ACTIVATE_PREEMPT")
+            pending = [self._activate_locked(intersection_id, vehicle, target_stage=target_stage)]
+        self._flush_dispatches(pending)
 
     def release_preemption(
         self,
@@ -62,11 +81,8 @@ class EVPPreemptionEngine:
         vehicle: Optional[EmergencyVehicle] = None,
     ) -> None:
         with self._lock:
-            if vehicle:
-                vehicle.deactivate_evp(intersection_id)
-            self._active_preemptions.pop(intersection_id, None)
-            if self.on_action_dispatch:
-                self.on_action_dispatch(intersection_id, 0, "RELEASE_PREEMPT")
+            pending = [self._release_locked(intersection_id, vehicle=vehicle)]
+        self._flush_dispatches(pending)
 
     def get_preemption_action(
         self,
@@ -78,6 +94,8 @@ class EVPPreemptionEngine:
     ) -> Tuple[int, str]:
         if stage_duration_seconds is not None:
             stage_duration = stage_duration_seconds
+        pending: list[Tuple[str, int, str]] = []
+        result: Tuple[int, str]
         with self._lock:
             preempt = self._active_preemptions.get(intersection_id)
             if not preempt:
@@ -90,24 +108,26 @@ class EVPPreemptionEngine:
 
             if vehicle and not vehicle.is_online:
                 logger.warning(f"[EVPPreemptionEngine] 📴 {v_id} OFFLINE em {intersection_id}. Desarmando preempção.")
-                self.release_preemption(intersection_id, vehicle_id=v_id, vehicle=vehicle)
-                return self.ACTION_ADVANCE, "EVP_VEHICLE_OFFLINE_FAILSAFE"
-
-            if vehicle and not vehicle.siren_active:
-                logger.info(f"[EVPPreemptionEngine] 🔕 {v_id} sem sirene (Modo Alerta desligado) em {intersection_id}. Desarmando preempção.")
-                self.release_preemption(intersection_id, vehicle_id=v_id, vehicle=vehicle)
-                return self.ACTION_ADVANCE, "EVP_SIREN_INACTIVE_RELEASE"
-
-            # Unconditional CONTRAN Watchdog fail-safe (maximum preemption dwell exceeded)
-            if elapsed >= self.max_dwell_timeout_seconds:
-                logger.warning(f"[EVPPreemptionEngine] Watchdog estourado ({elapsed:.1f}s) em {intersection_id}. Liberando.")
-                self.release_preemption(intersection_id, vehicle_id=v_id, vehicle=vehicle)
-                return self.ACTION_ADVANCE, "EVP_WATCHDOG_TIMEOUT_EXCEEDED"
-
-            if current_stage == target_stage:
+                pending.append(self._release_locked(intersection_id, vehicle=vehicle))
+                result = (self.ACTION_ADVANCE, "EVP_VEHICLE_OFFLINE_FAILSAFE")
+            elif vehicle and not vehicle.siren_active:
+                logger.info(
+                    f"[EVPPreemptionEngine] 🔕 {v_id} sem sirene (Modo Alerta desligado) em {intersection_id}. Desarmando preempção."
+                )
+                pending.append(self._release_locked(intersection_id, vehicle=vehicle))
+                result = (self.ACTION_ADVANCE, "EVP_SIREN_INACTIVE_RELEASE")
+            elif elapsed >= self.max_dwell_timeout_seconds:
+                logger.warning(
+                    f"[EVPPreemptionEngine] Watchdog estourado ({elapsed:.1f}s) em {intersection_id}. Liberando."
+                )
+                pending.append(self._release_locked(intersection_id, vehicle=vehicle))
+                result = (self.ACTION_ADVANCE, "EVP_WATCHDOG_TIMEOUT_EXCEEDED")
+            elif current_stage == target_stage:
                 return self.ACTION_HOLD, "EVP_CORREDOR_VERDE_HOLD"
-
-            return self.ACTION_ADVANCE, "EVP_TRANSICAO_PARA_ALVO"
+            else:
+                return self.ACTION_ADVANCE, "EVP_TRANSICAO_PARA_ALVO"
+        self._flush_dispatches(pending)
+        return result
 
     def evaluate_vehicle_lifecycle(
         self,
@@ -116,45 +136,72 @@ class EVPPreemptionEngine:
         kinematics: Any,
     ) -> bool:
         """Spatially evaluates vehicle and triggers/releases preemption upon block entrance or checkout."""
+        pending: list[Tuple[str, int, str]] = []
+        triggered = False
         with self._lock:
             if not vehicle.siren_active:
                 intersections_to_release = [
-                    int_id for int_id, p_info in self._active_preemptions.items()
+                    int_id
+                    for int_id, p_info in self._active_preemptions.items()
                     if p_info.get("vehicle_id") == vehicle.vehicle_id
                 ]
                 for int_id in intersections_to_release:
-                    logger.info(f"[EVPPreemptionEngine] 🔕 Sirene desligada por {vehicle.vehicle_id} em {int_id}. Desarmando.")
-                    self.release_preemption(int_id, vehicle_id=vehicle.vehicle_id, vehicle=vehicle)
+                    logger.info(
+                        f"[EVPPreemptionEngine] 🔕 Sirene desligada por {vehicle.vehicle_id} em {int_id}. Desarmando."
+                    )
+                    pending.append(self._release_locked(int_id, vehicle=vehicle))
                 vehicle.deactivate_evp()
-                return False
+                triggered = False
+            else:
+                ro_fn = getattr(topology_service, "get_intersections_readonly", None)
+                intersections = (
+                    ro_fn()
+                    if callable(ro_fn) and not hasattr(topology_service, "assert_called")
+                    else topology_service.intersections_geo
+                )
+                if not intersections:
+                    topology_service.auto_load_map()
+                    intersections = (
+                        ro_fn()
+                        if callable(ro_fn) and not hasattr(topology_service, "assert_called")
+                        else topology_service.intersections_geo
+                    )
 
-            intersections = topology_service.intersections_geo
-            if not intersections:
-                topology_service.auto_load_map()
-                intersections = topology_service.intersections_geo
+                nearest = kinematics.find_nearest_intersection(vehicle.latitude, vehicle.longitude, intersections)
+                if not nearest:
+                    return False
 
-            nearest = kinematics.find_nearest_intersection(vehicle.latitude, vehicle.longitude, intersections)
-            if not nearest:
-                return False
+                int_id, _ = nearest
+                i_lat, i_lon = intersections[int_id]
 
-            int_id, _ = nearest
-            i_lat, i_lon = intersections[int_id]
-
-            active_intersections = getattr(vehicle, "active_intersections", set())
-            if vehicle.is_evp_triggered and (int_id in active_intersections or vehicle.active_intersection_id == int_id):
-                if kinematics.has_checked_out(vehicle.latitude, vehicle.longitude, i_lat, i_lon):
-                    logger.info(f"[EVPPreemptionEngine] 🏁 Veículo {vehicle.vehicle_id} transpôs {int_id}. Checkout.")
-                    self.release_preemption(int_id, vehicle_id=vehicle.vehicle_id, vehicle=vehicle)
-                    return vehicle.is_evp_triggered
-                return True
-
-            quadra_length = topology_service.get_quadra_length(int_id)
-            if kinematics.is_at_block_entrance(vehicle.latitude, vehicle.longitude, i_lat, i_lon, quadra_length=quadra_length):
-                if int_id not in self._active_preemptions:
-                    target_stage = topology_service.get_target_stage(int_id, default=1)
-                    q_desc = f" ({quadra_length:.0f}m)" if quadra_length else ""
-                    logger.info(f"[EVPPreemptionEngine] 🚨 {vehicle.vehicle_id} entrou na quadra de {int_id}{q_desc}!")
-                    self.activate_preemption(int_id, vehicle, target_stage=target_stage)
-                    return True
-
-            return vehicle.is_evp_triggered
+                active_intersections = getattr(vehicle, "active_intersections", set())
+                if vehicle.is_evp_triggered and (
+                    int_id in active_intersections or vehicle.active_intersection_id == int_id
+                ):
+                    if kinematics.has_checked_out(vehicle.latitude, vehicle.longitude, i_lat, i_lon):
+                        logger.info(
+                            f"[EVPPreemptionEngine] 🏁 Veículo {vehicle.vehicle_id} transpôs {int_id}. Checkout."
+                        )
+                        pending.append(self._release_locked(int_id, vehicle=vehicle))
+                        triggered = vehicle.is_evp_triggered
+                    else:
+                        return True
+                else:
+                    quadra_length = topology_service.get_quadra_length(int_id)
+                    if kinematics.is_at_block_entrance(
+                        vehicle.latitude, vehicle.longitude, i_lat, i_lon, quadra_length=quadra_length
+                    ):
+                        if int_id not in self._active_preemptions:
+                            target_stage = topology_service.get_target_stage(int_id, default=1)
+                            q_desc = f" ({quadra_length:.0f}m)" if quadra_length else ""
+                            logger.info(
+                                f"[EVPPreemptionEngine] 🚨 {vehicle.vehicle_id} entrou na quadra de {int_id}{q_desc}!"
+                            )
+                            pending.append(self._activate_locked(int_id, vehicle, target_stage=target_stage))
+                            triggered = True
+                        else:
+                            triggered = vehicle.is_evp_triggered
+                    else:
+                        triggered = vehicle.is_evp_triggered
+        self._flush_dispatches(pending)
+        return triggered

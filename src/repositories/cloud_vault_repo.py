@@ -20,6 +20,7 @@ class CloudVaultRepository:
     def __init__(self, engine: "DatabaseEngine", locale_manager: "LocaleManagerBackend"):
         self.engine = engine
         self.locale_manager = locale_manager
+        self._synced_file_cache: dict[str, tuple[int, int]] = {}
 
     def sync_file_to_vault(self, filepath: str, base_dir: str) -> bool:
         """
@@ -89,14 +90,26 @@ class CloudVaultRepository:
         skipped = 0
         errors = 0
 
+        _IGNORED_SUFFIXES = (".db", ".db-journal", ".db-wal", ".db-shm", ".log", ".log.gz", ".tmp")
         for root, dirs, files in os.walk(base_dir):
             for file in files:
-                if file.endswith(".db") or file.endswith(".db-journal"):
-                    continue  # Do not backup the database itself
+                if file.endswith(_IGNORED_SUFFIXES):
+                    continue  # Do not backup active DB files, WAL sidecars, or rotating logs
 
                 filepath = os.path.join(root, file)
+                try:
+                    st = os.stat(filepath)
+                    sig = (int(st.st_mtime_ns), int(st.st_size))
+                except OSError:
+                    sig = None
+                if sig is not None and self._synced_file_cache.get(filepath) == sig:
+                    skipped += 1
+                    continue
+
                 success = self.sync_file_to_vault(filepath, base_dir)
                 if success:
+                    if sig is not None:
+                        self._synced_file_cache[filepath] = sig
                     synced += 1
                 else:
                     if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024 * 1024:

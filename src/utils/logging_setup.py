@@ -30,19 +30,39 @@ def gzip_rotator(source: str, dest: str) -> None:
     os.remove(source)
 
 
+def _resolve_root_log_level() -> int:
+    env_lvl = os.environ.get("CARINA_LOG_LEVEL", "").strip().upper()
+    if env_lvl in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        return getattr(logging, env_lvl)
+    try:
+        import configparser
+
+        from utils.paths import get_project_root
+
+        ini_path = os.path.join(get_project_root(), "config", "settings.ini")
+        if os.path.exists(ini_path):
+            cfg = configparser.ConfigParser()
+            cfg.read(ini_path, encoding="utf-8")
+            val = cfg.get("LOGGING", "root_log_level", fallback="INFO").strip().upper()
+            if val in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+                return getattr(logging, val)
+    except Exception:
+        pass
+    return logging.INFO
+
+
 def setup_logging(log_dir: str):
     """
     Configures logging for the console and log file using UTF-8.
-    The log file captures everything (DEBUG), while the console is cleaner (INFO).
+    Level defaults to INFO (configurable via CARINA_LOG_LEVEL or settings.ini `[LOGGING] root_log_level`).
     """
     log_file_path = os.path.join(log_dir, "console_output.log")
 
     log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] - %(message)s")
 
+    effective_level = _resolve_root_log_level()
     root_logger = logging.getLogger()
-    # --- FIX (Part 1): Sets the lowest level in the main logger ---
-    # This allows it to pass all messages to the handlers, which will do the filtering.
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(effective_level)
 
     # Cleans up existing handlers to avoid log duplication
     if root_logger.hasHandlers():
@@ -62,11 +82,11 @@ def setup_logging(log_dir: str):
 
     # --- FIX (Part 2): Configure FileHandler to record EVERYTHING ---
     # 1. Handler to save the logs to a file, specifying UTF-8 encoding
-    file_handler = RotatingFileHandler(log_file_path, maxBytes=10 * 1024 * 1024, backupCount=100, encoding="utf-8")
+    file_handler = RotatingFileHandler(log_file_path, maxBytes=10 * 1024 * 1024, backupCount=20, encoding="utf-8")
     file_handler.namer = gzip_namer
     file_handler.rotator = gzip_rotator
     file_handler.setFormatter(log_formatter)
-    file_handler.setLevel(logging.DEBUG)  # Writes everything from DEBUG to CRITICAL to the file.
+    file_handler.setLevel(effective_level)
     file_handler.addFilter(FletAsyncShutdownFilter())
     root_logger.addHandler(file_handler)
 

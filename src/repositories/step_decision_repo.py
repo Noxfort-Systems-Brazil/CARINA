@@ -10,10 +10,9 @@ try:
 except ImportError:
     execute_values = None
 
-from src.domain.veto_reasons import (
-    DECISION_CODES as DOMAIN_DECISION_CODES,
-    VETO_REASON_TEXT as DOMAIN_VETO_REASON_TEXT,
-)
+from src.database.connection_pool import db_transaction
+from src.domain.veto_reasons import DECISION_CODES as DOMAIN_DECISION_CODES
+from src.domain.veto_reasons import VETO_REASON_TEXT as DOMAIN_VETO_REASON_TEXT
 from src.repositories.operation_session_repo import OperationSessionRepository
 from src.repositories.step_decision_analytics import StepDecisionAnalytics
 from src.repositories.topology_dictionary_repo import TopologyDictionaryRepository
@@ -45,11 +44,10 @@ class StepDecisionRepository:
 
     def ensure_tables_exist(self) -> bool:
         """Ensures that step_decision_counters table exists, alongside delegated tables."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS step_decision_counters (
@@ -60,14 +58,9 @@ class StepDecisionRepository:
                     );
                     """
                 )
-            conn.commit()
             return True
         except Exception as e:
             logging.error(f"[StepDecisionRepo] Error ensuring tables exist: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return False
 
     def increment_decision_counter_batch(self, batch_tuples: List[Tuple[int, int, int]]) -> bool:
@@ -78,12 +71,10 @@ class StepDecisionRepository:
         if not batch_tuples:
             return True
 
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
-
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
                 if getattr(self.engine, "db_type", "sqlite") == "postgres":
                     from psycopg2.extras import execute_values
 
@@ -102,14 +93,9 @@ class StepDecisionRepository:
                         DO UPDATE SET count = step_decision_counters.count + excluded.count;
                     """
                     cursor.executemany(query_sqlite, batch_tuples)
-            conn.commit()
             return True
         except Exception as e:
             logging.error(f"[StepDecisionRepo] Counter batch update failed: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return False
 
     # --- Delegated Operation Session Methods (SRP) ---
@@ -134,9 +120,7 @@ class StepDecisionRepository:
         return StepDecisionAnalytics.get_all_audited_agent_ids(self.engine)
 
     def get_guardian_veto_statistics(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
-        return StepDecisionAnalytics.get_guardian_veto_statistics(
-            self.engine, self.VETO_REASON_TEXT, agent_id
-        )
+        return StepDecisionAnalytics.get_guardian_veto_statistics(self.engine, self.VETO_REASON_TEXT, agent_id)
 
     @staticmethod
     def _to_int_id(val: Any) -> int:

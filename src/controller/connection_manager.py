@@ -44,36 +44,112 @@ class HardwareConnectionManager:
         self.locale_manager = locale_manager
         self.active_connections: Dict[str, TrafficLightDriver] = {}
         self.saved_ips: Dict[str, str] = {}
+        self.saved_snmp_configs: Dict[str, Dict[str, Any]] = {}
+        self.remote_hardware_status: Dict[str, Dict[str, Any]] = {}
 
         self.resolver = IntersectionResolver(self.active_connections, self.saved_ips)
         self.op_handler = ConnectionOperationHandler(
-            self.active_connections, self.saved_ips, locale_manager=self.locale_manager
+            self.active_connections,
+            self.saved_ips,
+            locale_manager=self.locale_manager,
+            saved_snmp_configs=self.saved_snmp_configs,
         )
 
         self.known_intersections = self._discover_intersections()
 
-        # Initialize Active Hardware Event Listener (SNMP Traps on UDP 162)
-        self.event_listener = SnmpTrapListener(
-            port=162,
-            get_intersection_by_ip=self.resolver.find_intersection_by_ip,
-            is_connected_checker=self.resolver.is_intersection_connected,
-        )
-        self.event_listener.start()
+        from src.drivers.go_gateway_client import GoGatewayClient
 
-        # Restore saved connections asynchronously from Database
-        self._load_and_restore_saved_connections()
+        if GoGatewayClient.is_remote_gateway_role():
+            self.event_listener = None
+            self._load_saved_ips_passive()
+        else:
+            # Initialize Active Hardware Event Listener (SNMP Traps on UDP 162)
+            self.event_listener = SnmpTrapListener(
+                port=162,
+                get_intersection_by_ip=self.resolver.find_intersection_by_ip,
+                is_connected_checker=self.resolver.is_intersection_connected,
+            )
+            self.event_listener.start()
+
+            # Restore saved connections asynchronously from Database
+            self._load_and_restore_saved_connections()
+
+    def _load_saved_ips_passive(self) -> None:
+        """Loads persisted IPs into memory for UI/client view without connecting local SNMP drivers."""
+        try:
+            db_configs = ConnectionConfigRepository.load_all_connections_db(locale_manager=self.locale_manager)
+            for tl_id, ip in db_configs.items():
+                self.saved_ips[tl_id] = ip
+                if tl_id not in self.known_intersections:
+                    self.known_intersections.append(tl_id)
+        except Exception as exc:
+            logger.debug(f"[HardwareConnectionManager] Passive DB IP load skipped: {exc}")
 
     def _load_and_restore_saved_connections(self) -> None:
         """Alias for backward compatibility with test suites patching this method."""
         self.op_handler.restore_saved_connections_async(self.known_intersections, toggle_func=self.toggle_connection)
 
+    def update_remote_hardware_status(self, status_map: Dict[str, Dict[str, Any]]) -> None:
+        """Updates mirrored hardware status received over IPC from CentralController."""
+        if not isinstance(status_map, dict):
+            return
+        self.remote_hardware_status.update(status_map)
+        for tl_id, info in status_map.items():
+            if not isinstance(info, dict):
+                continue
+            ip = info.get("ip_address")
+            if ip:
+                self.saved_ips[tl_id] = ip
+            if not info.get("is_connected", False):
+                alt_id = str(tl_id)[3:] if str(tl_id).startswith("tl_") else f"tl_{tl_id}"
+                self.active_connections.pop(tl_id, None)
+                self.active_connections.pop(alt_id, None)
+
+    def _resolve_remote_status(self, intersection_id: str) -> Optional[Dict[str, Any]]:
+        possible_ids = [str(intersection_id)]
+        if str(intersection_id).startswith("tl_"):
+            possible_ids.append(str(intersection_id).replace("tl_", ""))
+        else:
+            possible_ids.append(f"tl_{intersection_id}")
+        for pid in possible_ids:
+            if pid in self.remote_hardware_status:
+                return self.remote_hardware_status[pid]
+        return None
+
     def is_intersection_connected(self, intersection_id: str) -> bool:
-        """Delegates connection status check to IntersectionResolver."""
-        return self.resolver.is_intersection_connected(intersection_id)
+        """Delegates connection status check to IntersectionResolver or remote mirror."""
+        if self.resolver.is_intersection_connected(intersection_id):
+            return True
+        remote = self._resolve_remote_status(intersection_id)
+        return bool(remote and remote.get("is_connected", False))
 
     def get_hardware_info(self, intersection_id: str) -> Dict[str, Any]:
-        """Delegates hardware metadata extraction to IntersectionResolver."""
-        return self.resolver.get_hardware_info(intersection_id)
+        """Delegates hardware metadata extraction to IntersectionResolver or remote mirror."""
+        info = self.resolver.get_hardware_info(intersection_id)
+        if not info.get("is_connected"):
+            remote = self._resolve_remote_status(intersection_id)
+            if remote and remote.get("is_connected"):
+                return dict(remote)
+        return info
+
+    def export_hardware_status_snapshot(self) -> Dict[str, Dict[str, Any]]:
+        """Builds a compact status map of active/known hardware connections for cross-process IPC."""
+        snapshot: Dict[str, Dict[str, Any]] = {}
+        seen = set()
+        for tl_id in list(self.active_connections.keys()) + list(self.known_intersections):
+            if tl_id in seen:
+                continue
+            seen.add(tl_id)
+            info = self.resolver.get_hardware_info(tl_id)
+            if info.get("is_connected") or tl_id in self.active_connections:
+                snapshot[tl_id] = {
+                    "is_connected": bool(info.get("is_connected", False)),
+                    "brand": info.get("brand", "Desconectado"),
+                    "model": info.get("model", "Desconectado"),
+                    "protocol": info.get("protocol", "none"),
+                    "ip_address": self.saved_ips.get(tl_id, ""),
+                }
+        return snapshot
 
     @classmethod
     def get_global_hardware_info(cls, intersection_id: str) -> Dict[str, Any]:
@@ -121,7 +197,11 @@ class HardwareConnectionManager:
                     else "online"
                 )
             else:
-                status = "disconnected"
+                remote_info = self._resolve_remote_status(tl_id)
+                if remote_info and remote_info.get("is_connected"):
+                    status = str(remote_info.get("protocol") or "online")
+                else:
+                    status = "disconnected"
 
             ip_val = ""
             for pid in possible_ids:
@@ -139,15 +219,19 @@ class HardwareConnectionManager:
         ip_address: str = None,
         action: str = "toggle",
         save_to_db: bool = True,
+        snmp_config: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Delegates connection toggle operations to ConnectionOperationHandler."""
-        return self.op_handler.toggle_connection(
-            intersection_id=intersection_id,
-            ip_address=ip_address,
-            action=action,
-            green_stages_provider=self.get_green_stages_for_intersection,
-            save_to_db=save_to_db,
-        )
+        kwargs: Dict[str, Any] = {
+            "intersection_id": intersection_id,
+            "ip_address": ip_address,
+            "action": action,
+            "green_stages_provider": self.get_green_stages_for_intersection,
+            "save_to_db": save_to_db,
+        }
+        if snmp_config is not None:
+            kwargs["snmp_config"] = snmp_config
+        return self.op_handler.toggle_connection(**kwargs)
 
     def export_csv_template(self, filepath: str) -> bool:
         """Delegates CSV template creation to ConnectionConfigRepository."""

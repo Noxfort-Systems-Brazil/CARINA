@@ -13,24 +13,29 @@ CARINA gobierna infraestructura municipal de tráfico crítica para la seguridad
 
 ## 1. Ejecución de la Suite de Pruebas (`pytest`)
 
-CARINA cuenta con una suite de pruebas exhaustiva con **861 pruebas automatizadas** (verificadas mediante `pytest --collect-only`), garantizando seguridad, cero regresiones y conmutación por error en microsegundos determinista en cada subsistema. Todas las pruebas se encuentran en [`tests/`](../../tests).
+CARINA cuenta con una suite de pruebas exhaustiva con **967 pruebas automatizadas en Python** (verificadas mediante `pytest --collect-only`: **935 pruebas unitarias** en 192 archivos, **18 pruebas de integración** en 8 archivos y **14 pruebas** en 4 archivos de prueba raíz) más **46 pruebas unitarias en Go** en 15 archivos `*_test.go`, garantizando seguridad, cero regresiones y conmutación por error en microsegundos determinista en cada subsistema. Todas las pruebas se encuentran en [`tests/`](../../tests) y [`src_go/`](../../src_go).
 
-### 1.1 Ejecutar Todas las Pruebas
+### 1.1 Ejecutar Pruebas con Guardia de Memoria (`scripts/pytest_limited.sh`)
+Para evitar que los fixtures multiproceso de PyTorch/SLM agoten la RAM del host durante ejecuciones completas, utilice preferentemente el ejecutor limitado por kernel [`scripts/pytest_limited.sh`](../../scripts/pytest_limited.sh) emparejado con [`tests/memory_guard.py`](../../tests/memory_guard.py):
+```bash
+# Aplica límites cgroup v2 de systemd (MemoryHigh=1536M, MemoryMax=2048M, MemorySwapMax=512M)
+# o recurre a ulimit -d + guardia RSS de árbol de procesos CARINA_PYTEST_MAX_RAM_MB:
+./scripts/pytest_limited.sh tests/ -v
+```
+- **Reclamación Determinista de Recursos:** `tests/memory_guard.py` muestrea la memoria RSS del árbol de procesos, ejecuta `gc.collect()` / `malloc_trim()` suaves y limpia singletons (`GoGatewayClient`, `HardwareConnectionManager`, `DatabaseManager`, figuras de Matplotlib) mediante `reclaim_test_resources()`.
+- **Guardia de Pruebas SLM Offline:** La carga real de LLM GGUF está deshabilitada por defecto durante `pytest`, a menos que se exporte explícitamente `CARINA_ALLOW_REAL_SLM=1`.
+
+### 1.2 Ejecutar Todas las Pruebas Directamente e Informes de Cobertura
 ```bash
 pytest tests/ -v
-```
-
-### 1.2 Generar Informes de Cobertura
-Para medir la cobertura de ramas y declaraciones en `src/`:
-```bash
 pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html
 ```
 El informe HTML de cobertura se genera en `htmlcov/index.html`.
 
 ### 1.3 Ejecutar Pruebas Unitarias del Gateway de Hardware en Go (`go test`)
-Para ejecutar las pruebas unitarias nativas en Go que cubren NTCIP, UTMC, traps y descubrimiento:
+Para ejecutar las pruebas unitarias nativas en Go (46 funciones de prueba que cubren NTCIP, UTMC, SNMPv3/codec, traps binarios, descubrimiento, failsafe, EVP y autenticación/TLS del Web Gateway):
 ```bash
-cd src_go && go test -v ./...
+cd src_go && go test -v -race ./...
 ```
 
 ---
@@ -40,90 +45,46 @@ cd src_go && go test -v ./...
 ```text
 tests/
 ├── conftest.py                     # Fixtures compartidos de pytest, BDs temporales y entornos mock
+├── memory_guard.py                 # Monitor RSS de árbol de procesos, trims GC suaves y reclamación de singletons
 ├── mock_junctions.py               # Grafo sintético de topología y definiciones de nodos
 ├── benchmark.py                    # Benchmarks de rendimiento (rendimiento y latencia)
+├── test_*.py                       # 4 suites raíz (14 pruebas: sanidad, invariantes, pacing, cobertura semanal)
 │
-├── unit/                           # Pruebas Unitarias Aisladas (861 Pruebas Totales Recopiladas)
-│   ├── test_evp_service.py         # Ciclo de vida de EVPService, tubería de ingestión y disparadores
-│   ├── test_evp_kinematics.py      # Distancia Haversine, velocidad, rumbo y compuertas de aproximación
-│   ├── test_evp_preemption_engine.py # Retención de preempción, watchdog de 45s y despejes
-│   ├── test_evp_map_topology.py    # Coincidencia topológica, aproximaciones entrantes y mapeo de fases
-│   ├── test_evp_fleet_persistence.py # Operaciones CRUD de flota autorizada y caché de matrículas
-│   ├── test_evp_config_repo.py     # Repositorio de configuración de EVP y persistencia de umbrales
-│   ├── test_evp_fleet_controller.py # Lógica de negocio y validación de gestión de flotas
-│   ├── test_evp_fleet_csv.py       # Exportación CSV e importación masiva de flotas
-│   ├── test_evp_fleet_save_flow.py # Flujo de guardado de formulario de UI y commit en base de datos
-│   ├── test_evp_hardware_parity_persistence.py # Paridad de estado de hardware entre motores de BD
-│   ├── test_evp_settings_handler.py # Persistencia de ajustes de EVP en settings.ini y .env
-│   ├── test_evp_vehicle_marker.py  # Glifos de vehículos EVP en canvas Flet y animaciones estroboscópicas
+├── unit/                           # Pruebas Unitarias Aisladas (192 archivos / 935 pruebas recopiladas)
+│   ├── test_closed_loop_hardware_control.py # Decodificación de máscaras NTCIP/UTMC y sincronización en lazo cerrado
+│   ├── test_field_readiness_configs.py # config_path por intersección, reenvío de tokens y temporización de fases
+│   ├── test_grpc_security.py       # Pruebas de Synapse gRPC TLS/mTLS y BearerTokenServerInterceptor
+│   ├── test_sds_cco_broadcast_security.py # TLS de CCOBroadcastClient + fijación SHA-256 de certificado hoja
+│   ├── test_guardian_calibration_and_training.py # Entrenamiento QR-D3QN en CHILD, calibración F2, Noisy-OR y freeze
+│   ├── test_db_connection_and_locking.py # PostgresConnectionPool, pragmas SQLite WAL y db_transaction
+│   ├── test_nvidia_memory_and_hotpath_optimizations.py # BatchedPAE, torch.vmap, NumPy GAE, ReplayMemory en host
+│   ├── test_phase2_db_ipc_optimizations.py # SQL make_interval, ThreadSafePipeConnection y retención EVP
+│   ├── test_phase3_slm_xai_render_optimizations.py # slm_process_lock, VRAM pynvml, mpl_utils, caché XAI
+│   ├── test_phase4_gateway_evp_ui_optimizations.py # Pausa de MapAnimator en ventana oculta, paginación AuditLog, CCO
+│   ├── test_pytest_memory_guard.py # Muestreo RSS de árbol de procesos, trims suaves y reclamación de recursos
+│   ├── test_solid_full_audit_refactoring.py # Interfaces segregadas y descomposiciones SOLID de coordinadores
+│   ├── test_solid_gateway_and_step_refactoring.py # Pruebas DIP del coordinador de gateway y canalización de paso
+│   ├── test_evp_*.py               # 12 módulos EVP (servicio, cinemática, preempción, flota, marcadores UI)
 │   ├── test_local_agent.py         # Selección de acciones del Agente Táctico PPO y bucle de actualización
 │   ├── test_guardian_agent.py      # Centinela de seguridad D3QN y validación de umbrales de riesgo
 │   ├── test_strategist_agent.py    # Coordinador arterial ST-GATv2 Lite con Atención en Grafos
+│   ├── test_pae_model.py           # Pruebas de PAE iTransformer condicionado por acción e incertidumbre
+│   ├── test_remote_gateway_and_cco.py # Pruebas de Gateway Web Tailscale y stream CCO
 │   ├── test_settings_modular.py    # SettingsService modular, esquema, proveedores e INI
-│   ├── test_settings_view.py       # Vista de Ajustes en Flet y persistencia en UI
 │   ├── test_monitor_client.py      # MonitorClient polimórfico, transportes HTTP y MQTT
-│   ├── test_monitor_disconnect.py  # Reintentos de telemetría, vaciado de búfer y desconexión
-│   ├── test_core_components.py     # Pruebas de DecisionCoordinator y ActionAuthorizer
 │   ├── test_go_gateway_bridge.py   # Subproceso del Gateway Go y puente IPC por tuberías
-│   ├── test_traffic_light_driver.py # Abstracción de alto nivel de controladores semafóricos
-│   ├── test_traffic_modular_components.py # Componentes modulares de controladores semafóricos
-│   ├── test_driver_factory_brand_model.py # Instanciación de controladores (NTCIP / UTMC / Go)
-│   ├── test_hardware_event_listener.py    # Receptores de traps SNMP y análisis de fallos
-│   ├── test_connection_db_persistence.py  # Persistencia de endpoints de controladores
-│   ├── test_connection_manager_orchestrator.py # Orquestación de máquinas de estados de conexión
-│   ├── test_fenix_supervisor.py    # Ciclo de vida del supervisor FENIX, recuperación y resurrección
-│   ├── test_fenix_process_runner.py # Control de procesos en subprocesos (SIGTERM/SIGKILL)
-│   ├── test_fenix_recovery_policy.py # Política de recuperación en ventana móvil y backoff exponencial
-│   ├── test_fenix_state_reconciler.py # Traspaso en límites limpios y sincronización FROZEN_SYNC
-│   ├── test_watchdog_fenix_integration.py # Disparo por timeout de Watchdog a resurrección FENIX
-│   ├── test_security_modular.py    # AuthService, UserService, PBKDF2 y Bloqueo por Fuerza Bruta
-│   ├── test_security_manager.py    # Validación de la fachada heredada SecurityManager
-│   ├── test_captum_analyzer.py     # Pruebas de atribución por Gradientes Integrados
-│   ├── test_xai_report_builder.py  # Generación de informes Word ABNT con ecuaciones OMML
-│   ├── test_multi_agent_modular_builder.py # Ensamblaje modular de bloques de informes multiagente
-│   ├── test_mfd_processor.py       # Procesador central del Diagrama Fundamental Macroscópico
-│   ├── test_mfd_report_generator.py # Generación de informes MFD y ajuste de curvas
-│   ├── test_mfd_db_reconstruction.py # Reconstrucción de MFD a partir de tablas PostgreSQL
-│   ├── test_mfd_new_report.py      # Flujo de generación de nuevos informes MFD
-│   ├── test_sas_report_generator.py # Pruebas de justificaciones del Smart Analysis System
-│   ├── test_sas_data_transducer.py # Transductor de telemetría de SAS
-│   ├── test_sas_helpers.py         # Auxiliares de cálculo matemático de SAS
-│   ├── test_sas_mfd_db_cache.py    # Caché de base de datos de MFD en SAS
-│   ├── test_semantic_transducer_device.py # Transductor SLM offline y asignación de VRAM
-│   ├── test_planning_view.py       # Pruebas de UI de la Vista de Planificación en Flet
-│   ├── test_planning_architecture.py # Presentador de canvas de planificación y exportadores
-│   ├── test_planning_export_handler.py # Exportadores CSV de planes de tiempos semafóricos
-│   ├── test_planning_panel_presenter.py # Presentador de UI del panel de planificación
-│   ├── test_live_canvas_map_widget.py # Canvas personalizado en Flet para vías y señales
-│   ├── test_map_interaction_precision.py # Matemática de zoom, deriva de coordenadas y acierto en vías
-│   ├── test_map_event_router_precision.py # Desambiguación de clics entre semáforos y vías
-│   ├── test_interactive_map_precision.py # Precisión de pulsación y capas en InteractiveMap
-│   ├── test_planning_map_sync.py   # Radio de acierto de PlanningMapRenderer y sincronización
-│   ├── test_live_data_provider_ipc.py # Streaming en memoria por colas IPC de LiveDataProvider
-│   ├── test_watchdog.py            # Lógica de latidos del Watchdog y temporizadores de procesos
-│   ├── test_consolidation_purge.py # Consolidación de almacenamiento delta de dinámica de fluidos
-│   ├── test_csv_template_export_import.py # Importación/exportación CSV de endpoints
-│   ├── test_db_schema_isolation.py # Aislamiento de esquemas para suites de pruebas
-│   ├── test_infrastructure_client.py # Cliente para justificaciones de infraestructura
-│   ├── test_intersection_state_manager.py # Seguimiento de etapas multi-intersección
-│   ├── test_main_components.py     # Componentes principales del controlador central
-│   ├── test_manual_override_hft.py # Anulaciones manuales de fase en alta frecuencia
-│   ├── test_pushdown_query.py      # Evaluación de consultas SQL con pushdown
-│   ├── test_tls_state_provider.py  # Proveedor de estados de semáforos
-│   ├── test_ui_main_orchestrator.py # Pruebas del orquestador principal de UI
-│   ├── test_window_manager.py      # Gestión del ciclo de vida de la ventana de escritorio
-│   ├── test_population_manager_pbt.py # Aislamiento intra-fase PBT y seguridad dimensional
-│   ├── test_performance_margin_calculator.py # Margen de graduación por fluidos y telemetría infantil
-│   ├── test_reward_weights_calculator.py # Balance físico de recompensas (tiempo de tramo HCM)
-│   ├── test_maturity_pacing_calculator.py # Regulación automática de duración por topología de red
-│   ├── test_yellow_schedule_manager.py # Evaluador de horarios de destello amarillo nocturno
-│   └── test_yellow_schedule_card.py # Tarjeta de UI y controles de ventana de destello amarillo
+│   ├── test_fenix_*.py             # Supervisor FENIX, runner, política de recuperación y reconciliador de estado
+│   ├── security/                   # Criptografía, PBKDF2, política de contraseñas y suites de seguridad SOLID
+│   └── ...                         # Cobertura completa en core, mfd, sas, xai, rendering y ui
 │
-└── integration/                    # Pruebas de Integración Extremo a Extremo (5 Módulos)
+└── integration/                    # Pruebas de Integración Extremo a Extremo (8 Módulos / 18 Pruebas)
     ├── test_system_integration.py    # Ciclo completo de telemetría a actuación por gRPC
     ├── test_gateway_ipc_pipeline.py  # Tubería IPC de NDJSON por tuberías anónimas del Gateway Go
+    ├── test_gateway_ownership_and_fenix_roundtrip.py # Propiedad CARINA_GATEWAY_ROLE owner/remote y ciclo FENIX
+    ├── test_go_gateway_snmp_hil_loopback.py # Bucle HIL entre binario Go compilado real <-> agente mock SNMP
     ├── test_hft_performance_sla.py   # Latencia del bucle HFT en sub-milisegundos y SLA
     ├── test_postgres_migrations.py   # Migraciones y reversión de esquemas PostgreSQL con Alembic
+    ├── test_traffic_light_drivers.py # Verificaciones de integración de drivers NTCIP/UTMC de alto nivel
     └── test_watchdog_resilience.py   # Conmutación por fallo de latido del Watchdog y resurrección
 ```
 

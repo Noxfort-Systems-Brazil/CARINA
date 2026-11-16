@@ -7,6 +7,7 @@ package manager
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"carina/src_go/pkg/heartbeat"
@@ -60,10 +61,31 @@ func (m *HardwareManager) Start() error {
 	return nil
 }
 
+// resolveDriverLocked finds an active driver by exact intersection ID or tl_-prefixed alternate.
+// Callers must hold at least m.mu.RLock().
+func (m *HardwareManager) resolveDriverLocked(intersectionID string) (string, protocol.TrafficDriver, bool) {
+	if driver, exists := m.drivers[intersectionID]; exists {
+		return intersectionID, driver, true
+	}
+
+	var altID string
+	if strings.HasPrefix(intersectionID, "tl_") {
+		altID = strings.TrimPrefix(intersectionID, "tl_")
+	} else {
+		altID = "tl_" + intersectionID
+	}
+
+	if driver, exists := m.drivers[altID]; exists {
+		return altID, driver, true
+	}
+
+	return intersectionID, nil, false
+}
+
 // ApplyAction dispatches a direct command action to the corresponding controller driver.
 func (m *HardwareManager) ApplyAction(intersectionID string, actionData map[string]interface{}) (bool, error) {
 	m.mu.RLock()
-	driver, exists := m.drivers[intersectionID]
+	_, driver, exists := m.resolveDriverLocked(intersectionID)
 	m.mu.RUnlock()
 
 	if !exists {
@@ -82,7 +104,7 @@ func (m *HardwareManager) ApplyLogicalAction(
 	stageCodes map[int]string,
 ) (bool, error) {
 	m.mu.RLock()
-	driver, exists := m.drivers[intersectionID]
+	_, driver, exists := m.resolveDriverLocked(intersectionID)
 	m.mu.RUnlock()
 
 	if !exists {
@@ -95,7 +117,7 @@ func (m *HardwareManager) ApplyLogicalAction(
 // ApplyDecision applies pure AI traffic decision ("HOLD" or "ADVANCE") to the intersection.
 func (m *HardwareManager) ApplyDecision(intersectionID string, action string) (bool, error) {
 	m.mu.RLock()
-	driver, exists := m.drivers[intersectionID]
+	_, driver, exists := m.resolveDriverLocked(intersectionID)
 	m.mu.RUnlock()
 
 	if !exists {
@@ -108,7 +130,7 @@ func (m *HardwareManager) ApplyDecision(intersectionID string, action string) (b
 // GetTelemetry retrieves real-time telemetry from the intersection controller.
 func (m *HardwareManager) GetTelemetry(intersectionID string) (map[string]interface{}, error) {
 	m.mu.RLock()
-	driver, exists := m.drivers[intersectionID]
+	_, driver, exists := m.resolveDriverLocked(intersectionID)
 	m.mu.RUnlock()
 
 	if !exists {

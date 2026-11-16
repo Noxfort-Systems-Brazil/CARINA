@@ -12,9 +12,62 @@ import logging
 import os
 import subprocess
 import threading
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+GATEWAY_SECURITY_ENV_MAP: Dict[str, str] = {
+    "evp_auth_token": "CARINA_EVP_AUTH_TOKEN",
+    "cco_auth_token": "CARINA_CCO_AUTH_TOKEN",
+    "cco_allowed_origin": "CARINA_CCO_ALLOWED_ORIGIN",
+    "gateway_tls_cert": "CARINA_GATEWAY_TLS_CERT",
+    "gateway_tls_key": "CARINA_GATEWAY_TLS_KEY",
+    "gateway_tls_ca": "CARINA_GATEWAY_TLS_CA",
+    "gateway_tls_server_name": "CARINA_GATEWAY_TLS_SERVER_NAME",
+    "gateway_web_port": "CARINA_GATEWAY_PORT",
+    "gateway_trap_port": "CARINA_TRAP_PORT",
+}
+
+
+def resolve_gateway_security_settings() -> Dict[str, str]:
+    """Resolves gateway security settings prioritizing environment variables over SettingsManager."""
+    resolved: Dict[str, str] = {}
+    cfg: Dict[str, Any] = {}
+    try:
+        from src.utils.settings_manager import SettingsManager
+
+        loaded = SettingsManager().load_settings()
+        if isinstance(loaded, dict):
+            cfg = loaded
+    except Exception as exc:
+        logger.debug("[GoProcessManager] Settings lookup skipped for Go security config: %s", exc)
+
+    for setting_key, env_key in GATEWAY_SECURITY_ENV_MAP.items():
+        env_val = os.getenv(env_key, "").strip()
+        resolved[setting_key] = env_val or str(cfg.get(setting_key, "") or "").strip()
+    return resolved
+
+
+def sync_gateway_security_tokens(client: Any) -> None:
+    """Pushes resolved EVP/CCO auth tokens and CORS origin to a running GoGatewayClient."""
+    sec = resolve_gateway_security_settings()
+    client.send_command(
+        "gateway_set_auth_tokens",
+        timeout=5.0,
+        evp_auth_token=sec["evp_auth_token"],
+        cco_auth_token=sec["cco_auth_token"],
+        allowed_origin=sec["cco_allowed_origin"],
+    )
+
+
+def _build_gateway_child_env() -> Dict[str, str]:
+    """Builds subprocess environment forwarding configured security tokens/TLS paths."""
+    env = dict(os.environ)
+    resolved = resolve_gateway_security_settings()
+    for setting_key, env_key in GATEWAY_SECURITY_ENV_MAP.items():
+        if not env.get(env_key) and resolved.get(setting_key):
+            env[env_key] = resolved[setting_key]
+    return env
 
 
 class GoProcessManager:
@@ -46,6 +99,7 @@ class GoProcessManager:
 
         try:
             logger.info(f"[GoProcessManager] Spawning Go Hardware Gateway: {self.binary_path}")
+            child_env = _build_gateway_child_env()
             self.process = subprocess.Popen(
                 [self.binary_path],
                 stdin=subprocess.PIPE,
@@ -54,6 +108,7 @@ class GoProcessManager:
                 text=True,
                 bufsize=1,  # Line-buffered
                 close_fds=True,
+                env=child_env,
             )
             self._running = True
 

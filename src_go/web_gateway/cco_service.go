@@ -28,12 +28,21 @@ func (s *CCOBroadcastUseCase) Broadcast(payload interface{}) error {
 		return nil
 	}
 
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to serialize CCO broadcast: %w", err)
+	var data []byte
+	if raw, ok := payload.(json.RawMessage); ok {
+		data = raw
+	} else {
+		var err error
+		data, err = json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("failed to serialize CCO broadcast: %w", err)
+		}
 	}
 
-	sseFormatted := []byte(fmt.Sprintf("data: %s\n\n", data))
+	sseFormatted := make([]byte, 0, len(data)+8)
+	sseFormatted = append(sseFormatted, "data: "...)
+	sseFormatted = append(sseFormatted, data...)
+	sseFormatted = append(sseFormatted, "\n\n"...)
 	s.hub.Broadcast(sseFormatted)
 	return nil
 }
@@ -52,4 +61,3 @@ func (s *CCOBroadcastUseCase) RegisterClient(ch chan []byte) {
 func (s *CCOBroadcastUseCase) UnregisterClient(ch chan []byte) {
 	s.hub.RemoveClient(ch)
 }
-

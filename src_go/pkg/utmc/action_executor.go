@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"carina/src_go/pkg/protocol"
 )
 
 // ApplyAction executes direct hardware commands based on the action dictionary.
@@ -17,30 +19,42 @@ func (d *Driver) ApplyAction(actionData map[string]interface{}) (bool, error) {
 		return false, fmt.Errorf("action_type missing")
 	}
 
-	var stage int
-	if s, ok := actionData["stage"].(float64); ok {
-		stage = int(s)
-	} else if s, ok := actionData["stage"].(int); ok {
-		stage = s
+	stage, hasStage := protocol.ExtractInt(actionData, "stage")
+	stageIdx, hasStageIdx := protocol.ExtractInt(actionData, "stage_idx")
+	if !hasStageIdx && hasStage && stage > 0 {
+		stageIdx = stage - 1
+		hasStageIdx = true
 	}
 
-	var stageBitmask int
-	if sm, ok := actionData["stage_mask"].(float64); ok {
-		stageBitmask = int(sm)
-	} else if sm, ok := actionData["stage_mask"].(int); ok {
-		stageBitmask = sm
-	} else if stage > 0 {
-		stageBitmask = 1 << (stage - 1)
+	stageBitmask, hasMask := protocol.ExtractInt(actionData, "stage_mask")
+	if !hasMask && hasStageIdx {
+		stageCodes := protocol.ExtractStageCodes(actionData)
+		stageBitmask = d.ConvertStageToHardwareMask(stageIdx, d.GreenStages, stageCodes)
+	}
+
+	if hasStageIdx && (actionType == "hold" || actionType == "demand" || actionType == "veh_call") {
+		ordinal := protocol.IndexOfStage(stageIdx, d.GreenStages)
+		d.mu.Lock()
+		if ordinal >= 0 {
+			d.CurrentStage = ordinal + 1
+		} else {
+			d.CurrentStage = stageIdx + 1
+		}
+		d.mu.Unlock()
 	}
 
 	switch actionType {
 	case "flash":
+		d.cancelFailsafeTimer()
+		d.clearReleasedFlag()
 		err := d.Client.Set(d.Config.System.Flash, 1)
 		return err == nil, err
 	case "release_flash":
 		err := d.Client.Set(d.Config.System.Flash, 0)
 		return err == nil, err
 	case "dark":
+		d.cancelFailsafeTimer()
+		d.clearReleasedFlag()
 		err := d.Client.Set(d.Config.System.Dark, 1)
 		return err == nil, err
 	case "release_dark":
@@ -50,35 +64,48 @@ func (d *Driver) ApplyAction(actionData map[string]interface{}) (bool, error) {
 		err := d.Client.Set(d.Config.StageControl.Hold, 0)
 		return err == nil, err
 	case "hold":
+		d.cancelFailsafeTimer()
+		d.clearReleasedFlag()
 		err := d.Client.Set(d.Config.StageControl.Hold, stageBitmask)
 		return err == nil, err
 	case "force_off":
+		d.clearReleasedFlag()
 		err := d.Client.Set(d.Config.StageControl.ForceOff, stageBitmask)
 		return err == nil, err
 	case "omit":
+		d.clearReleasedFlag()
 		err := d.Client.Set(d.Config.StageControl.Omit, stageBitmask)
 		return err == nil, err
 	case "demand", "veh_call":
-		err := d.Client.Set(d.Config.Telemetry.StatusDemand, stageBitmask)
+		d.cancelFailsafeTimer()
+		d.clearReleasedFlag()
+		oid := d.Config.StageControl.Demand
+		if oid == "" {
+			oid = d.Config.Telemetry.StatusDemand
+		}
+		err := d.Client.Set(oid, stageBitmask)
 		return err == nil, err
 	case "extend":
+		d.clearReleasedFlag()
 		err := d.Client.Set(d.Config.StageControl.Extend, stageBitmask)
 		return err == nil, err
 	case "ACTIVATE_LOCAL_FIXED_TIME":
-		log.Printf("[%s] EXECUTING FAILSAFE: Forcing ALL RED for 2 seconds, then releasing to local plans.", d.IPAddress)
-		numStages := len(d.GreenStages)
-		if numStages == 0 {
-			numStages = 8
+		d.clearReleasedFlag()
+		clearMs, hasClearMs := protocol.ExtractInt(actionData, "all_red_clear_ms")
+		if !hasClearMs || clearMs <= 0 {
+			clearMs = d.Config.FailsafeOmitMs
 		}
-		allRedMask := (1 << numStages) - 1
-
+		if clearMs <= 0 {
+			clearMs = 2000
+		}
+		log.Printf("[%s] EXECUTING FAILSAFE: Forcing ALL RED for %d ms (non-blocking release), then releasing to local plans.", d.IPAddress, clearMs)
+		allRedMask := protocol.AllRedMask(d.GreenStages)
 		_ = d.Client.Set(d.Config.StageControl.ForceOff, allRedMask)
-		_ = d.Client.Set(d.Config.StageControl.Omit, allRedMask)
-		time.Sleep(2 * time.Second)
-		err := d.Client.Set(d.Config.StageControl.Omit, 0)
-		if d.StopHeartbeatCb != nil {
-			d.StopHeartbeatCb()
+		err := d.Client.Set(d.Config.StageControl.Omit, allRedMask)
+		if cb := d.getStopHeartbeatCallback(); cb != nil {
+			cb()
 		}
+		d.scheduleOmitClear(time.Duration(clearMs) * time.Millisecond)
 		return err == nil, err
 	default:
 		return false, fmt.Errorf("unknown UTMC2 command: %s", actionType)

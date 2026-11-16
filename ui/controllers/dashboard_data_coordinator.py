@@ -29,6 +29,15 @@ class DashboardDataCoordinator:
         """Selectively merges telemetry packets into internal UI caches."""
         self.latest_data_packet = data_packet
 
+        hw_status = data_packet.get("hardware_status")
+        if isinstance(hw_status, dict) and hw_status:
+            try:
+                from src.controller.connection_manager import HardwareConnectionManager
+
+                HardwareConnectionManager.get_instance().update_remote_hardware_status(hw_status)
+            except Exception:
+                pass
+
         if "panel_data" in data_packet and data_packet["panel_data"]:
             self.latest_panel_data = data_packet["panel_data"]
 
@@ -39,9 +48,7 @@ class DashboardDataCoordinator:
         if "agent_maturity" in raw_maturity_data:
             self.maturity_phases = raw_maturity_data["agent_maturity"]
         elif raw_maturity_data:
-            self.maturity_phases = {
-                k: v for k, v in raw_maturity_data.items() if k not in ("run_id", "scenario_name")
-            }
+            self.maturity_phases = {k: v for k, v in raw_maturity_data.items() if k not in ("run_id", "scenario_name")}
 
     def resolve_semaphore_info(self, semaphore_id: str) -> Tuple[str, dict]:
         """Resolves maturity phase and hardware attributes for the given semaphore ID."""
@@ -60,7 +67,9 @@ class DashboardDataCoordinator:
         semaphore_data: Dict[str, Any] = {}
         for pid in possible_ids:
             if pid in self.latest_panel_data:
-                semaphore_data = self.latest_panel_data[pid].copy() if isinstance(self.latest_panel_data[pid], dict) else {}
+                semaphore_data = (
+                    self.latest_panel_data[pid].copy() if isinstance(self.latest_panel_data[pid], dict) else {}
+                )
                 break
 
         if not semaphore_data or semaphore_data.get("brand") in (None, "Não informado"):
@@ -83,9 +92,7 @@ class DashboardDataCoordinator:
     def resolve_street_info(self, street_id: str) -> dict:
         """Resolves street telemetry payload and attaches mapped human-readable edge name."""
         street_data_for_panel = (
-            self.latest_street_data.get(street_id, {}).copy()
-            if isinstance(self.latest_street_data, dict)
-            else {}
+            self.latest_street_data.get(street_id, {}).copy() if isinstance(self.latest_street_data, dict) else {}
         )
         if street_id in self.edge_names:
             street_data_for_panel["name"] = self.edge_names[street_id]

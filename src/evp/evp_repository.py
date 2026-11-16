@@ -30,7 +30,9 @@ class EVPRepository:
 
                 self.engine = DatabaseEngine(locale_manager=None)
             except Exception as e:
-                logger.warning(f"[EVPRepository] Não foi possível inicializar DatabaseEngine padrão: {e}", exc_info=True)
+                logger.warning(
+                    f"[EVPRepository] Não foi possível inicializar DatabaseEngine padrão: {e}", exc_info=True
+                )
                 self.engine = None
         else:
             self.engine = engine
@@ -60,6 +62,10 @@ class EVPRepository:
     def save_telemetry(self, vehicle: EmergencyVehicle, evp_triggered: bool = False) -> bool:
         """Saves telemetry snapshot to the database for forensics and auditing."""
         return self._telemetry_repo.save_telemetry(vehicle, evp_triggered=evp_triggered)
+
+    def save_telemetry_batch(self, items: List[Any]) -> int:
+        """Persists a batch of telemetry snapshots or (vehicle, evp_triggered) pairs."""
+        return self._telemetry_repo.save_telemetry_batch(items)
 
     def save_registered_vehicle(self, vehicle: RegisteredVehicle) -> bool:
         """Saves or updates formal vehicle registration in the database."""
@@ -92,4 +98,3 @@ class EVPRepository:
     def clear_all_fleet_db(self) -> bool:
         """Removes all fleet and denied vehicle records from the database."""
         return self._fleet_repo.clear_all_fleet_db()
-

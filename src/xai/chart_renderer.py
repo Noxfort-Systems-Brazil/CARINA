@@ -4,12 +4,8 @@
 
 from typing import Any, Dict, List
 
-import matplotlib.pyplot as plt
-
+from rendering.mpl_utils import close_offscreen_figure, create_offscreen_figure, render_figure_to_png_bytes
 from utils.locale_manager_backend import LocaleManagerBackend
-
-# Ensure matplotlib does not try to open windows (headless mode)
-plt.switch_backend("Agg")
 
 
 class ChartRenderer:
@@ -27,35 +23,31 @@ class ChartRenderer:
             f.write(data)
 
     def render_to_bytes(self, sorted_analysis: List[Dict[str, Any]]) -> bytes:
-        import io
-
         names = [x["name"] for x in sorted_analysis[:15]]
         values = [x["importance"] for x in sorted_analysis[:15]]
 
-        plt.close("all")
+        fig, ax = create_offscreen_figure((10, 6), dpi=100)
+        try:
+            ax.barh(names, values, color="skyblue")
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.barh(names, values, color="skyblue")
+            xlabel_text = self.locale_manager.get_string("xai_report.chart_xlabel", default="Importance")
+            if str(self.agent_id).upper() in ["ALL", "ALL_AGENTS", "TODOS", "REDE_GERAL"]:
+                title_text = self.locale_manager.get_string(
+                    "xai_report.chart_title_all",
+                    default="Análise Geral de Importância — Rede Viária (Todos os Agentes)",
+                )
+            else:
+                title_text = self.locale_manager.get_string(
+                    "xai_report.chart_title",
+                    default="Feature Importance Analysis - Agent {agent_id}",
+                    agent_id=self.agent_id,
+                )
 
-        xlabel_text = self.locale_manager.get_string("xai_report.chart_xlabel", default="Importance")
-        if str(self.agent_id).upper() in ["ALL", "ALL_AGENTS", "TODOS", "REDE_GERAL"]:
-            title_text = self.locale_manager.get_string(
-                "xai_report.chart_title_all", default="Análise Geral de Importância — Rede Viária (Todos os Agentes)"
-            )
-        else:
-            title_text = self.locale_manager.get_string(
-                "xai_report.chart_title",
-                default="Feature Importance Analysis - Agent {agent_id}",
-                agent_id=self.agent_id,
-            )
+            ax.set_xlabel(xlabel_text)
+            ax.set_title(title_text)
+            ax.invert_yaxis()
 
-        ax.set_xlabel(xlabel_text)
-        ax.set_title(title_text)
-        ax.invert_yaxis()
-
-        plt.tight_layout()
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png")
-        plt.close(fig)
-        return buf.getvalue()
+            fig.tight_layout()
+            return render_figure_to_png_bytes(fig, close_fig=False, format="png")
+        finally:
+            close_offscreen_figure(fig)

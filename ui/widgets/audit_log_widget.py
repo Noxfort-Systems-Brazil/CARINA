@@ -47,6 +47,18 @@ class AuditLogWidget(ft.Container):
 
         self.list_view = ft.ListView(expand=True, controls=[self.table])
 
+        self._all_entries: list = []
+        self._page_idx: int = 0
+        self._page_size: int = 100
+
+        self.page_info_text = ft.Text("", size=12, color=ft.Colors.WHITE70)
+        self.prev_btn = ft.IconButton(
+            ft.Icons.CHEVRON_LEFT, tooltip="Anterior", visible=False, on_click=self._prev_page
+        )
+        self.next_btn = ft.IconButton(
+            ft.Icons.CHEVRON_RIGHT, tooltip="Próxima", visible=False, on_click=self._next_page
+        )
+
         self.refresh_btn = ft.ElevatedButton(
             self.locale_manager.get_string("audit.refresh", "Atualizar"),
             icon=ft.Icons.REFRESH,
@@ -56,7 +68,11 @@ class AuditLogWidget(ft.Container):
         self.content = ft.Column(
             [
                 ft.Row(
-                    [ft.Icon(ft.Icons.POLICY), self.title, self.refresh_btn],
+                    [
+                        ft.Icon(ft.Icons.POLICY),
+                        self.title,
+                        ft.Row([self.prev_btn, self.page_info_text, self.next_btn, self.refresh_btn]),
+                    ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Divider(),
@@ -69,26 +85,32 @@ class AuditLogWidget(ft.Container):
     def did_mount(self):
         self._load_logs()
 
-    def _load_logs(self, e=None):
-        if not os.path.exists(self.audit_file):
-            self.table.rows.clear()
-            if self.page:
-                self.update()
-            return
+    def _prev_page(self, e=None):
+        if self._page_idx > 0:
+            self._page_idx -= 1
+            self._render_current_page()
 
-        try:
-            with open(self.audit_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+    def _next_page(self, e=None):
+        if (self._page_idx + 1) * self._page_size < len(self._all_entries):
+            self._page_idx += 1
+            self._render_current_page()
 
-            # Show newest records first
-            data = list(reversed(data))
-
+    def _render_current_page(self):
+        total = len(self._all_entries)
+        if total == 0:
+            self.table.rows = []
+            self.page_info_text.value = ""
+            self.prev_btn.visible = False
+            self.next_btn.visible = False
+        else:
+            start = self._page_idx * self._page_size
+            end = min(total, start + self._page_size)
             rows = []
-            for entry in data:
+            for entry in self._all_entries[start:end]:
                 try:
                     dt = datetime.fromisoformat(entry.get("timestamp", ""))
                     time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except:
+                except Exception:
                     time_str = entry.get("timestamp", "")
 
                 rows.append(
@@ -101,10 +123,29 @@ class AuditLogWidget(ft.Container):
                         ]
                     )
                 )
-
             self.table.rows = rows
-            if self.page:
-                self.update()
+            has_pages = total > self._page_size
+            self.prev_btn.visible = has_pages and self._page_idx > 0
+            self.next_btn.visible = has_pages and end < total
+            self.page_info_text.value = f"{start + 1}–{end} / {total}" if has_pages else ""
+        if self.page:
+            self.update()
+
+    def _load_logs(self, e=None):
+        if not os.path.exists(self.audit_file):
+            self._all_entries = []
+            self._page_idx = 0
+            self._render_current_page()
+            return
+
+        try:
+            with open(self.audit_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Newest records first; render only active page (<=100 rows) to avoid UI freeze
+            self._all_entries = list(reversed(data)) if isinstance(data, list) else []
+            self._page_idx = 0
+            self._render_current_page()
 
         except Exception as ex:
             logging.error(f"[AuditLogWidget] Erro ao carregar logs: {ex}", exc_info=True)

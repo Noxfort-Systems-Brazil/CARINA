@@ -89,15 +89,22 @@ class DataProcessor:
                 # If edges_data is empty, it is a fast update to skip congestion flickering
                 update_type = "congestion_update" if edges_data else "fast_update"
 
-                return {
+                packet = {
                     "type": update_type,
                     "payload": congestion_map,
                     "street_data": street_info_map,
                     "panel_data": panel_data,
                     "maturity_phases": maturity_data,
                 }
+                if "hardware_status" in payload:
+                    packet["hardware_status"] = payload["hardware_status"]
+                return packet
 
             elif msg_type in [
+                "hardware_status_update",
+                "hardware_trap",
+                "evp_telemetry",
+                "tailscale_response",
                 "auth_response",
                 "lockdown_event",
                 "account_response",

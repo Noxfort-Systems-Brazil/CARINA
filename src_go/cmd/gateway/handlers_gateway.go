@@ -5,11 +5,12 @@
 package main
 
 import (
+	"carina/src_go/evp_go"
 	"carina/src_go/web_gateway"
 )
 
-// handleGatewayControlCommand routes Web Gateway server management commands (SOLID: SRP).
-func handleGatewayControlCommand(req RequestEnvelope, webSrv *web_gateway.WebGatewayServer, out ResponseSender) {
+// handleGatewayControlCommand routes Web Gateway and EVP security management commands (SOLID: SRP).
+func handleGatewayControlCommand(req RequestEnvelope, webSrv *web_gateway.WebGatewayServer, evpSrv *evp_go.EVPServer, out ResponseSender) {
 	switch req.Cmd {
 	case "cco_broadcast":
 		if webSrv != nil && req.Data != nil {
@@ -56,6 +57,26 @@ func handleGatewayControlCommand(req RequestEnvelope, webSrv *web_gateway.WebGat
 			Data: map[string]interface{}{
 				"enabled": enabledState,
 				"port":    port,
+			},
+		})
+
+	case "gateway_set_auth_tokens":
+		if webSrv != nil {
+			webSrv.SetAuthTokens(req.EVPAuthToken, req.CCOAuthToken)
+			if req.AllowedOrigin != "" {
+				webSrv.SetAllowedOrigin(req.AllowedOrigin)
+			}
+		}
+		if evpSrv != nil {
+			evpSrv.SetMasterToken(req.EVPAuthToken)
+		}
+		out.Send(ResponseEnvelope{
+			ID:      req.ID,
+			Type:    "response",
+			Success: true,
+			Data: map[string]interface{}{
+				"evp_auth_configured": req.EVPAuthToken != "",
+				"cco_auth_configured": req.CCOAuthToken != "",
 			},
 		})
 	}

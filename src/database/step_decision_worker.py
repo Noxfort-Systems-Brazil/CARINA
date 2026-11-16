@@ -31,6 +31,7 @@ class StepDecisionWorker:
         self._thread: Optional[threading.Thread] = None
 
         # Delta Compression State Cache ( (agent_id_int, code) -> count )
+        self._counter_lock = threading.Lock()
         self._counter_cache: Dict[Tuple[int, int], int] = {}
 
     def start(self):
@@ -56,7 +57,8 @@ class StepDecisionWorker:
         """
         agent_id_int = self.repository._to_int_id(agent_id)
         key = (agent_id_int, int(decision_code))
-        self._counter_cache[key] = self._counter_cache.get(key, 0) + int(count)
+        with self._counter_lock:
+            self._counter_cache[key] = self._counter_cache.get(key, 0) + int(count)
 
     def push_decision(
         self,
@@ -98,13 +100,13 @@ class StepDecisionWorker:
 
     def _flush_queue_batch(self):
         """Flushes buffered numeric counters to PostgreSQL via atomic execute_values UPSERT."""
-        if not self._counter_cache:
-            return
-
-        batch_tuples = [
-            (agent_id_int, code, cnt) for (agent_id_int, code), cnt in list(self._counter_cache.items()) if cnt > 0
-        ]
-        self._counter_cache.clear()
+        with self._counter_lock:
+            if not self._counter_cache:
+                return
+            batch_tuples = [
+                (agent_id_int, code, cnt) for (agent_id_int, code), cnt in self._counter_cache.items() if cnt > 0
+            ]
+            self._counter_cache.clear()
 
         if batch_tuples:
             self.repository.increment_decision_counter_batch(batch_tuples)

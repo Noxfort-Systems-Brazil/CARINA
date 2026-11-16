@@ -115,7 +115,7 @@ CREATE INDEX idx_sfd_scen_stage_time ON synapse_fluid_dynamics (scenario_name, m
 ```
 
 ### 3.4 Table: `hardware_controller_connections`
-Stores physical controller connection endpoints for NTCIP/UDP/SNMP hardware controllers managed by [`ConnectionConfigRepository`](../src/controller/connection_config_repo.py) and defined in [`config/database/schema_queries.json`](../config/database/schema_queries.json):
+Stores physical controller connection endpoints and optional SNMPv2c/v3 / OID override JSON (`snmp_config`) managed by [`HardwareConnectionRepository`](../src/repositories/hardware_connection_repo.py) (and [`ConnectionConfigRepository`](../src/controller/connection_config_repo.py) facade) as defined in [`config/database/schema_queries.json`](../config/database/schema_queries.json):
 
 ```sql
 -- PostgreSQL Dialect
@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT TRUE,
-    last_connected TIMESTAMP DEFAULT NOW()
+    last_connected TIMESTAMP DEFAULT NOW(),
+    snmp_config TEXT
 );
 
 -- SQLite Dialect (embedded fallback)
@@ -131,9 +132,12 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT 1,
-    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    snmp_config TEXT
 );
 ```
+
+*(Note: Hourly summary tables `synapse_edge_phase_hourly_summary` and `synapse_intersection_phase_hourly_summary` also key their composite primary key on `(..., scenario_name)` for multi-scenario isolation, and PostgreSQL purge/interval queries in `config/database/fluid_dynamics_queries.json` use parameterized `make_interval(...)` calls.)*
 
 ### 3.5 User Security & Hybrid Persistence (`security.json` & SQL)
 CARINA provides an offline-first hybrid user management architecture managed by [`src/security/`](../src/security):
@@ -277,13 +281,16 @@ CREATE INDEX idx_topodict_raw ON topology_dictionary (raw_net_id);
 
 ---
 
-## 5. Connection Pooling, Lifecycle, and Migration Idempotency (`src/database/`)
+## 5. Connection Pooling, SQLite WAL, Lifecycle & Retention (`src/database/`)
 
-- **`DatabaseEngineFactory` (`src/database/engine_factory.py`):** Instantiates optimized engines with `QueuePool` in PostgreSQL or `NullPool` in SQLite with thread-safe switching.
+- **`PostgresConnectionPool` & `db_transaction` ([`src/database/connection_pool.py`](../src/database/connection_pool.py)):** Thread-safe PostgreSQL pooling built atop `psycopg2.pool.ThreadedConnectionPool` (`minconn=1, maxconn=16`) with `PooledPostgresConnectionProxy` and deterministic `db_transaction` commit/rollback/close management.
+- **`configure_sqlite_connection` ([`connection_pool.py`](../src/database/connection_pool.py)):** Applies `PRAGMA busy_timeout = 30000`, `PRAGMA foreign_keys = ON`, `PRAGMA synchronous = NORMAL`, `PRAGMA temp_store = MEMORY`, and one-time `PRAGMA journal_mode = WAL` to eliminate write contention across subprocesses.
+- **Read-Only Worker Mode (`enable_step_worker=False`):** Analytical/report workers (`XaiWorker`, `ReportDataCollector`, `XaiAgentRepository`) acquire `DatabaseManager.get_instance(..., enable_step_worker=False)` without spawning redundant `StepDecisionWorker` threads.
+- **`DatabaseEngineFactory` (`src/database/engine_factory.py`):** Instantiates SQLAlchemy migration engines with `QueuePool` in PostgreSQL or `NullPool` in SQLite.
 - **`DatabaseSchemaInitializer` (`src/database/schema_initializer.py`):** Orchestrates database bootstrapping and executes **Alembic** migrations (`migrations/versions/`).
-- **DDL Migration Idempotency:** To prevent critical `table already exists` failures when initializing pre-existing database files, migrations (`001_initial_schema.py` and `002_consolidate_missing_tables.py`) inspect tables at runtime via `sa.inspect(op.get_bind()).get_table_names()`, creating only absent tables and indexes.
-- **Automatic Version Stamping Recovery:** When a database already contains legacy tables without an `alembic_version` history, `DatabaseSchemaInitializer.apply_migrations` catches operational errors and automatically stamps the version pointer to `head` (`command.stamp(alembic_cfg, "head")`), ensuring uninterrupted `DatabaseWorker` startup.
-- **Graceful Shutdown:** During shutdown (`SIGINT`/`SIGTERM`), `DatabaseWorker` drains remaining messages in RAM queues before terminating connection pools, guaranteeing zero data loss.
+- **DDL Migration Idempotency & Auto-Stamping:** Migrations (`001_initial_schema.py` and `002_consolidate_missing_tables.py`) inspect tables at runtime via `sa.inspect(op.get_bind()).get_table_names()` and recover un-stamped legacy schemas via `command.stamp(alembic_cfg, "head")`.
+- **Automated Retention Purging (`database_worker.py`):** Hourly consolidation purges raw `synapse_fluid_dynamics` beyond 48 hours and prunes `evp_telemetry_records` older than **168 hours (7 days)**.
+- **Graceful Shutdown:** During shutdown (`SIGINT`/`SIGTERM`), `DatabaseWorker` drains remaining messages in RAM queues before terminating connection pools (`engine.close()`).
 
 ---
 

@@ -13,13 +13,20 @@ aliases: [UI交互架构, 仪表盘服务, Flet前端, 路网规划视图]
 
 ## 1. 彻底解耦的桌面端微服务架构 (`ui/` 与 `src/sds/`)
 
-为了彻底杜绝前端 GUI 渲染、窗口重绘或客户端浏览器网络卡顿对底层毫秒级实时信号控制决策产生反压，CARINA 将前端数据通信完全解耦至独立的 **`DashboardService` (SDS)** 操作系统进程（[`run_sds_worker`](../../src/sds/dashboard_worker.py)）：
+为了彻底杜绝前端 GUI 渲染、窗口重绘或客户端浏览器网络卡顿对底层毫秒级实时信号控制决策产生反压，CARINA 将前端数据通信完全解耦至独立的 **`DashboardService` (SDS)** 操作系统进程（[`run_sds_worker`](../../src/sds/dashboard_worker.py)，以 `CARINA_GATEWAY_ROLE=remote` 模式运行）：
 
 ```text
-CentralController (gRPC) ──> [sds 队列] ──> DashboardService (SDS) ──> [ui 队列] ──> Flet UI (主线程)
-                                                  │
-                                                  └──> WebSocket 遥测服务 (端口 8080)
+CentralController (owner) ──> [sds 队列] ──> DashboardService (SDS) ──> [ui_telemetry 队列] ──> Flet UI (主线程)
+                                                    ├──> WebSocket 遥测服务 (端口 8080, 2.0s 客户端超时与背压)
+                                                    └──> CCOBroadcastClient (Pinned HTTPS -> Go Web 网关 :2201)
 ```
+
+- **性能与内存保护机制 (`ui/` & `src/sds/`)：**
+  - [`MapAnimator`](../../ui/animators/map_animator.py) 与 [`WindowManager`](../../ui/managers/window_manager.py)：当桌面窗口最小化或隐藏时（`_carina_window_hidden`）暂停地图重绘循环，并通过 `_data_dirty` 标志门控按需渲染。
+  - [`AuditLogWidget`](../../ui/widgets/audit_log_widget.py)：对 Guardian 审计记录进行分页显示（每页 $\le 100$ 行），确保 Flet 表格始终保持瞬时刷新响应。
+  - [`RemoteGatewaySettingsPersister`](../../ui/controllers/remote_gateway_settings_persister.py)：在 `settings.ini`、`SettingsManager`、`.env` 与运行时后端之间双向同步 `gateway_enabled` 配置。
+  - [`EVPFleetConnectionCard`](../../ui/cards/evp_fleet_connection_card.py)：在 `will_unmount()` 生命周期钩子中确定性注销 `EVPNotifier` 监听器，防止内存泄漏。
+  - [`DashboardDataCoordinator`](../../ui/controllers/dashboard_data_coordinator.py)：根据 IPC 遥测帧更新本地 `HardwareConnectionManager` 的被动镜像状态（`remote_hardware_status`）。
 
 ---
 
@@ -252,12 +259,13 @@ CCO 大屏前端无论是在交通指挥中心 4K 巨幕上展示，还是在现
 
 ---
 
-## 9. 高性能 Go Web 网关交付与远程网络连接
+## 9. 高性能 Go Web 网关交付、CCO 优化与远程网络连接
 
-Web 版 CCO 前端由高性能独立编译型 **Go 语言 Web 网关** ([`src_go/web_gateway/`](../../src_go/web_gateway)) 直接托管，监听 `2201` 端口：
+Web 版 CCO 前端由高性能独立编译型 **Go 语言 Web 网关** ([`src_go/web_gateway/`](../../src_go/web_gateway)) 直接托管，监听 `2201` 端口（`CARINA_GATEWAY_PORT`）：
 
-- **高效静态资源托管：** 以极高吞吐量在 `/cco/` 路由交付编译后的 React 生产包，原生开启 Gzip 压缩与强缓存头。
-- **低于 50ms 的 SSE 遥测实时流：** 暴露 `/cco/stream` 端点，以服务器发送事件（SSE）单向持续广播实时相位切换、拥堵热力更新与特勤车辆微观运动学轨迹，杜绝轮询网络开销。
+- **默认故障安全关闭与令牌保护交付：** 当处于禁用状态（`gateway_enabled=False`）时返回 `503 Service Unavailable`，启用后在 `/cco/` 路由提供经压缩的 React 静态资源，并通过恒定时间校验的 `CARINA_CCO_AUTH_TOKEN`、`CARINA_CCO_ALLOWED_ORIGIN` CORS 以及可选 HTTPS/TLS 保护 `/cco/stream`、`/cco/topology` 与 `/cco/broadcast`。
+- **合成器线程与视口性能优化 (`src_tsx/src_cco/`)：** 采用仅触发 GPU 合成器的 CSS 关键帧动画（`transform` + `opacity`）、`useMapViewport.ts` 中由 `requestAnimationFrame` 引用驱动的平移缩放、`useCcoViewModel.ts` 中的浅比较状态差分计算，并在 `document.hidden` 为真时自动暂停车辆清理定时器。
+- **低于 50ms 的 SSE 遥测实时流与证书固定推送：** 暴露 `/cco/stream` 端点，由 SDS [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) 供流（基于最新覆盖非阻塞发布与经由 `PinnedHTTPSConnection` 实现的 SHA-256 叶证书指纹固定）。
 - **Tailscale 虚拟网格穿透：** 深度集成 Tailscale Funnel，使外场特勤车辆与市政交通指挥中心无需公网 IP 即可建立端到端加密的安全互联通道。
 
 ---

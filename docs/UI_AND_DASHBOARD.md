@@ -13,13 +13,20 @@ This document specifies CARINA's native desktop user interface located in [`ui/`
 
 ## 1. Decoupled Desktop Architecture (`ui/` & `src/sds/`)
 
-To prevent GUI rendering or client browser socket lag from dropping real-time traffic control frames, CARINA completely decouples its frontend into the **`DashboardService` (SDS)** process ([`run_sds_worker`](../src/sds/dashboard_worker.py)).
+To prevent GUI rendering or client browser socket lag from dropping real-time traffic control frames, CARINA completely decouples its frontend into the **`DashboardService` (SDS)** process ([`run_sds_worker`](../src/sds/dashboard_worker.py), running with `CARINA_GATEWAY_ROLE=remote`):
 
 ```text
-CentralController (gRPC) ──> [sds Queue] ──> DashboardService (SDS) ──> [ui Queue] ──> Flet UI (Main Thread)
-                                                   │
-                                                   └──> WebSocket Telemetry Server (port 8080)
+CentralController (owner) ──> [sds Queue] ──> DashboardService (SDS) ──> [ui_telemetry Queue] ──> Flet UI (Main Thread)
+                                                    ├──> WebSocket Server (port 8080, 2.0s client timeout & backpressure)
+                                                    └──> CCOBroadcastClient (Pinned HTTPS -> Go Web Gateway :2201)
 ```
+
+- **Performance & Memory Guards (`ui/` & `src/sds/`):**
+  - [`MapAnimator`](../ui/animators/map_animator.py) & [`WindowManager`](../ui/managers/window_manager.py): Pause map redraw loops while the desktop window is minimized/hidden (`_carina_window_hidden`) and gate renders via `_data_dirty` flags.
+  - [`AuditLogWidget`](../ui/widgets/audit_log_widget.py): Paginates Guardian audit records ($\le 100$ rows per page) to keep Flet table updates instantaneous.
+  - [`RemoteGatewaySettingsPersister`](../ui/controllers/remote_gateway_settings_persister.py): Synchronizes `gateway_enabled` across `settings.ini`, `SettingsManager`, `.env`, and runtime backend.
+  - [`EVPFleetConnectionCard`](../ui/cards/evp_fleet_connection_card.py): Unregisters `EVPNotifier` listeners deterministically in `will_unmount()`.
+  - [`DashboardDataCoordinator`](../ui/controllers/dashboard_data_coordinator.py): Updates local `HardwareConnectionManager` passive mirrors (`remote_hardware_status`) from IPC telemetry frames.
 
 ---
 
@@ -252,12 +259,13 @@ The CCO frontend is engineered to provide an optimal operational experience whet
 
 ---
 
-## 9. Go Web Gateway Delivery & Remote Connectivity
+## 9. Go Web Gateway Delivery, CCO Optimizations & Remote Connectivity
 
-The web-based CCO is served by the high-throughput **Go Web Gateway** ([`src_go/web_gateway/`](../src_go/web_gateway)) running on port `2201`:
+The web-based CCO is served by the high-throughput **Go Web Gateway** ([`src_go/web_gateway/`](../src_go/web_gateway)) running on port `2201` (`CARINA_GATEWAY_PORT`):
 
-- **Static Asset Serving:** Serves the compiled production React bundle at `/cco/` with gzip compression and cache headers.
-- **Sub-50ms SSE Telemetry Stream:** Exposes `/cco/stream`, broadcasting real-time signal phase transitions, congestion updates, and emergency vehicle kinematics without polling overhead.
+- **Fail-Closed & Token-Protected Delivery:** Returns `503 Service Unavailable` when disabled (`gateway_enabled=False`), serves compressed static React assets at `/cco/`, and protects `/cco/stream`, `/cco/topology`, and `/cco/broadcast` with constant-time `CARINA_CCO_AUTH_TOKEN`, `CARINA_CCO_ALLOWED_ORIGIN` CORS, and optional HTTPS/TLS.
+- **Compositor-Thread & Viewport Optimizations (`src_tsx/src_cco/`):** Uses GPU compositor-only CSS keyframe animations (`transform` + `opacity`), `requestAnimationFrame` ref-driven pan/zoom in `useMapViewport.ts`, shallow equality state diffing in `useCcoViewModel.ts`, and pauses vehicle cleanup timers when `document.hidden` is true.
+- **Sub-50ms SSE Telemetry Stream & Pinned Ingestion:** Exposes `/cco/stream` fed by SDS [`CCOBroadcastClient`](../src/sds/cco_broadcast_client.py) (latest-wins non-blocking publisher with SHA-256 leaf pinning via `PinnedHTTPSConnection`).
 - **Tailscale Mesh & Remote Ingestion:** Integrates with Tailscale Funnel for encrypted remote access by field units and webhook ingestion from emergency dispatch CAD systems.
 
 ---

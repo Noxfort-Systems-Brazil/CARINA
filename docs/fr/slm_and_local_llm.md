@@ -65,9 +65,10 @@ Situé dans [`src/slm/local_llama_transducer.py`](../../src/slm/local_llama_tran
 - Gère le déchargement des couches sur GPU (`n_gpu_layers = -1` pour un déchargement complet sur CUDA).
 - Exécute un décodage glouton (`temperature = 0.0`, `repeat_penalty = 1.05`) avec des limites dynamiques de tokens pour éviter les hallucinations et les boucles de répétition.
 
-### 2.3 Gestion des Périphériques et Ressources (`device_manager.py` & `resource_manager.py`)
-- [`src/slm/device_manager.py`](../../src/slm/device_manager.py) : Détecte et profile le matériel disponible (NVIDIA CUDA, ROCm, Apple Metal ou threads CPU).
-- [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py) : Gère automatiquement l'allocation de contexte et purge le cache KV entre les sessions de génération.
+### 2.3 Gestion des Périphériques, Verrous & Ressources (`device_manager.py`, `slm_lock.py`, `resource_manager.py`)
+- [`src/slm/device_manager.py`](../../src/slm/device_manager.py) : Interroge la VRAM GPU libre/totale via la bibliothèque légère `pynvml` avant de se rabattre sur `torch.cuda`, empêchant les workers (`XAI_Worker`, `MFD_Worker`, `AnalysisService`) d'allouer un contexte CUDA PyTorch supplémentaire de ~400 Mo uniquement pour sonder la VRAM.
+- [`src/slm/slm_lock.py`](../../src/slm/slm_lock.py) : Fournit un verrouillage de fichier consultatif inter-processus réentrant (`slm_process_lock()` via `fcntl.flock` sur `locks/slm_gguf.lock`) sérialisant le chargement et l'inférence du modèle GGUF 2B lourd entre `XAI_Worker`, `MFD_Worker` et `AnalysisService` afin que les workers concurrents ne se disputent jamais la VRAM/RAM.
+- [`src/slm/model_loader.py`](../../src/slm/model_loader.py) & [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py) : Gèrent les allocations de contexte GGUF, le nettoyage du cache KV et le déchargement déterministe `unload()` via `ReportTransducerFactory.release_transducer()`. Sous `pytest`, le chargement réel du GGUF est ignoré par défaut sauf si `CARINA_ALLOW_REAL_SLM=1` est explicitement exporté.
 
 ### 2.4 Moteur de Révision Factuelle (`revision_engine.py` & `output_sanitizer.py`)
 - [`src/slm/revision_engine.py`](../../src/slm/revision_engine.py) : Extrait les entités numériques de la prose générée et vérifie leur stricte conformité avec les valeurs de la base de données SQL.

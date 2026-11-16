@@ -45,10 +45,11 @@ aliases: [Движок отчетов, Генератор документов, 
 - Разбирает иерархические заголовки (`#`, `##`, `###`), нумерованные/маркированные списки, цитаты и выноски (callouts).
 - Применяет регламентированные типографические стили (гарнитура шрифта: *Arial*, кегль, полуторный межстрочный интервал: 1.5, отступы абзацев).
 
-### 2.3 Семантические очистители и фильтры (`report_semantic_cleaner.py`)
-Расположен в [`src/blocks/report_semantic_cleaner.py`](../../src/blocks/report_semantic_cleaner.py):
+### 2.3 Семантические очистители, фильтры и кэшированное форматирование (`report_semantic_cleaner.py` и `report_number_formatter.py`)
+Расположен в [`src/blocks/report_semantic_cleaner.py`](../../src/blocks/report_semantic_cleaner.py) и [`src/blocks/report_number_formatter.py`](../../src/blocks/report_number_formatter.py):
 - Удаляет артефакты генерации LLM, галлюцинированные токены или сырые теги кода перед сборкой документа.
-- Обеспечивает числовую согласованность и форматирует локализованные десятичные разделители (например, запятая `,` для `pt_BR` и `ru_RU`, точка `.` для `en_US`).
+- Использует кэширование конфигурации с проверкой `stat` в `ReportNumberFormatter` для форматирования единиц измерения (`metros`, `segundos`) и локализованных десятичных разделителей и разделителей разрядов (например, `,` для `pt_BR` и `ru_RU`, `.` для `en_US`) без повторного парсинга `settings.ini` для каждой ячейки.
+- Координирует офлайн-синтез текстовых обоснований LLM между `XAI_Worker`, `MFD_Worker` и `AnalysisService` под блокировкой [`slm_process_lock()`](../../src/slm/slm_lock.py) (`slm_gguf.lock`) с детерминированной выгрузкой модели через `ReportTransducerFactory.release_transducer()`.
 
 ---
 

@@ -20,6 +20,21 @@ class StageTransitionManager:
         self.yellow_time = SafetyRules.get_yellow()
         self.all_red_time = SafetyRules.get_all_red()
 
+    def _resolve_phase_duration(
+        self, tl_id: str, stage_idx: int, safety_floor: float, default_duration: float
+    ) -> float:
+        """Resolves per-intersection configured duration bounded below by safety_floor."""
+        all_durations = getattr(self.state_extractor, "tl_stage_durations", None)
+        if not isinstance(all_durations, dict):
+            return default_duration
+        stage_map = all_durations.get(tl_id)
+        if not isinstance(stage_map, dict):
+            return default_duration
+        raw_val = stage_map.get(stage_idx)
+        if isinstance(raw_val, (int, float)) and not isinstance(raw_val, bool) and raw_val > 0:
+            return max(float(raw_val), float(safety_floor))
+        return default_duration
+
     def auto_advance_transitions(self, sim_time: float, current_stages: Dict[str, Any]):
         """
         Advances physical transitions automatically based on elapsed simulation time.
@@ -42,25 +57,38 @@ class StageTransitionManager:
                 if total_stages == 0:
                     continue
 
+                yellow_threshold = self._resolve_phase_duration(
+                    tl_id, current_stage_idx, safety_floor=self.yellow_time, default_duration=self.yellow_time
+                )
                 advanced = False
-                if "Y" in state_string and duration >= self.yellow_time:
+                if "Y" in state_string and duration >= yellow_threshold:
                     current_stages[tl_id] = (current_stage_idx + 1) % total_stages
                     advanced = True
                     logging.debug(
-                        f"[StageTransitionManager] TL {tl_id} YELLOW->NEXT stage after {duration:.2f}s (threshold: {self.yellow_time}s)"
+                        f"[StageTransitionManager] TL {tl_id} YELLOW->NEXT stage after {duration:.2f}s (threshold: {yellow_threshold}s)"
                     )
                 elif "R" in state_string:
                     prev_stage_idx = (current_stage_idx - 1) % total_stages
                     prev_state_string = stage_codes.get(prev_stage_idx, "").upper()
 
-                    stage_durations = getattr(self.state_extractor, "tl_stage_durations", {}).get(tl_id, {})
-                    default_duration = stage_durations.get(current_stage_idx, 0.0)
-                    if default_duration > 0:
+                    raw_durations = getattr(self.state_extractor, "tl_stage_durations", None)
+                    stage_durations = raw_durations.get(tl_id, {}) if isinstance(raw_durations, dict) else {}
+                    default_duration = (
+                        stage_durations.get(current_stage_idx, 0.0) if isinstance(stage_durations, dict) else 0.0
+                    )
+                    if isinstance(default_duration, (int, float)) and default_duration > 0:
                         is_clearance = ("Y" in prev_state_string) and (default_duration <= self.all_red_time)
                     else:
                         is_clearance = "Y" in prev_state_string
 
-                    threshold = self.all_red_time if is_clearance else SafetyRules.get_red()
+                    base_threshold = self.all_red_time if is_clearance else SafetyRules.get_red()
+                    threshold = (
+                        self._resolve_phase_duration(
+                            tl_id, current_stage_idx, safety_floor=self.all_red_time, default_duration=base_threshold
+                        )
+                        if is_clearance
+                        else base_threshold
+                    )
 
                     if duration >= threshold:
                         current_stages[tl_id] = (current_stage_idx + 1) % total_stages
@@ -70,7 +98,7 @@ class StageTransitionManager:
                         )
                 elif "Y" in state_string:
                     logging.debug(
-                        f"[StageTransitionManager] TL {tl_id} in YELLOW stage for {duration:.2f}s (threshold: {self.yellow_time}s)"
+                        f"[StageTransitionManager] TL {tl_id} in YELLOW stage for {duration:.2f}s (threshold: {yellow_threshold}s)"
                     )
                 elif "R" in state_string:
                     logging.debug(f"[StageTransitionManager] TL {tl_id} in RED stage for {duration:.2f}s")
@@ -123,4 +151,3 @@ class StageTransitionManager:
             if action == 0:
                 current_stage_idx = current_stages.get(tl_id, 0)
                 self.update_estimated_stage(tl_id, current_stage_idx, sim_time, current_stages)
-

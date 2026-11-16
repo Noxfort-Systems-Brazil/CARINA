@@ -7,11 +7,19 @@ import logging
 import os
 import sys
 import threading
-import time
 from multiprocessing import Pipe, Process, Queue
 
-from launcher.process_reaper import ProcessReaper
-from utils.locale_manager_backend import LocaleManagerBackend
+try:
+    from launcher.backend_service_registry import start_backend_worker_processes
+    from launcher.fenix_supervision_loop import FenixSupervisionController
+    from launcher.process_reaper import ProcessReaper
+    from launcher.worker_entrypoints import execute_controller_process, resolve_legacy_worker_attribute
+except ImportError:
+    from src.launcher.backend_service_registry import start_backend_worker_processes
+    from src.launcher.fenix_supervision_loop import FenixSupervisionController
+    from src.launcher.process_reaper import ProcessReaper
+    from src.launcher.worker_entrypoints import execute_controller_process, resolve_legacy_worker_attribute
+
 from utils.logging_setup import setup_logging
 from utils.paths import get_base_output_dir, resource_path
 from utils.process_monitor import ProcessMonitor
@@ -22,91 +30,28 @@ __all__ = ["ProcessManager", "run_controller_process", "ProcessReaper"]
 
 def __getattr__(name: str):
     """Lazy resolver for legacy module-level worker attributes (PEP 562)."""
-    if name == "CentralController":
-        from central_controller import CentralController
-
-        return CentralController
-    if name == "run_ai_process":
-        from main import run_ai_process
-
-        return run_ai_process
-    if name == "run_database_worker":
-        from database.database_worker import run_database_worker
-
-        return run_database_worker
-    if name == "run_watchdog":
-        from watchdog.watchdog_process import run_watchdog
-
-        return run_watchdog
-    if name == "run_sds_worker":
-        from sds.dashboard_worker import run_sds_worker
-
-        return run_sds_worker
-    if name == "run_analysis_worker":
-        from sas.analysis_worker import run_analysis_worker
-
-        return run_analysis_worker
-    if name == "run_xai_worker":
-        from xai.xai_worker import run_xai_worker
-
-        return run_xai_worker
-    if name == "run_mfd_worker":
-        from mfd.mfd_worker import run_mfd_worker
-
-        return run_mfd_worker
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return resolve_legacy_worker_attribute(__name__, name)
 
 
-def run_controller_process(settings, pipe_conn, wd_q, sds_q, sas_q, ui_q, mfd_trigger_q=None):
+def run_controller_process(settings, pipe_conn, wd_q, sds_q, sas_q, ui_q, mfd_trigger_q=None, fenix_q=None):
     """Target function for isolated execution of CentralController."""
-    try:
-        from launcher.env_setup import setup_environment
-
-        setup_environment()
-
-        cc_cls = getattr(sys.modules[__name__], "CentralController")
-
-        log_base_dir = get_base_output_dir()
-        log_dir = os.path.join(log_base_dir, "logs", "central_controller")
-        os.makedirs(log_dir, exist_ok=True)
-        setup_logging(log_dir=log_dir)
-
-        logging.info("[CentralController Process] Starting...")
-        try:
-            from utils.hardware_initializer import HardwareInitializer
-
-            HardwareInitializer.setup_environment()
-        except Exception:
-            pass
-        locale_manager = LocaleManagerBackend()
-
-        # Start metrics & background process/GPU monitor
-        ProcessMonitor.start_background_monitor(process_name="CentralController", port=8001)
-
-        controller = cc_cls(
-            settings,
-            pipe_conn,
-            wd_q,
-            sds_q,
-            sas_q,
-            ui_q,
-            locale_manager,
-            mfd_trigger_queue=mfd_trigger_q,
-        )
-        controller.run()  # Blocks here on the gRPC server
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    except Exception as e:
-        logging.error(f"[CentralController Process] Exception: {e}", exc_info=True)
-    finally:
-        os._exit(0)
+    execute_controller_process(
+        settings,
+        pipe_conn,
+        wd_q,
+        sds_q,
+        sas_q,
+        ui_q,
+        mfd_trigger_q=mfd_trigger_q,
+        fenix_q=fenix_q,
+        caller_module=sys.modules[__name__],
+    )
 
 
 class ProcessManager:
     """
-    Manager responsible for creating IPC queues, loading configuration,
-    instantiating CARINA backend processes, and coordinating shutdown.
-    Delegates process tree walk, signal propagation, and zombie cleanup to ProcessReaper.
+    Facade orchestrating IPC queues, backend worker startup, F.E.N.I.X. supervision,
+    and graceful multi-process shutdown via specialized collaborators.
     """
 
     def __init__(self):
@@ -118,8 +63,28 @@ class ProcessManager:
         self.p_cc = None
         self.p_ai = None
         self.fenix_supervisor = None
-        self._fenix_supervision_thread = None
         self._stop_fenix_supervision = threading.Event()
+        self._fenix_controller = self._build_fenix_controller()
+        self._fenix_supervision_thread = None
+
+    def _build_fenix_controller(self) -> FenixSupervisionController:
+        return FenixSupervisionController(
+            get_queues=lambda: getattr(self, "queues", {}),
+            get_processes=lambda: getattr(self, "processes", []),
+            get_supervisor=lambda: getattr(self, "fenix_supervisor", None),
+            on_ai_resurrected=self._set_ai_process,
+            get_stop_event=lambda: getattr(self, "_stop_fenix_supervision", None),
+        )
+
+    def _ensure_fenix_controller(self) -> FenixSupervisionController:
+        ctrl = getattr(self, "_fenix_controller", None)
+        if ctrl is None:
+            ctrl = self._build_fenix_controller()
+            self._fenix_controller = ctrl
+        return ctrl
+
+    def _set_ai_process(self, new_proc) -> None:
+        self.p_ai = new_proc
 
     def load_settings(self):
         """Loads and validates the settings.ini configuration file."""
@@ -156,173 +121,37 @@ class ProcessManager:
         self.setup_queues_and_pipes()
         logging.info("Starting BACKEND processes...")
 
-        # 1. Central Controller
-        self.p_cc = Process(
-            target=run_controller_process,
-            args=(
-                self.settings,
-                self.controller_conn,
-                self.queues["wd"],
-                self.queues["sds"],
-                self.queues["sas"],
-                self.queues["ui"],
-                self.queues["mfd_trigger"],
-            ),
-            name="CentralController",
+        processes, p_cc, p_ai, fenix_supervisor = start_backend_worker_processes(
+            process_cls=Process,
+            controller_target=run_controller_process,
+            settings=self.settings,
+            controller_conn=self.controller_conn,
+            ai_conn=self.ai_conn,
+            queues=self.queues,
         )
-        self.processes.append(self.p_cc)
-
-        # 2. AI Engine with F.E.N.I.X. Supervision
-        from main import run_ai_process
-        from fenix.fenix_supervisor import FenixSupervisor
-        from fenix.multiprocessing_runner import MultiprocessingProcessRunner
-
-        ai_args = (self.ai_conn, self.queues["g_state"], self.queues["g_signal"], self.queues["db"])
-        runner = MultiprocessingProcessRunner(target=run_ai_process, args=ai_args, name="AI_Process")
-        self.fenix_supervisor = FenixSupervisor(runner=runner)
-
-        self.p_ai = Process(
-            target=run_ai_process,
-            args=ai_args,
-            name="AI_Process",
-        )
-        runner.set_process(self.p_ai)
-        self.processes.append(self.p_ai)
-
-        # 3. Auxiliary Workers
-        from database.database_worker import run_database_worker
-        from sas.analysis_worker import run_analysis_worker
-        from sds.dashboard_worker import run_sds_worker
-        from watchdog.watchdog_process import run_watchdog
-
-        lm = LocaleManagerBackend()
-        hft_results_dir = os.path.join(get_base_output_dir(), "results", "hft_live_session")
-        os.makedirs(hft_results_dir, exist_ok=True)
-
-        self.processes.append(
-            Process(target=run_watchdog, args=(self.queues["wd"], lm, self.queues["fenix"]), name="Watchdog")
-        )
-        self.processes.append(
-            Process(
-                target=run_sds_worker,
-                args=(self.queues["sds"], self.settings, self.queues["ui"], self.queues["ui_telemetry"]),
-                name="DashboardService",
-            )
-        )
-        self.processes.append(
-            Process(
-                target=run_analysis_worker,
-                args=(self.queues["sas"], self.settings, self.queues["db"], self.queues["sas_results"]),
-                name="AnalysisService",
-            )
-        )
-        self.processes.append(Process(target=run_database_worker, args=(self.queues["db"],), name="DatabaseWorker"))
-
-        # 4. XAI Worker
-        from xai.xai_worker import run_xai_worker
-
-        logging.info("Starting XAI Worker...")
-        self.processes.append(Process(target=run_xai_worker, args=(self.settings, hft_results_dir), name="XAI_Worker"))
-
-        # 5. MFD Worker
-        from mfd.mfd_worker import run_mfd_worker
-
-        logging.info("Starting MFD Worker...")
-        self.processes.append(
-            Process(
-                target=run_mfd_worker,
-                args=(self.settings, hft_results_dir, self.queues["mfd_results"], self.queues["mfd_trigger"]),
-                name="MFD_Worker",
-            )
-        )
-
-        for p in self.processes:
-            p.start()
-            logging.info(f" -> Process [{p.name}] successfully started! PID: {p.pid}")
-            time.sleep(0.3)
+        self.processes = processes
+        self.p_cc = p_cc
+        self.p_ai = p_ai
+        self.fenix_supervisor = fenix_supervisor
 
         self._start_fenix_supervision()
-
         logging.info(f"All {len(self.processes)} BACKEND processes started. (Launcher PID: {os.getpid()})")
 
     def _start_fenix_supervision(self):
         """Starts background supervisor thread listening for FENIX recovery triggers."""
-        if not self.fenix_supervisor:
-            return
-        self._stop_fenix_supervision.clear()
-        self._fenix_supervision_thread = threading.Thread(
-            target=self._fenix_supervision_loop,
-            name="FenixSupervisionThread",
-            daemon=True,
-        )
-        self._fenix_supervision_thread.start()
-        logging.info("[ProcessManager] F.E.N.I.X. background supervision thread active.")
+        ctrl = self._ensure_fenix_controller()
+        ctrl.start()
+        self._fenix_supervision_thread = ctrl.thread
 
     def _fenix_supervision_loop(self):
         """Listens on fenix IPC queue and handles resurrection requests."""
-        fenix_q = self.queues.get("fenix")
-        if not fenix_q:
-            return
-
-        import queue
-
-        while not self._stop_fenix_supervision.is_set():
-            try:
-                msg = fenix_q.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logging.debug(f"[ProcessManager] Error reading fenix_q: {e}")
-                continue
-
-            if msg == "STOP" or self._stop_fenix_supervision.is_set():
-                break
-
-            action = msg[0] if isinstance(msg, tuple) else msg
-            reason = msg[1] if isinstance(msg, tuple) and len(msg) > 1 else "Unknown"
-
-            if action in ("TRIGGER_RESURRECTION", "CRASH_TRIGGER"):
-                logging.critical(
-                    f"[ProcessManager] 🚨 F.E.N.I.X. resurrection triggered (Reason: {reason}). "
-                    "Executing AI Engine resurrection..."
-                )
-                if self.fenix_supervisor:
-                    self.fenix_supervisor.record_child_crash(exit_code=1)
-                    resurrected = self.fenix_supervisor.resurrect_ai()
-                    if resurrected and hasattr(self.fenix_supervisor.runner, "_process"):
-                        new_proc = self.fenix_supervisor.runner._process
-                        if new_proc:
-                            self.p_ai = new_proc
-                            for idx, p in enumerate(self.processes):
-                                if p.name == "AI_Process":
-                                    self.processes[idx] = new_proc
-                                    break
-                            logging.info(
-                                f"[ProcessManager] ✅ F.E.N.I.X. AI Process successfully resurrected! [New PID: {new_proc.pid}]"
-                            )
-                    else:
-                        logging.error(
-                            f"[ProcessManager] ❌ F.E.N.I.X. resurrection halted or failed. Supervisor state: {self.fenix_supervisor.state.value}"
-                        )
+        self._ensure_fenix_controller().run_loop()
 
     def shutdown_all(self):
         """Delegates graceful shutdown and process tree cleanup to ProcessReaper."""
-        self._stop_fenix_supervision.set()
-        fenix_q = self.queues.get("fenix")
-        if fenix_q:
-            try:
-                fenix_q.put_nowait("STOP")
-            except Exception:
-                pass
-
-        if self._fenix_supervision_thread and self._fenix_supervision_thread.is_alive():
-            self._fenix_supervision_thread.join(timeout=1.0)
-
-        if getattr(self, "fenix_supervisor", None):
-            try:
-                self.fenix_supervisor.stop()
-            except Exception:
-                pass
+        ctrl = self._ensure_fenix_controller()
+        ctrl.stop()
+        self._fenix_supervision_thread = ctrl.thread
 
         ProcessReaper.shutdown_all(
             controller_conn=self.controller_conn,

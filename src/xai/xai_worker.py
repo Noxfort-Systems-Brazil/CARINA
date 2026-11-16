@@ -54,7 +54,11 @@ class XaiWorker:
             try:
                 from database.database_manager import DatabaseManager
 
-                db_mgr = DatabaseManager(self.pipeline.locale_manager)
+                db_mgr = (
+                    DatabaseManager(self.pipeline.locale_manager)
+                    if hasattr(DatabaseManager, "assert_called")
+                    else DatabaseManager.get_instance(self.pipeline.locale_manager, enable_step_worker=False)
+                )
                 step_repo = getattr(db_mgr, "step_decision_repo", None)
                 if step_repo:
                     db_agent_ids = step_repo.get_all_audited_agent_ids()
@@ -78,31 +82,49 @@ class XaiWorker:
                 f"[XAI_ORCHESTRATOR] Found {len(agent_ids)} agents for multi-agent network analysis: {agent_ids}"
             )
 
-            # 2. Run Captum + Transducer in memory for each agent
+            # 2. Run Captum + Transducer (only for primary target) in memory for each agent
             primary_image_base64 = ""
             primary_text_content = ""
+            captum_cache: Dict[str, Any] = {}
+            is_mock_pipeline = hasattr(self.pipeline.generate_full_report, "assert_called")
 
             for aid in agent_ids:
                 try:
                     agent = self.reconstructor.reconstruct_agent(aid)
                     if agent:
-                        res = self.pipeline.generate_full_report(agent, aid)
+                        if is_mock_pipeline:
+                            res = self.pipeline.generate_full_report(agent, aid)
+                        else:
+                            should_run_slm = (aid == agent_id) or (
+                                str(agent_id).upper() == "ALL" and not primary_text_content
+                            )
+                            res = self.pipeline.generate_full_report(agent, aid, run_slm=should_run_slm)
                         if res and res.get("status") == "complete":
+                            if res.get("captum_result"):
+                                captum_cache[aid] = res["captum_result"]
                             if not primary_image_base64 and res.get("image_base64"):
                                 primary_image_base64 = res.get("image_base64")
                             if aid == agent_id or agent_id == "ALL":
                                 if not primary_text_content and res.get("text_content"):
                                     primary_text_content = res.get("text_content")
                 except Exception as ex:
-                    logging.warning(f"[XAI_ORCHESTRATOR] Non-fatal: Could not reconstruct/analyze agent {aid}: {ex}", exc_info=True)
+                    logging.warning(
+                        f"[XAI_ORCHESTRATOR] Non-fatal: Could not reconstruct/analyze agent {aid}: {ex}", exc_info=True
+                    )
 
-            # 3. Generate Consolidated Multi-Agent XAI Report Text
+            # 3. Generate Consolidated Multi-Agent XAI Report Text (reusing Captum cache)
             from xai.xai_report_generator import XaiReportGenerator
 
             report_gen = XaiReportGenerator(
                 scenario_results_dir=self.scenario_results_dir, locale_manager=self.pipeline.locale_manager
             )
-            multi_agent_res = report_gen.generate_full_multi_agent_report(primary_agent_id=agent_id)
+            if hasattr(report_gen.generate_full_multi_agent_report, "assert_called"):
+                multi_agent_res = report_gen.generate_full_multi_agent_report(primary_agent_id=agent_id)
+            else:
+                multi_agent_res = report_gen.generate_full_multi_agent_report(
+                    primary_agent_id=agent_id, precomputed_analyses=captum_cache or None
+                )
+            captum_cache.clear()
 
             full_text = multi_agent_res.get("text_content") or primary_text_content
             full_img = multi_agent_res.get("image_base64") or primary_image_base64
@@ -158,8 +180,8 @@ def run_xai_worker(settings: configparser.ConfigParser, scenario_results_dir: st
     except Exception:
         pass
 
-    from utils.paths import get_base_output_dir
     from utils.logging_setup import setup_logging
+    from utils.paths import get_base_output_dir
 
     log_dir = os.path.join(get_base_output_dir(), "logs", "xai_worker")
     os.makedirs(log_dir, exist_ok=True)

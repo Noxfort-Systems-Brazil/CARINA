@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from src.safety.guardian_checkpoint_service import GuardianCheckpointService
 from src.utils.paths import get_base_output_dir
 
 
@@ -71,13 +72,7 @@ class AgentCheckpointRepository:
 
         # Save Guardians
         if guardians:
-            for tl_id, guardian in guardians.items():
-                try:
-                    safe_id = tl_id.replace(":", "_").replace("/", "_")
-                    path = os.path.join(ckpt_dir, f"guardian_{safe_id}.pth")
-                    torch.save(guardian.policy_net.state_dict(), path)
-                except Exception as e:
-                    logging.error(f"[AgentCheckpointRepository] Failed to save guardian {tl_id}: {e}", exc_info=True)
+            GuardianCheckpointService.save_all(guardians, checkpoints_dir=ckpt_dir)
 
     @classmethod
     def restore_system_state(
@@ -107,7 +102,9 @@ class AgentCheckpointRepository:
                     if hasattr(agent, "load"):
                         agent.load(path)
                 except Exception as e:
-                    logging.warning(f"[AgentCheckpointRepository] Failed to load checkpoint for {tl_id}: {e}", exc_info=True)
+                    logging.warning(
+                        f"[AgentCheckpointRepository] Failed to load checkpoint for {tl_id}: {e}", exc_info=True
+                    )
 
         # Load Strategist
         if strategist:
@@ -117,7 +114,9 @@ class AgentCheckpointRepository:
                     strategist.load_checkpoint(strat_path)
                     logging.info("[AgentCheckpointRepository] Strategist state restored.")
                 except Exception as e:
-                    logging.warning(f"[AgentCheckpointRepository] Failed to load Strategist checkpoint: {e}", exc_info=True)
+                    logging.warning(
+                        f"[AgentCheckpointRepository] Failed to load Strategist checkpoint: {e}", exc_info=True
+                    )
 
         # Restore PAE Universal
         if shared_pae is not None:
@@ -131,22 +130,10 @@ class AgentCheckpointRepository:
                     shared_pae.load_state_dict(pae_data)
                     logging.info("[AgentCheckpointRepository] PAE Universal state restored.")
                 except Exception as e:
-                    logging.warning(f"[AgentCheckpointRepository] Failed to load PAE Universal checkpoint: {e}", exc_info=True)
+                    logging.warning(
+                        f"[AgentCheckpointRepository] Failed to load PAE Universal checkpoint: {e}", exc_info=True
+                    )
 
         # Restore Guardians
         if guardians:
-            for tl_id, guardian in guardians.items():
-                safe_id = tl_id.replace(":", "_").replace("/", "_")
-                path = os.path.join(ckpt_dir, f"guardian_{safe_id}.pth")
-                if os.path.exists(path):
-                    try:
-                        try:
-                            g_data = torch.load(path, map_location=device, weights_only=True)
-                        except Exception:
-                            g_data = torch.load(path, map_location=device, weights_only=False)
-                        guardian.policy_net.load_state_dict(g_data)
-                        guardian.target_net.load_state_dict(guardian.policy_net.state_dict())
-                    except Exception as e:
-                        logging.warning(
-                            f"[AgentCheckpointRepository] Failed to load guardian checkpoint for {tl_id}: {e}"
-                        , exc_info=True)
+            GuardianCheckpointService.load_all(guardians, checkpoints_dir=ckpt_dir, device=device)

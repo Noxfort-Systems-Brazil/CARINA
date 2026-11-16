@@ -39,8 +39,9 @@ CARINA_CORE/
 │   ├── Dockerfile.build        # 多阶段密封式构建器（Node、Go、Python、dpkg-deb）
 │   └── deb/                    # Debian 控制文件、systemd 服务单元与安装后脚本
 │
-├── scripts/                    # 编译、自动化与迁移脚本
-│   └── build_deb.sh            # 容器化 Debian 安装包构建脚本
+├── scripts/                    # 编译、自动化与内存受限测试脚本
+│   ├── build_deb.sh            # 容器化 Debian 安装包构建脚本
+│   └── pytest_limited.sh       # cgroup v2 / ulimit 限制内存的 Pytest 运行器（上限 2 GB）
 │
 ├── proto/                      # gRPC 协议规范
 │   └── synapse_hft.proto       # 高频遥测与执行控制 Protobuf 定义
@@ -77,49 +78,51 @@ CARINA_CORE/
 ├── src_tsx/                    # 中央控制调度中心 (CCO) Web 应用
 │   └── src_cco/                # React 18、TypeScript、Tailwind CSS、SVG 地图层、ECharts
 ├── src/                        # 核心源代码
-│   ├── agents/                 # PPO LocalAgent、GuardianAgent 与 StrategistAgent
+│   ├── agents/                 # PPO LocalAgent、GuardianAgent、PAEStateAugmentor 与 Checkpoints
 │   ├── analysis/               # MUTCD WarrantEvaluator、WarrantMath 与交通工程分析
-│   ├── blocks/                 # 模块化 .docx 构建器、OMML 数学转换器与文本清洗器
-│   ├── central_controller.py   # 高频 gRPC 遥测服务器
-│   ├── communication/          # MonitorClient、HFT 服务器与外部遥测桥接
-│   ├── controller/             # ConnectionManager、FailSafeManager、StageValidator 与覆盖控制
+│   ├── blocks/                 # 模块化 .docx 构建器、OMML 数学转换器与缓存格式化器
+│   ├── central_controller.py   # 高频 gRPC 遥测服务器与网关所有者 (Gateway Owner)
+│   ├── communication/          # MonitorClient、HFT gRPC 安全 (TLS/mTLS/Bearer) 与 ThreadSafePipe
+│   ├── controller/             # HardwareGatewayCoordinator、ConnectionManager、FenixStageDispatcher 与覆盖控制
 │   ├── core/                   # DecisionCoordinator、SafetyAuditor、ActionAuthorizer 与 PopulationManager
-│   ├── database/               # DatabaseEngine、DatabaseWorker 与 StepDecisionWorker
-│   ├── drivers/                # Go 网关 Python 代理、DriverFactory、IncidentReporter 与 IncidentFilter
-│   ├── engine/                 # EpisodeRunner、StepProcessor、PPO/DQN 优化器与训练器
-│   ├── evp/                    # 应急车辆优先通行系统（EVPService、Kinematics、PreemptionEngine）
+│   ├── database/               # DatabaseEngine、PostgresConnectionPool、SQLite WAL 与 StepDecisionWorker
+│   ├── drivers/                # Go 网关代理、RemoteHardwareDriverProxy、HardwareTelemetryDecoder 与 Trap 桥接
+│   ├── engine/                 # StepProcessor、BatchedPAEEncoder、FleetBatchInferencer (vmap) 与 PhysicalActionMasker
+│   ├── evp/                    # 应急车辆优先通行 (EVPService、EVPSnapshotSynchronizer、Kinematics)
 │   ├── fenix/                  # F.E.N.I.X. 自愈与进程监管（Supervisor、Runner、Reconciler）
 │   ├── handlers/               # AI 请求、UI 命令与看门狗指令处理器
-│   ├── launcher/               # ProcessManager、SingleInstanceLock 与 UITrayManager
-│   ├── manager/                # CycleManager、StageTransitionManager、TopologyManager 与 ServiceManager
+│   ├── interfaces/             # 隔离的 SOLID 协议契约 (Controller, Drivers, Engine, Repositories)
+│   ├── launcher/               # ProcessManager、BackendServiceRegistry、FenixSupervisionLoop 与 WorkerEntrypoints
+│   ├── manager/                # CycleManager、StageTransitionManager、AgentPopulationLoader 与 ServiceManager
 │   ├── maturity/               # MaturityManager、AgentMaturity、PromotionService、Config 与 Port
 │   ├── mfd/                    # 宏观基础图 (MFD) 分析器与工作进程
-│   ├── models/                 # 神经网络架构（PAE、TCN、ST-GATv2 Lite）
-│   ├── optimizer/              # 基于种群的训练 (PBT) 与超参数调优
+│   ├── models/                 # 统一 TCN 主干、ActorCriticNet、iTransformer PAE、QR-D3QN 与 ST-GATv2 Lite
+│   ├── optimizer/              # 基于种群的训练 (PBT)、主机 NumPy PPO 与 DQN 优化器
 │   ├── promotion/              # MaturityPacingCalculator、PerformanceMarginCalculator 与 PromotionEvaluator
-│   ├── rendering/              # StaticMapRenderer 与 AsyncHeatmapRenderer
-│   ├── repositories/           # StepDecisionRepo、FluidDynamicsRepo 与 CloudVaultRepo
-│   ├── safety/                 # GuardianWorker 进程与 IPC 信号路由
+│   ├── rendering/              # StaticMapRenderer、AsyncHeatmapRenderer 与离屏 mpl_utils
+│   ├── repositories/           # StepDecisionRepo、FluidDynamicsRepo、HardwareConnectionRepo 与 ConnectionCSVStore
+│   ├── safety/                 # GuardianPhysicsEstimator、GuardianRiskCalibrator (Noisy-OR)、GuardianShadowTrainer 与 Checkpoints
 │   ├── sas/                    # 智能分析系统（Smart Analysis System，离线基础设施依据）
-│   ├── sds/                    # 智能仪表盘服务（Flet UI 桥接与 WebSockets）
+│   ├── sds/                    # 智能仪表盘服务（Flet UI 桥接、WebSockets 与证书固定 CCOBroadcastClient）
 │   ├── security/               # 独立解耦安全子系统（Auth、PBKDF2、Lockdown、Repositories）
 │   ├── settings/               # 模块化配置（SOLID 接口、模式、INI 与 .env）
-│   ├── slm/                    # 端侧轻量大语言模型（Qwen3 / llama.cpp 离线推理）
+│   ├── slm/                    # 端侧轻量大语言模型（Qwen3.5 2B、pynvml 显存探测与 slm_process_lock）
 │   ├── transports/             # 多态外部传输（Base、HTTP、MQTT、EndpointResolver）
-│   ├── utils/                  # SettingsManager、MetricsManager、路径与周期步数计算
+│   ├── utils/                  # SettingsManager、MetricsManager、路径、SumoNetCache 与周期步数计算
 │   ├── watchdog/               # 实时进程心跳监视器与故障安全回退
-│   └── xai/                    # 积分梯度归因分析、报告构建器与分析工作进程
+│   └── xai/                    # 积分梯度归因分析、带缓存的多智能体报告构建器与工作进程
 │
 ├── ui/                         # 原生 Flet 桌面端应用程序
-│   ├── cards/                  # 模块化设置与遥测卡片（MonitorSettingsCard）
+│   ├── cards/                  # 模块化设置与遥测卡片（RemoteGateway、Hardware、EVP）
+│   ├── controllers/            # DashboardDataCoordinator 与 RemoteGatewaySettingsPersister
 │   ├── handlers/               # 事件处理器、SettingsHandler 与原生系统托盘 SystemTrayHandler
 │   ├── views/                  # DashboardView、PlanningView、DiagnosticsView、SettingsView
-│   ├── widgets/                # LiveCanvasMapWidget、PlanningControlPanel、MFDViewer、XAIViewer
+│   ├── widgets/                # LiveCanvasMapWidget、PlanningControlPanel、MFDViewer、分页 AuditLogWidget
 │   ├── renderers/              # PlanningMapRenderer、MapVisualSyncer、MapDrawer
-│   ├── animators/              # MapAnimator 与转场控制器
+│   ├── animators/              # MapAnimator（隐藏窗口暂停与脏标记门控）
 │   └── locales/                # 多语言 JSON 字典（pt_br、en_us、es_es、zh_cn 等）
 │
-└── tests/                      # Pytest 测试套件（单元测试、集成测试与硬件模拟桩）
+└── tests/                      # Pytest 测试套件（967 个已收集测试，memory_guard.py）+ src_go/ 中的 46 个 Go 测试
 ```
 
 ---
@@ -150,7 +153,7 @@ CARINA_CORE/
 ### 4. 桌面交互前端与工程运维
 - **[桌面 UI 与智能仪表盘服务](ui_and_dashboard.md)**：原生 Flet 桌面客户端架构、路网规划交互视图、单实例 Socket 互斥锁（端口 42123）以及基于 WebSocket 的实时数据流。
 - **[开发者指南与系统扩展](developer_guides.md)**：开发环境搭建、配置文件修改、神经网络智能体定制与发布打包全流程指南。
-- **[自动化测试与质量保证](testing.md)**：`pytest` 执行指南、代码覆盖率分析报告 (`--cov=src`)、交通机驱动模拟桩以及 Guardian 安全否决验证。
+- **[自动化测试与质量保证](testing.md)**：`pytest` 执行指南（共 967 个自动化测试，分布在 192 个单元测试、8 个集成测试与 4 个根目录测试模块中，外加 46 个 Go 测试）、`scripts/pytest_limited.sh` 内存上限控制、交通机驱动模拟桩以及 Guardian 安全否决验证。
 - **[系统部署、打包与容器化](deployment_and_packaging.md)**：Docker 多阶段镜像构建 (`Dockerfile`)、Linux Systemd 守护进程单元以及 Debian `.deb` 安装包制作。
 
 ### 5. 应急优先通行与远程调度指挥 (EVP / CCO)

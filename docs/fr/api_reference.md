@@ -15,8 +15,8 @@ Ce document constitue la spécification officielle des interfaces de CARINA. Il 
 
 CARINA s'interface avec les capteurs externes, les contrôleurs de feux physiques et les environnements de simulation microscopique (SUMO/CityFlow) via le **Protocole Synapse HFT** sur gRPC.
 
-- **Port par Défaut :** `50051` (Configurable dans `config/settings.ini`)
-- **Transport :** HTTP/2 sur TCP avec chiffrement TLS optionnel.
+- **Port par Défaut :** `50051` (Configurable dans `config/settings.ini` sous `[SYNAPSE]`)
+- **Transport :** HTTP/2 sur TCP avec prise en charge optionnelle de **TLS / mTLS** (`grpc.ssl_server_credentials`) et de l'**authentification par jeton Bearer** (`BearerTokenServerInterceptor` dans [`src/communication/grpc_security.py`](../../src/communication/grpc_security.py)) configurée via `CARINA_GRPC_AUTH_TOKEN`, `CARINA_GRPC_TLS_ENABLED`, `CARINA_GRPC_TLS_CERT`, `CARINA_GRPC_TLS_KEY`, `CARINA_GRPC_TLS_CA` et `CARINA_GRPC_REQUIRE_CLIENT_CERT`. Accepte les métadonnées `Authorization: Bearer <token>` ou `x-carina-token: <token>` vérifiées en temps constant via `hmac.compare_digest`.
 - **Package de Protocole :** `synapse.hft`
 
 ```protobuf
@@ -86,16 +86,16 @@ message ScenarioDefinition {
 
 ## 3. Spécifications des Files de Communication Inter-Processus (IPC)
 
-CARINA coordonne 11 files IPC bornées et 1 connexion par tube duplex gérées par le [`ProcessManager`](../../src/launcher/process_manager.py) :
+CARINA coordonne **12 files IPC bornées** et **1 connexion par tube duplex thread-safe** (`ThreadSafePipeConnection` dans [`src/communication/pipe_utils.py`](../../src/communication/pipe_utils.py)) gérées par le [`ProcessManager`](../../src/launcher/process_manager.py) :
 
 | Nom de File | Taille Max | Processus Producteur | Processus Consommateur | Schéma de Charge Utile / Type de Message |
 | :--- | :---: | :--- | :--- | :--- |
-| **`controller_conn`** | Tube | `CentralController` | `AI_Process` | `("state", frame_id, traffic_frame_dict)` |
-| **`ai_conn`** | Tube | `AI_Process` | `CentralController` | `("actuation", frame_id, signal_group_actions)` |
-| **`wd`** | 500 | Tous Microservices | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
-| **`sds`** | 500 | `CentralController` | `DashboardService` | `{"timestamp": float, "telemetry": dict, "active_phase": int}` |
+| **`controller_conn` / `ai_conn`** | Tube | `CentralController` ↔ `AI_Process` | Bidirectionnel | `("custom", "hft_step", ...)`, `("hft_telemetry_push", ...)`, `("ai_hardware_cmd", ...)`, `("ai_evp_preempt", ...)`, `("fenix_handover_complete", ...)` |
+| **`wd`** | 500 | `CentralController` / Microservices | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
+| **`fenix`** | 50 | `Watchdog` / `CentralController` | `FenixSupervisionController` | `("TRIGGER_RESURRECTION", reason)` / `("HANDOVER_COMPLETE", payload)` |
+| **`sds`** | 500 | `CentralController` | `DashboardService` | `("hft_rich_update", payload)` (télémétrie rapide 0,5 s et carte thermique lente + `hardware_status`) |
 | **`sas`** | 500 | `CentralController` | `AnalysisService` | Métriques de trafic historiques pour agrégation PostgreSQL |
-| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | Commandes IHM, dérogations, minutages manuels & paramètres |
+| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | Commandes IHM, `set_hardware_connection`, `tailscale_*`, `fenix_post_resurrection` |
 | **`ui_telemetry`** | 500 | `DashboardService` | `LiveDataProvider` | Paquets télémétriques temps réel en mémoire sans port, congestion & maturité |
 | **`db`** | 500 | `AI_Process` | `DatabaseWorker` | `(state_tensor, action_int, reward_float, next_state_tensor)` |
 | **`g_state`** | 500 | `AI_Process` | `GuardianWorker` | `(lane_queues, pae_latent_vector_z, strategic_gat_vector)` |
@@ -175,7 +175,8 @@ La fonction factory [`create_monitor_transport()`](../../src/transports/factory.
 La passerelle web Go compilée expose une interface d'ingestion à haut débit et unidirectionnelle (sans attente de réponse) pour les balises GPS des véhicules de secours :
 
 - **Point de Terminaison :** `POST /api/v1/evp/telemetry` (alias : `POST /amb` ou `POST /amb/`)
-- **Port :** `2201` (Passerelle Web Go / Tailscale Funnel) ou `8085` (serveur Go EVP dédié [`src_go/evp_go/`](../../src_go/evp_go) / récepteur autonome)
+- **Port :** `2201` (`CARINA_GATEWAY_PORT`, Passerelle Web Go / Tailscale Funnel) ou `8085` (serveur Go EVP dédié [`src_go/evp_go/`](../../src_go/evp_go))
+- **Sécurité :** Mode *fail-closed* lorsque `CARINA_GATEWAY_ENABLED=False` (retourne `503 Service Unavailable`) ; valide `CARINA_EVP_AUTH_TOKEN` en temps constant via `Authorization: Bearer <token>`, `X-EVP-Token` ou `X-Auth-Token` (retourne `401 Unauthorized` en cas d'incohérence) et prend en charge HTTPS/TLS (`CARINA_GATEWAY_TLS_CERT` / `CARINA_GATEWAY_TLS_KEY`).
 - **Réponse :** `204 No Content` (Retour immédiat pour une exécution sous la milliseconde)
 - **Schéma de la Charge Utile :**
   ```json
@@ -195,29 +196,33 @@ La passerelle web Go compilée expose une interface d'ingestion à haut débit e
 
 ## 7. Jeu de Commandes IPC NDJSON de la Passerelle Matérielle & Web Go
 
-Commandes transmises du noyau Python de CARINA vers `bin/carina-go` via les tubes standards anonymes (`stdin`/`stdout`) :
+Commandes transmises du processus propriétaire de CARINA (`CentralController`) vers `bin/carina-go` via les tubes standards anonymes (`stdin`/`stdout`) :
 
 | Commande (`cmd`) | Arguments / Charge Utile | Données de Réponse | Description |
 | :--- | :--- | :--- | :--- |
 | **`ping`** | Aucun | `"pong"` | Vérifie la vivacité de la passerelle ($< 1\text{ ms}$). |
-| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `protocol`, `green_stages` | Métadonnées de connexion | Établit la session SNMP/UDP avec le contrôleur de terrain. |
+| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `snmp_config`, `config_path`, `protocol`, `green_stages` | Métadonnées de connexion | Établit la session UDP SNMPv2c/v3 et le profil JSON OID personnalisé optionnel. |
 | **`disconnect`** | `intersection_id` | `success: true` | Ferme la connexion et libère le socket. |
 | **`apply_logical_action`** | `action` (0=NEXT, 1=HOLD), `current_stage_idx`, `green_stages`, `stage_codes` | `success: bool` | Applique l'action neuronale ou de sécurité aux groupes de signaux physiques. |
-| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `vehicle_id` | Chaîne action exécutée | Envoie les maintiens de préemption d'étape à la microseconde aux contrôleurs de terrain. |
+| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `stage_idx`, `stage_codes`, `vehicle_id` | Chaîne action exécutée | Envoie les maintiens de préemption d'étape à la microseconde aux contrôleurs de terrain. |
 | **`cco_broadcast`** | `data: dict` | `success: true` | Transmet les trames de télémétrie aux clients SSE CCO connectés. |
-| **`tailscale_status`** | Aucun | JSON `TailscaleStatus` | Interroge le domaine Tailscale Funnel, l'état du nœud et les URL publiques CCO. |
-| **`emergency_release`** | Aucun | `success: true` | Relâche inconditionnellement tous les maintiens de phase sur l'ensemble du réseau métropolitain. |
+| **`gateway_set_enabled`** / **`gateway_get_status`** | `enabled: bool` | JSON de statut | Bascule la garde d'activation de la passerelle Web (`503` si désactivée) ou inspecte son état. |
+| **`gateway_set_auth_tokens`** | `evp_auth_token`, `cco_auth_token`, `allowed_origin` | Drapeaux de config | Effectue la rotation dynamique des jetons EVP/CCO et de l'origine CORS sur la passerelle Go active. |
+| **`tailscale_status`** / **`tailscale_enable`** / **`tailscale_disable`** | `port`, `domain` | JSON `TailscaleStatus` | Gère le domaine Tailscale Funnel, l'état du nœud et les URL publiques CCO. |
+| **`emergency_release`** | Aucun | `success: true` | Met en pause les pulsations et relâche les maintiens de phase tout en conservant les pilotes pour la récupération. |
+| **`resume_control`** | Aucun | `resumed: int` | Redémarre les pulsations des contrôleurs mises en pause après la reprise du fail-safe Watchdog. |
 
 ---
 
 ## 8. Points de Terminaison REST & SSE du Central Control Operator (CCO)
 
-Disponibles sur le port `2201` de la passerelle web Go (et sécurisés via Tailscale Funnel) :
+Disponibles sur le port `2201` de la passerelle web Go (`CARINA_GATEWAY_PORT`, en HTTPS lorsque TLS est configuré, retournant `503 Service Unavailable` si désactivée) :
 
-- **`GET /health`** : Renvoie le statut de santé du système et la disponibilité de la passerelle.
+- **`GET /` & `GET /health`** : Renvoie le statut de santé du système et la disponibilité de la passerelle.
 - **`GET /cco` & `GET /cco/`** : Sert l'interface web CCO compilée en React 18.
-- **`GET /cco/stream`** : Flux persistant Server-Sent Events (SSE) diffusant les états des feux en temps réel, les cartes thermiques de congestion et les positions des véhicules d'urgence vers les murs d'écrans.
-- **`GET /cco/topology`** : Fournit les géométries de tronçons GeoJSON/JSON, les correspondances de voies et les coordonnées de carrefours pour le rendu cartographique.
+- **`GET /cco/stream`** : Flux persistant Server-Sent Events (SSE) diffusant les états des feux en temps réel, les cartes thermiques de congestion et les positions des véhicules d'urgence vers les murs d'écrans (impose `CARINA_CCO_AUTH_TOKEN` via `Authorization: Bearer`, `X-CCO-Token` ou le paramètre de requête `?token=`, ainsi que le CORS `CARINA_CCO_ALLOWED_ORIGIN`).
+- **`GET /cco/topology`** : Fournit les géométries de tronçons GeoJSON/JSON, les correspondances de voies et les coordonnées de carrefours pour le rendu cartographique (protégé par jeton).
+- **`POST /cco/broadcast`** : Point de terminaison d'ingestion protégé appelé par [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) de SDS via mise en lot non bloquante *latest-wins*, authentification `X-CCO-Token` et épinglage optionnel du certificat SHA-256 ([`PinnedHTTPSConnection`](../../src/sds/cco_tls_transport.py)).
 
 ---
 

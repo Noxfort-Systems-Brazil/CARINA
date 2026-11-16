@@ -14,8 +14,8 @@ Este documento serve como a especificação autoritativa das interfaces do ecoss
 ## 1. Estruturas de Dados do Protocolo Synapse HFT (`proto/synapse_hft.proto`)
 
 O CARINA se comunica com sensores de visão computacional, atuadores semafóricos e simuladores microscópicos (SUMO/CityFlow) via **gRPC** de sub-milissegundo:
-- **Porta Padrão:** `50051` (configurável em `config/settings.ini`).
-- **Transporte:** HTTP/2 sobre TCP com TLS opcional.
+- **Porta Padrão:** `50051` (configurável em `config/settings.ini` na seção `[SYNAPSE]`).
+- **Transporte:** HTTP/2 sobre TCP com **TLS / mTLS** opcional (`grpc.ssl_server_credentials`) e **Autenticação por Token Bearer** (`BearerTokenServerInterceptor` em [`src/communication/grpc_security.py`](../../src/communication/grpc_security.py)) configurados via `CARINA_GRPC_AUTH_TOKEN`, `CARINA_GRPC_TLS_ENABLED`, `CARINA_GRPC_TLS_CERT`, `CARINA_GRPC_TLS_KEY`, `CARINA_GRPC_TLS_CA` e `CARINA_GRPC_REQUIRE_CLIENT_CERT`. Aceita metadados `Authorization: Bearer <token>` ou `x-carina-token: <token>` verificados em tempo constante com `hmac.compare_digest`.
 - **Pacote:** `synapse.hft`.
 
 ### 1.1 Definições Protobuf Principais
@@ -80,16 +80,16 @@ service HFTLink {
 
 ## 3. Catálogo de Canais de Comunicação Inter-Processos (IPC)
 
-O CARINA gerencia 10 canais IPC delimitados criados por `ProcessManager` ([`src/launcher/process_manager.py`](../../src/launcher/process_manager.py)):
+O CARINA coordena **12 filas IPC delimitadas** e **1 conexão de pipe duplex thread-safe** (`ThreadSafePipeConnection` em [`src/communication/pipe_utils.py`](../../src/communication/pipe_utils.py)) gerenciadas por [`ProcessManager`](../../src/launcher/process_manager.py):
 
 | Canal IPC | Tipo / Limite | Produtor | Consumidor | Formato / Esquema de Dados |
 | :--- | :---: | :--- | :--- | :--- |
-| **`controller_conn`** | Pipe OS | `CentralController` | `AI_Process` | `("state", frame_id, traffic_frame_dict)` |
-| **`ai_conn`** | Pipe OS | `AI_Process` | `CentralController` | `("actuation", frame_id, signal_actions_dict)` |
-| **`wd`** | Fila (500) | `CentralController` / Workers | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
-| **`sds`** | Fila (500) | `CentralController` | `DashboardService` | `{"timestamp": float, "telemetry": dict, "active_phase": int}` |
+| **`controller_conn` / `ai_conn`** | Pipe | `CentralController` ↔ `AI_Process` | Bidirecional | `("custom", "hft_step", ...)`, `("hft_telemetry_push", ...)`, `("ai_hardware_cmd", ...)`, `("ai_evp_preempt", ...)`, `("fenix_handover_complete", ...)` |
+| **`wd`** | Fila (500) | `CentralController` / Microsserviços | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
+| **`fenix`** | Fila (50) | `Watchdog` / `CentralController` | `FenixSupervisionController` | `("TRIGGER_RESURRECTION", reason)` / `("HANDOVER_COMPLETE", payload)` |
+| **`sds`** | Fila (500) | `CentralController` | `DashboardService` | `("hft_rich_update", payload)` (telemetria rápida de 0,5s e lenta de heatmap + `hardware_status`) |
 | **`sas`** | Fila (500) | `CentralController` | `AnalysisService` | Quadros agregados de tráfego para persistência e warrants |
-| **`ui`** | Fila (500) | `UITrayManager` / Flet | `CentralController` | Comandos manuais da UI, overrides de fase e horários |
+| **`ui`** | Fila (500) | `UITrayManager` / `LiveDataProvider` | `CentralController` | Comandos de UI, `set_hardware_connection`, `tailscale_*`, `fenix_post_resurrection` |
 | **`ui_telemetry`** | Fila (500) | `DashboardService` | `LiveDataProvider` | Pacotes em memória para renderização fluida a 60 FPS |
 | **`db`** | Fila (500) | `AI_Process` | `DatabaseWorker` | `(state_tensor, action_int, reward_float, next_state)` |
 | **`g_state`** | Fila (500) | `AI_Process` | `GuardianWorker` | `(lane_queues, pae_latent_vector_z, strategic_gat_vector)` |
@@ -150,7 +150,8 @@ O CARINA transmite estados vitais e alertas para plataformas externas de gestão
 O Go Web Gateway compilado expõe um endpoint unidirecional (*fire-and-forget*) de alta vazão para transponders GPS veiculares:
 
 - **Endpoint:** `POST /api/v1/evp/telemetry` (alias: `POST /amb` ou `POST /amb/`)
-- **Porta:** `2201` (Go Web Gateway / Tailscale Funnel) ou `8085` (servidor Go EVP dedicado [`src_go/evp_go/`](../../src_go/evp_go) / receptor standalone)
+- **Porta:** `2201` (`CARINA_GATEWAY_PORT`, Go Web Gateway / Tailscale Funnel) ou `8085` (servidor Go EVP dedicado [`src_go/evp_go/`](../../src_go/evp_go))
+- **Segurança:** Fail-closed quando `CARINA_GATEWAY_ENABLED=False` (retorna `503 Service Unavailable`); valida `CARINA_EVP_AUTH_TOKEN` em tempo constante via `Authorization: Bearer <token>`, `X-EVP-Token` ou `X-Auth-Token` (retorna `401 Unauthorized` em caso de falha) e suporta HTTPS/TLS (`CARINA_GATEWAY_TLS_CERT` / `CARINA_GATEWAY_TLS_KEY`).
 - **Resposta:** `204 No Content` (retorno imediato para latência $< 0,5\text{ ms}$)
 - **Esquema JSON:**
   ```json
@@ -168,31 +169,35 @@ O Go Web Gateway compilado expõe um endpoint unidirecional (*fire-and-forget*) 
 
 ---
 
-## 7. Catálogo de Comandos NDJSON do Go Hardware Gateway
+## 7. Catálogo de Comandos NDJSON do Go Hardware & Web Gateway
 
-Comandos despachados do Python para o binário `bin/carina-go` via pipes anônimos do sistema operacional (`stdin`/`stdout`):
+Comandos despachados do processo proprietário do CARINA (`CentralController`) para o binário `bin/carina-go` via pipes padrão anônimos (`stdin`/`stdout`):
 
 | Comando (`cmd`) | Argumentos / Carga | Retorno | Descrição |
 | :--- | :--- | :--- | :--- |
-| **`ping`** | Nenhum | `"pong"` | Valida liveness do gateway em microssegundos. |
-| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `protocol`, `green_stages` | Metadados | Estabelece sessão SNMP/UDP com o controlador de campo. |
-| **`disconnect`** | `intersection_id` | `success: true` | Fecha sockets e finaliza pooling. |
-| **`apply_logical_action`** | `action` (0=NEXT, 1=HOLD), `current_stage_idx`, `green_stages`, `stage_codes` | `success: bool` | Aplica ação neural ou de segurança aos grupos focais. |
-| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `vehicle_id` | String de confirmação | Despacha retenção imediata via máscaras OID `ascPhaseHold`. |
-| **`cco_broadcast`** | `data: dict` | `success: true` | Transmite quadros para clientes conectados no SSE do CCO. |
-| **`tailscale_status`** | Nenhum | JSON `TailscaleStatus` | Consulta domínio Tailscale Funnel e URLs públicas do CCO. |
-| **`emergency_release`** | Nenhum | `success: true` | Libera incondicionalmente todas as retenções semafóricas. |
+| **`ping`** | Nenhum | `"pong"` | Valida liveness do gateway ($< 1\text{ ms}$). |
+| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `snmp_config`, `config_path`, `protocol`, `green_stages` | Metadados | Estabelece sessão SNMPv2c/v3 UDP e perfil JSON de OIDs customizado opcional. |
+| **`disconnect`** | `intersection_id` | `success: true` | Fecha a conexão e libera o socket. |
+| **`apply_logical_action`** | `action` (0=NEXT, 1=HOLD), `current_stage_idx`, `green_stages`, `stage_codes` | `success: bool` | Aplica ação neural ou de segurança aos grupos focais físicos. |
+| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `stage_idx`, `stage_codes`, `vehicle_id` | String de ação executada | Despacha retenções de preempção de estágio em microssegundos aos controladores. |
+| **`cco_broadcast`** | `data: dict` | `success: true` | Transmite quadros de telemetria fire-and-forget aos clientes SSE conectados do CCO. |
+| **`gateway_set_enabled`** / **`gateway_get_status`** | `enabled: bool` | JSON de status | Alterna a guarda ativa do Web Gateway (`503` quando desativado) ou inspeciona estado. |
+| **`gateway_set_auth_tokens`** | `evp_auth_token`, `cco_auth_token`, `allowed_origin` | Flags de config | Rotaciona dinamicamente tokens EVP/CCO e origem CORS no gateway Go em execução. |
+| **`tailscale_status`** / **`tailscale_enable`** / **`tailscale_disable`** | `port`, `domain` | JSON `TailscaleStatus` | Gerencia domínio Tailscale Funnel, estado do nó e URLs públicas do CCO. |
+| **`emergency_release`** | Nenhum | `success: true` | Pausa heartbeats e libera retenções de fase preservando drivers para recuperação. |
+| **`resume_control`** | Nenhum | `resumed: int` | Reinicia heartbeats pausados de controladores após recuperação do failsafe do Watchdog. |
 
 ---
 
 ## 8. Endpoints REST e SSE do Central Control Operator (CCO)
 
-Disponíveis no Go Web Gateway na porta `2201` (protegidos via malha Tailscale Funnel):
+Disponíveis no Go Web Gateway na porta `2201` (`CARINA_GATEWAY_PORT`, HTTPS quando TLS estiver configurado, retornando `503 Service Unavailable` quando desabilitado):
 
-- **`GET /health`**: Retorna integridade e disponibilidade dos serviços de borda.
+- **`GET /` e `GET /health`**: Retorna o estado de integridade do sistema e a disponibilidade do gateway.
 - **`GET /cco` e `GET /cco/`**: Serve a interface web compilada em React 18 do CCO.
-- **`GET /cco/stream`**: Stream persistente Server-Sent Events (SSE) transmitindo estados dos semáforos, mapa de calor e trajetórias de viaturas em tempo real.
-- **`GET /cco/topology`**: Serve geometrias viárias em GeoJSON, mapeamento de faixas e coordenadas dos nós para renderização gráfica.
+- **`GET /cco/stream`**: Stream persistente Server-Sent Events (SSE) transmitindo estados dos semáforos, mapa de calor e posições de viaturas para videowalls (exige `CARINA_CCO_AUTH_TOKEN` via `Authorization: Bearer`, `X-CCO-Token` ou parâmetro de query `?token=`, além de CORS `CARINA_CCO_ALLOWED_ORIGIN`).
+- **`GET /cco/topology`**: Serve geometrias viárias em GeoJSON/JSON, mapeamento de faixas e coordenadas de junções para renderização do mapa (protegido por token).
+- **`POST /cco/broadcast`**: Endpoint de ingestão protegido chamado pelo [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) do SDS usando envio não-bloqueante *latest-wins*, autenticação `X-CCO-Token` e pinning de certificado SHA-256 opcional ([`PinnedHTTPSConnection`](../../src/sds/cco_tls_transport.py)).
 
 ---
 

@@ -72,6 +72,7 @@ class WindowManager:
             logging.info(
                 "[WindowManager] Botão 'X' clicado pelo usuário. Minimizando janela para a bandeja em vez de fechar..."
             )
+            setattr(self.page, "_carina_window_hidden", True)
             if hasattr(self.page, "window") and self.page.window is not None:
                 self.page.window.minimized = True
                 self.page.window.visible = False
@@ -89,10 +90,12 @@ class WindowManager:
                 self.restore_event.clear()
                 self._restore_window()
 
-            if self.shutdown_event and self.shutdown_event.is_set():
-                self._destroy_window()
-                break
-            time.sleep(0.1)
+            if self.shutdown_event:
+                if self.shutdown_event.wait(0.25):
+                    self._destroy_window()
+                    break
+            else:
+                time.sleep(0.25)
 
     def _restore_window(self):
         if hasattr(self.page, "window") and self.page.window is not None:
@@ -101,7 +104,9 @@ class WindowManager:
 
             if is_visible and not is_minimized:
                 self.page.window.minimized = True
+                setattr(self.page, "_carina_window_hidden", True)
             else:
+                setattr(self.page, "_carina_window_hidden", False)
                 self.page.window.visible = True
                 self.page.window.minimized = False
                 self.page.window.focused = True
@@ -115,7 +120,9 @@ class WindowManager:
 
             if is_visible and not is_minimized:
                 self.page.window_minimized = True
+                setattr(self.page, "_carina_window_hidden", True)
             else:
+                setattr(self.page, "_carina_window_hidden", False)
                 self.page.window_visible = True
                 try:
                     self.page.window_minimized = False

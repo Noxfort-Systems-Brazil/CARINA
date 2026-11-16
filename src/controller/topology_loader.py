@@ -50,7 +50,11 @@ class TopologyLoader:
         try:
             import sumolib  # type: ignore
 
-            net = sumolib.net.readNet(net_file_path, withPrograms=True, withInternal=False)
+            from utils.sumo_net_cache import read_sumo_net_cached
+
+            net = read_sumo_net_cached(
+                net_file_path, reader_fn=sumolib.net.readNet, with_programs=True, with_internal=False
+            )
         except ImportError:
             logger.error("[TopologyLoader] sumolib not available. Cannot load topology.")
             return [], False

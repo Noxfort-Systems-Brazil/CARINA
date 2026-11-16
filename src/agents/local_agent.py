@@ -15,10 +15,12 @@ from src.models.pae import PredictiveAutoencoder
 if TYPE_CHECKING:
     from src.utils.locale_manager_backend import LocaleManagerBackend
 
+from src.agents.agent_checkpoint_manager import AgentCheckpointManager
+from src.agents.agent_hyperparameter_manager import AgentHyperparameterManager
+from src.agents.pae_state_augmentor import PAEStateAugmentor
 from src.memory.on_policy_buffer import OnPolicyBuffer
 from src.memory.replay_memory import ReplayMemory
 from src.models.actor_critic_tcn import ActorCriticNet
-from src.utils.local_agent_helpers import AgentCheckpointManager, AgentHyperparameterManager, PAEStateAugmentor
 
 
 class LocalAgent:
@@ -39,10 +41,14 @@ class LocalAgent:
         log_dir: str = "",
         locale_manager: Optional["LocaleManagerBackend"] = None,
         shared_pae: Optional[PredictiveAutoencoder] = None,
+        device: Optional[Any] = None,
     ) -> None:
         self.id = tlight_id
         self.n_actions = int(n_actions)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device is not None:
+            self.device = torch.device(device) if isinstance(getattr(torch, "device", None), type) else device
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.n_observations = int(n_observations)
         self.locale_manager = locale_manager  # type: ignore[assignment]
 
@@ -73,6 +79,7 @@ class LocalAgent:
         self._last_pae_latent: Optional[Any] = None
         self._last_action_mask: Optional[Any] = None
         self._last_decision: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None
+        self._last_cpu_decision: Optional[Any] = None
 
         if self.shared_pae and self.locale_manager is not None:
             logging.info(
@@ -95,8 +102,7 @@ class LocalAgent:
     def set_strategic_context(self, context_vec: Optional[torch.Tensor]) -> None:
         """Updates the arterial Green-Wave context vector provided by `STGATv2Lite`."""
         self.strategic_context = context_vec
-        self._last_raw_state = None
-        self._last_decision = None
+        self._last_raw_state = self._last_decision = self._last_cpu_decision = None
 
     def _load_hyperparameters(self) -> None:
         AgentHyperparameterManager.load(self)
@@ -120,46 +126,40 @@ class LocalAgent:
     def load_checkpoint(self, filepath: str) -> str:
         return AgentCheckpointManager.load(self, filepath)
 
+    @staticmethod
+    def _to_cpu_numpy(val: Any, flatten: bool = False, dtype: Optional[Any] = None) -> Any:
+        """Converts tensors or pre-transferred host scalars/arrays to CPU NumPy without CUDA syncs."""
+        if isinstance(val, np.ndarray):
+            arr = val
+        elif np.isscalar(val) or isinstance(val, (int, float)):
+            arr = np.asarray([val], dtype=dtype)
+        elif isinstance(val, torch.Tensor):
+            arr = val.detach().cpu().numpy()
+        elif hasattr(val, "cpu"):
+            arr = val.cpu().numpy()
+        else:
+            arr = np.asarray(val, dtype=dtype)
+        return arr.flatten() if flatten else arr
+
     def push_memory(
-        self,
-        state_sequence: List[List[float]],
-        action: torch.Tensor,
-        log_prob: torch.Tensor,
-        reward: float,
-        done: bool,
-        state_value: torch.Tensor,
+        self, state_sequence: List[List[float]], action: Any, log_prob: Any, reward: float, done: bool, state_value: Any
     ) -> None:
         """Adds a transition to the agent's on-policy and XAI memories."""
         self.memory.push(
             state_sequence,
-            action.cpu().numpy(),
-            log_prob.cpu().numpy(),
+            self._to_cpu_numpy(action, dtype=np.int64),
+            self._to_cpu_numpy(log_prob, dtype=np.float32),
             np.float32(reward),
             done,
-            state_value.cpu().numpy().flatten(),
+            self._to_cpu_numpy(state_value, flatten=True, dtype=np.float32),
         )
-        state_for_xai = np.array(state_sequence, dtype=np.float32)
-        if state_for_xai.shape == self.xai_memory.state_shape:
-            self.xai_memory.push(state_for_xai, 0, None, 0.0)
-        elif state_for_xai.ndim == 2 and state_for_xai.shape[1] == self.xai_memory.state_shape[1]:
-            target_len = self.xai_memory.state_shape[0]
-            if state_for_xai.shape[0] < target_len:
-                pad = np.repeat(state_for_xai[:1], target_len - state_for_xai.shape[0], axis=0)
-                state_for_xai = np.concatenate([pad, state_for_xai], axis=0)
-            else:
-                state_for_xai = state_for_xai[-target_len:]
-            self.xai_memory.push(state_for_xai, 0, None, 0.0)
-        else:
-            try:
-                self.xai_memory.push(state_for_xai, 0, None, 0.0)
-            except Exception:
-                pass
-
+        try:
+            self.xai_memory.push(np.array(state_sequence, dtype=np.float32), 0, None, 0.0)
+        except Exception:
+            pass
         if done:
-            self._last_raw_state = None
-            self._last_pae_latent = None
-            self._last_action_mask = None
-            self._last_decision = None
+            self._last_raw_state = self._last_pae_latent = None
+            self._last_action_mask = self._last_decision = self._last_cpu_decision = None
 
     def _augment_with_pae(
         self,
@@ -261,6 +261,7 @@ class LocalAgent:
         decision = (action, action_log_prob, state_val, dist_entropy)
         if is_batch_one:
             self._last_decision = decision
+            self._last_cpu_decision = None
 
         return decision
 
@@ -289,9 +290,7 @@ class LocalAgent:
 
         device_type = self.device.type if hasattr(self, "device") and hasattr(self.device, "type") else "cpu"
         with torch.amp.autocast(device_type=device_type, enabled=(device_type == "cuda")):
-            augmented = self._augment_with_pae(
-                state_sequence_batch, precomputed_pae_latent=precomputed_pae_latent
-            )
+            augmented = self._augment_with_pae(state_sequence_batch, precomputed_pae_latent=precomputed_pae_latent)
             dist, state_values = self._forward_distribution(augmented, action_mask=action_mask)
             act_squeezed = action.squeeze(-1) if hasattr(action, "dim") and action.dim() > 1 else action
             action_log_probs = dist.log_prob(act_squeezed)

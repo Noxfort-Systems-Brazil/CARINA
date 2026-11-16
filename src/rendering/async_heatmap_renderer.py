@@ -2,16 +2,13 @@
 # SPDX-FileCopyrightText: 2026 Noxfort Systems
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import base64
-import io
 import logging
 import queue
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
-import matplotlib.pyplot as plt
-
 from rendering.congestion_color_scheme import CongestionColorScheme
+from rendering.mpl_utils import close_offscreen_figure, create_offscreen_figure, render_figure_to_base64
 from rendering.render_buffer_manager import RenderBufferManager
 from rendering.update_throttler import UpdateThrottler
 
@@ -87,55 +84,52 @@ class AsyncHeatmapRenderer:
         lm = self.locale_manager
         try:
             nodes, edges = map_data
-            fig, ax = plt.subplots(figsize=(4.8, 2.88), dpi=100)
+            fig, ax = create_offscreen_figure((4.8, 2.88), dpi=100)
+            try:
+                threshold = max(saturation_threshold, 1.0)
 
-            threshold = max(saturation_threshold, 1.0)
+                for edge in edges:
+                    edge_id = edge.get("id", "")
+                    congestion_index = congestion_data.get(edge_id, 0.0)
+                    color = self.get_enhanced_color_for_congestion(congestion_index, threshold)
 
-            for edge in edges:
-                edge_id = edge.get("id", "")
-                congestion_index = congestion_data.get(edge_id, 0.0)
-                color = self.get_enhanced_color_for_congestion(congestion_index, threshold)
+                    shape = edge["shape"]
+                    x_coords, y_coords = zip(*shape)
 
-                shape = edge["shape"]
-                x_coords, y_coords = zip(*shape)
+                    ax.plot(
+                        x_coords,
+                        y_coords,
+                        color=color,
+                        linewidth=2.0,
+                        zorder=1,
+                        solid_capstyle="round",
+                    )
 
-                ax.plot(
-                    x_coords,
-                    y_coords,
-                    color=color,
-                    linewidth=2.0,
-                    zorder=1,
-                    solid_capstyle="round",
+                if nodes:
+                    node_x = [n["x"] for n in nodes.values()]
+                    node_y = [n["y"] for n in nodes.values()]
+                    ax.scatter(node_x, node_y, s=10, color="#808080", zorder=2)
+
+                ax.set_aspect("equal", adjustable="box")
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["bottom"].set_visible(False)
+                ax.spines["left"].set_visible(False)
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+                ax.set_facecolor("#F7F7F7")
+
+                return render_figure_to_base64(
+                    fig,
+                    close_fig=False,
+                    format="png",
+                    dpi=100,
+                    facecolor=ax.get_facecolor(),
+                    bbox_inches="tight",
+                    pad_inches=0.05,
                 )
-
-            if nodes:
-                node_x = [n["x"] for n in nodes.values()]
-                node_y = [n["y"] for n in nodes.values()]
-                ax.scatter(node_x, node_y, s=10, color="#808080", zorder=2)
-
-            ax.set_aspect("equal", adjustable="box")
-            ax.spines["top"].set_visible(False)
-            ax.spines["right"].set_visible(False)
-            ax.spines["bottom"].set_visible(False)
-            ax.spines["left"].set_visible(False)
-            ax.get_xaxis().set_ticks([])
-            ax.get_yaxis().set_ticks([])
-            ax.set_facecolor("#F7F7F7")
-
-            buf = io.BytesIO()
-            plt.savefig(
-                buf,
-                format="png",
-                dpi=100,
-                facecolor=ax.get_facecolor(),
-                bbox_inches="tight",
-                pad_inches=0.05,
-            )
-            plt.close(fig)
-            buf.seek(0)
-
-            image_base64 = base64.b64encode(buf.read()).decode("utf-8")
-            return image_base64
+            finally:
+                close_offscreen_figure(fig)
 
         except Exception as e:
             logging.error(lm.get_string("async_heatmap_renderer.run.error", error=e), exc_info=True)

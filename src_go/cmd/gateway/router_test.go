@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"carina/src_go/evp_go"
 	"carina/src_go/pkg/manager"
 	"carina/src_go/web_gateway"
 )
@@ -259,3 +260,26 @@ func TestRouterGatewayEnableAndStatus(t *testing.T) {
 	}
 }
 
+func TestRouterGatewaySetAuthTokens(t *testing.T) {
+	out, buf := newTestStdoutWriter()
+	mgr := manager.NewHardwareManager(0, nil)
+	webSrv := web_gateway.NewWebGatewayServer(2212, nil)
+	evpSrv := evp_go.NewEVPServer(8092, "", nil)
+
+	handleCommandWithEVP(RequestEnvelope{
+		ID:            405,
+		Cmd:           "gateway_set_auth_tokens",
+		EVPAuthToken:  "evp-runtime-secret",
+		CCOAuthToken:  "cco-runtime-secret",
+		AllowedOrigin: "https://cco.city.gov",
+	}, mgr, webSrv, evpSrv, out)
+
+	resp := readLastResponse(t, buf)
+	if !resp.Success {
+		t.Fatalf("expected gateway_set_auth_tokens success, got err=%s", resp.Error)
+	}
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok || data["evp_auth_configured"] != true || data["cco_auth_configured"] != true {
+		t.Errorf("expected both auth tokens configured, got %+v", data)
+	}
+}

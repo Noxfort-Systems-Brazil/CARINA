@@ -16,6 +16,7 @@ import copy
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
@@ -39,6 +40,33 @@ class FleetBatchInferencer:
             and hasattr(torch.func, "functional_call")
         )
         self._meta_templates: Dict[Tuple[int, int, int, int, str], ActorCriticNet] = {}
+        self.last_cpu_decisions: Dict[str, Tuple[int, float, np.ndarray, np.ndarray, np.ndarray]] = {}
+
+    @staticmethod
+    def _build_cpu_decision_from_tensors(
+        act_t: Any, lp_t: Any, val_t: Any, ent_t: Any
+    ) -> Optional[Tuple[int, float, np.ndarray, np.ndarray, np.ndarray]]:
+        """Extracts pre-transferred CPU numpy arrays/scalars from single-agent tensors."""
+        if not (isinstance(act_t, torch.Tensor) and type(act_t).__name__ != "DummyTensor"):
+            return None
+        try:
+            act_np = act_t.detach().to(device="cpu", dtype=torch.int64).reshape(1).numpy()
+            packed = (
+                torch.stack([lp_t.reshape(-1)[0], val_t.reshape(-1)[0], ent_t.reshape(-1)[0]])
+                .detach()
+                .float()
+                .cpu()
+                .numpy()
+            )
+            return (
+                int(act_np[0]),
+                float(packed[2]),
+                act_np,
+                packed[0:1],
+                packed[1:2],
+            )
+        except Exception:
+            return None
 
     @staticmethod
     def _is_batchable_agent(agent: Any) -> bool:
@@ -63,6 +91,7 @@ class FleetBatchInferencer:
         transparently to individual `agent.choose_action(...)`.
         """
         results: Dict[str, Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+        self.last_cpu_decisions.clear()
         state_map = precomputed_states if precomputed_states is not None else (precomputed_tensors or {})
         latents_map = precomputed_latents or {}
         if len(state_map) < 2:
@@ -94,14 +123,21 @@ class FleetBatchInferencer:
                     and agent._tensors_equal(act_mask, getattr(agent, "_last_action_mask", None))
                 ):
                     results[tl_id] = agent._last_decision
+                    cached_cpu = getattr(agent, "_last_cpu_decision", None)
+                    if cached_cpu is not None:
+                        self.last_cpu_decisions[tl_id] = cached_cpu
                     continue
 
             if not self._has_functorch:
-                results[tl_id] = agent.choose_action(
+                dec = agent.choose_action(
                     state_tensor,
                     precomputed_pae_latent=pae_latent,
                     action_mask=act_mask,
                 )
+                results[tl_id] = dec
+                cpu_dec = self._build_cpu_decision_from_tensors(*dec)
+                if cpu_dec is not None:
+                    self.last_cpu_decisions[tl_id] = cpu_dec
                 continue
 
             net: ActorCriticNet = agent.policy_net
@@ -137,9 +173,7 @@ class FleetBatchInferencer:
                     has_any_mask = False
 
                     for tl_id, agent, state_t, act_mask in items:
-                        aug = agent._augment_with_pae(
-                            state_t, precomputed_pae_latent=latents_map.get(tl_id)
-                        )
+                        aug = agent._augment_with_pae(state_t, precomputed_pae_latent=latents_map.get(tl_id))
                         aug_tensors.append(aug)  # [1, seq_len, aug_dim]
                         if act_mask is not None:
                             has_any_mask = True
@@ -174,6 +208,27 @@ class FleetBatchInferencer:
                     entropies_b = dist.entropy()  # [G]
 
                 vals_fp32 = raw_vals.float() if hasattr(raw_vals, "float") else raw_vals
+
+                # Perform batched D2H copy once for the entire group instead of per-agent .item()/.cpu() syncs
+                actions_np = None
+                packed_cpu = None
+                if isinstance(actions_b, torch.Tensor) and type(actions_b).__name__ != "DummyTensor":
+                    actions_np = actions_b.detach().to(device="cpu", dtype=torch.int64).reshape(-1).numpy()
+                    packed_cpu = (
+                        torch.stack(
+                            [
+                                log_probs_b.reshape(-1),
+                                vals_fp32.reshape(-1),
+                                entropies_b.reshape(-1),
+                            ],
+                            dim=1,
+                        )
+                        .detach()
+                        .float()
+                        .cpu()
+                        .numpy()
+                    )
+
                 for idx, (tl_id, agent, state_t, act_mask) in enumerate(items):
                     dec = (
                         actions_b[idx : idx + 1],
@@ -181,12 +236,23 @@ class FleetBatchInferencer:
                         vals_fp32[idx],
                         entropies_b[idx : idx + 1],
                     )
+                    cpu_dec = None
+                    if actions_np is not None and packed_cpu is not None:
+                        cpu_dec = (
+                            int(actions_np[idx]),
+                            float(packed_cpu[idx, 2]),
+                            actions_np[idx : idx + 1],
+                            packed_cpu[idx : idx + 1, 0],
+                            packed_cpu[idx : idx + 1, 1],
+                        )
+                        self.last_cpu_decisions[tl_id] = cpu_dec
                     if state_t.size(0) == 1:
                         agent._last_raw_state = state_t[0].clone()
                         lat = latents_map.get(tl_id)
                         agent._last_pae_latent = lat.clone() if isinstance(lat, torch.Tensor) else lat
                         agent._last_action_mask = act_mask.clone() if isinstance(act_mask, torch.Tensor) else act_mask
                         agent._last_decision = dec
+                        agent._last_cpu_decision = cpu_dec
                     results[tl_id] = dec
 
             except Exception as e_batch:

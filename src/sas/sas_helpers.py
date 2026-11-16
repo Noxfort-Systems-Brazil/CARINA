@@ -65,6 +65,27 @@ class TrafficMetricsCalculator:
                 return val
         return max(freq_map.keys())
 
+    @staticmethod
+    def compute_percentiles(freq_map: Dict[int, int], count: int = 100) -> List[int]:
+        """Computes `count` evenly spaced quantiles [0/count .. (count-1)/count] in a single sort."""
+        if not freq_map:
+            return [0] * count
+        sorted_items = sorted(freq_map.items())
+        tot = sum(freq for _, freq in sorted_items)
+        if tot == 0:
+            return [0] * count
+        result: List[int] = []
+        idx = 0
+        acc = sorted_items[0][1]
+        n_items = len(sorted_items)
+        for i in range(count):
+            target = tot * (i / float(count))
+            while acc < target and idx + 1 < n_items:
+                idx += 1
+                acc += sorted_items[idx][1]
+            result.append(sorted_items[idx][0])
+        return result
+
 
 class SyntheticSampleGenerator:
     """Generates lists of synthetic samples for compatibility downstream."""
@@ -101,22 +122,19 @@ class SyntheticSampleGenerator:
     def generate_accumulated(
         edge_id: str, density: float, adjusted_speed_ms: float, edge_len: float, num_lanes: int, speed_limit: float
     ) -> List[Dict[str, Any]]:
-        rep_samples = []
-        for _ in range(100):
-            rep_samples.append(
-                {
-                    "edge_id": edge_id,
-                    "density": density,
-                    "mean_speed": adjusted_speed_ms,
-                    "queue_length": 0,
-                    "occupancy": 0.0,
-                    "edge_length": edge_len,
-                    "num_lanes": num_lanes,
-                    "speed_limit": speed_limit,
-                    "collected_at": None,
-                }
-            )
-        return rep_samples
+        return [
+            {
+                "edge_id": edge_id,
+                "density": density,
+                "mean_speed": adjusted_speed_ms,
+                "queue_length": 0,
+                "occupancy": 0.0,
+                "edge_length": edge_len,
+                "num_lanes": num_lanes,
+                "speed_limit": speed_limit,
+                "collected_at": None,
+            }
+        ]
 
 
 def formatar_br(val: float, decimals: int = 2) -> str:

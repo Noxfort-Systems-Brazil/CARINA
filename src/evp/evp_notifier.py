@@ -56,12 +56,13 @@ class EVPNotifier:
             except Exception as e:
                 logger.error(f"[EVPNotifier] Erro ao notificar ouvinte da UI: {e}", exc_info=True)
 
-        # Forward vehicle telemetry to Go Gateway (CCO Videowall SSE) via non-blocking asynchronous pipe
+        # Forward vehicle telemetry to Go Gateway (CCO Videowall SSE) only from the gateway owner process
         try:
             from src.drivers.go_gateway_client import GoGatewayClient
 
-            gw_client = GoGatewayClient.get_instance()
-            if gw_client.is_running():
-                gw_client.broadcast_cco({"type": "evp_telemetry", "vehicle": vehicle_data})
+            if not GoGatewayClient.is_remote_gateway_role():
+                gw_client = GoGatewayClient.get_instance()
+                if gw_client.is_running():
+                    gw_client.broadcast_cco({"type": "evp_telemetry", "vehicle": vehicle_data})
         except Exception as e:
             logger.debug(f"[EVPNotifier] Falha ao duplicar telemetria EVP para GoGateway: {e}")

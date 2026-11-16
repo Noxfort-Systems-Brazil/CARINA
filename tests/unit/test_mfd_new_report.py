@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Noxfort Systems
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+from unittest.mock import patch
+
 import pytest
 
 from mfd.mfd_analyzer import MFDImpactCalculator, MFDMaturityEvaluator
@@ -87,7 +89,14 @@ def test_mfd_report_generator_execution():
     ]
     data = {"history": history_mock, "peak_production": 200.0, "peak_accumulation": 400.0}
 
-    res = MFDReportGenerator.generate_report(data)
+    with (
+        patch(
+            "slm.semantic_transducer.SemanticTransducer.load_resources",
+            side_effect=RuntimeError("SLM mocked in unit test"),
+        ),
+        patch("mfd.mfd_subprocess_fallback.MFDSubprocessFallback.try_subprocess_transducer", return_value=""),
+    ):
+        res = MFDReportGenerator.generate_report(data)
     assert res["status"] == "complete"
     assert "text_report" in res
     assert len(res["text_report"]) > 0

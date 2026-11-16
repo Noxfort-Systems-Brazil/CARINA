@@ -57,9 +57,7 @@ class AgentReconstructor:
                 input_dim = int(state_dict["var_embedding"].shape[1])
                 d_model = int(state_dict["var_embedding"].shape[2])
                 history_len = (
-                    int(state_dict["value_embedding.weight"].shape[1])
-                    if "value_embedding.weight" in state_dict
-                    else 8
+                    int(state_dict["value_embedding.weight"].shape[1]) if "value_embedding.weight" in state_dict else 8
                 )
                 if "latent_proj.3.weight" in state_dict:
                     latent_dim = int(state_dict["latent_proj.3.weight"].shape[0])
@@ -72,15 +70,13 @@ class AgentReconstructor:
                 else:
                     latent_dim = 16
 
-                num_latent_queries = (
-                    int(state_dict["latent_queries"].shape[1])
-                    if "latent_queries" in state_dict
-                    else 4
-                )
+                num_latent_queries = int(state_dict["latent_queries"].shape[1]) if "latent_queries" in state_dict else 4
                 layer_ids = {
                     int(k.split(".")[2])
                     for k in state_dict.keys()
-                    if k.startswith("transformer_encoder.layers.") and len(k.split(".")) > 2 and k.split(".")[2].isdigit()
+                    if k.startswith("transformer_encoder.layers.")
+                    and len(k.split(".")) > 2
+                    and k.split(".")[2].isdigit()
                 }
                 num_layers = (max(layer_ids) + 1) if layer_ids else 2
                 pae = PredictiveAutoencoder(
@@ -148,6 +144,7 @@ class AgentReconstructor:
             log_dir="",
             locale_manager=self.locale_manager,
             shared_pae=self.shared_pae,
+            device=torch.device("cpu"),
         )
 
         agent.load_checkpoint(checkpoint_path)

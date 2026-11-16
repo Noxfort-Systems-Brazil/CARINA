@@ -60,10 +60,13 @@ func (m *Manager) Start() {
 		return
 	}
 	m.running = true
-	m.stopChan = make(chan struct{})
+	m.failuresCount = 0
+	m.isLost = false
+	stopCh := make(chan struct{})
+	m.stopChan = stopCh
 	m.mu.Unlock()
 
-	go m.loop()
+	go m.loop(stopCh)
 }
 
 // Stop terminates the pulse loop.
@@ -77,13 +80,13 @@ func (m *Manager) Stop() {
 	close(m.stopChan)
 }
 
-func (m *Manager) loop() {
+func (m *Manager) loop(stopCh <-chan struct{}) {
 	ticker := time.NewTicker(m.Interval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-m.stopChan:
+		case <-stopCh:
 			return
 		case <-ticker.C:
 			success := false

@@ -15,8 +15,8 @@ aliases: [API参考规范, Synapse HFT, IPC队列, gRPC接口]
 
 CARINA 通过基于 gRPC 的 **Synapse HFT 协议**与外部传感器、现场交通信号机以及微观交通仿真环境（SUMO / CityFlow）实现低延迟交互。
 
-- **默认监听端口：** `50051`（可于 `config/settings.ini` 动态配置）
-- **底层传输协议：** 基于 TCP 的 HTTP/2，支持可选的 TLS 传输层加密。
+- **默认监听端口：** `50051`（可于 `config/settings.ini` 中的 `[SYNAPSE]` 节动态配置）
+- **底层传输协议：** 基于 TCP 的 HTTP/2，支持可选的 **TLS / mTLS**（`grpc.ssl_server_credentials`）以及 **Bearer 令牌认证**（[`src/communication/grpc_security.py`](../../src/communication/grpc_security.py) 中的 `BearerTokenServerInterceptor`），通过 `CARINA_GRPC_AUTH_TOKEN`、`CARINA_GRPC_TLS_ENABLED`、`CARINA_GRPC_TLS_CERT`、`CARINA_GRPC_TLS_KEY`、`CARINA_GRPC_TLS_CA` 与 `CARINA_GRPC_REQUIRE_CLIENT_CERT` 配置。支持通过恒定时间比较 `hmac.compare_digest` 校验 `Authorization: Bearer <token>` 或 `x-carina-token: <token>` 元数据。
 - **协议包命名空间：** `synapse.hft`
 
 ```protobuf
@@ -86,16 +86,16 @@ message ScenarioDefinition {
 
 ## 3. 进程间通信 (IPC) 队列技术规范
 
-CARINA 统一协调由 [`ProcessManager`](../../src/launcher/process_manager.py) 管理的 11 个有界 IPC 队列与 1 个双工管道连接：
+CARINA 统一协调由 [`ProcessManager`](../../src/launcher/process_manager.py) 管理的 **12 个有界 IPC 队列**与 **1 个线程安全双工管道连接**（[`src/communication/pipe_utils.py`](../../src/communication/pipe_utils.py) 中的 `ThreadSafePipeConnection`）：
 
 | 队列名称 | 最大容量 | 生产者进程 | 消费者进程 | 载荷模式 / 消息类型 |
 | :--- | :---: | :--- | :--- | :--- |
-| **`controller_conn`** | Pipe | `CentralController` | `AI_Process` | `("state", frame_id, traffic_frame_dict)` |
-| **`ai_conn`** | Pipe | `AI_Process` | `CentralController` | `("actuation", frame_id, signal_group_actions)` |
-| **`wd`** | 500 | 全部 8 个微服务 | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
-| **`sds`** | 500 | `CentralController` | `DashboardService` | `{"timestamp": float, "telemetry": dict, "active_phase": int}` |
+| **`controller_conn` / `ai_conn`** | Pipe | `CentralController` ↔ `AI_Process` | 双向通信 | `("custom", "hft_step", ...)`、`("hft_telemetry_push", ...)`、`("ai_hardware_cmd", ...)`、`("ai_evp_preempt", ...)`、`("fenix_handover_complete", ...)` |
+| **`wd`** | 500 | `CentralController` / 微服务 | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
+| **`fenix`** | 50 | `Watchdog` / `CentralController` | `FenixSupervisionController` | `("TRIGGER_RESURRECTION", reason)` / `("HANDOVER_COMPLETE", payload)` |
+| **`sds`** | 500 | `CentralController` | `DashboardService` | `("hft_rich_update", payload)`（0.5s 高频与低频热力图遥测 + `hardware_status`） |
 | **`sas`** | 500 | `CentralController` | `AnalysisService` | 用于写入 PostgreSQL 统计聚合的历史交通工程指标 |
-| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | UI 指令、人工强制覆盖、手动配时与参数变更 |
+| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | UI 指令、`set_hardware_connection`、`tailscale_*`、`fenix_post_resurrection` |
 | **`ui_telemetry`** | 500 | `DashboardService` | `LiveDataProvider` | 内存中零端口实时遥测封包、拥堵评估与智能体成熟度 |
 | **`db`** | 500 | `AI_Process` | `DatabaseWorker` | `(state_tensor, action_int, reward_float, next_state_tensor)` |
 | **`g_state`** | 500 | `AI_Process` | `GuardianWorker` | `(lane_queues, pae_latent_vector_z, strategic_gat_vector)` |
@@ -175,7 +175,8 @@ CARINA 通过 [`MonitorClient`](../../src/communication/monitor_client.py) 和 [
 Go 语言编译的 Web 网关对外提供高吞吐量、单向即发即弃的应急车辆高精 GPS 遥测接入端点：
 
 - **API 路由：** `POST /api/v1/evp/telemetry`（别名：`POST /amb` 或 `POST /amb/`）
-- **监听端口：** `2201`（Go Web 网关 / Tailscale Funnel）或 `8085`（独立 Go EVP 原生接收服务 [`src_go/evp_go/`](../../src_go/evp_go) / 独立接收器）
+- **监听端口：** `2201`（`CARINA_GATEWAY_PORT`，Go Web 网关 / Tailscale Funnel）或 `8085`（独立 Go EVP 原生接收服务 [`src_go/evp_go/`](../../src_go/evp_go)）
+- **安全机制：** 当 `CARINA_GATEWAY_ENABLED=False` 时默认故障安全关闭（返回 `503 Service Unavailable`）；通过 `Authorization: Bearer <token>`、`X-EVP-Token` 或 `X-Auth-Token` 对 `CARINA_EVP_AUTH_TOKEN` 执行恒定时间校验（不匹配返回 `401 Unauthorized`），并支持 HTTPS/TLS（`CARINA_GATEWAY_TLS_CERT` / `CARINA_GATEWAY_TLS_KEY`）。
 - **HTTP 响应：** `204 No Content`（亚毫秒级瞬时响应，无需等待底层处理）
 - **载荷数据格式：**
   ```json
@@ -195,29 +196,33 @@ Go 语言编译的 Web 网关对外提供高吞吐量、单向即发即弃的应
 
 ## 7. Go 硬件与 Web 网关 NDJSON IPC 指令集
 
-CARINA Python 核心层通过匿名标准管道（`stdin`/`stdout`）向 `bin/carina-go` 网关下发的控制指令集：
+CARINA 的所有者进程（`CentralController`）通过匿名标准管道（`stdin`/`stdout`）向 `bin/carina-go` 网关下发的控制指令集：
 
 | 指令 (`cmd`) | 参数 / 载荷 | 返回数据 | 功能语义说明 |
 | :--- | :--- | :--- | :--- |
 | **`ping`** | 无 | `"pong"` | 探测网关进程连通活性（$< 1\text{ ms}$）。 |
-| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `protocol`, `green_stages` | 连接元数据 | 与现场物理交通机建立 SNMP/UDP 通信会话。 |
+| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `snmp_config`, `config_path`, `protocol`, `green_stages` | 连接元数据 | 与现场物理交通机建立 SNMPv2c/v3 UDP 通信会话及可选的自定义 OID JSON 配置。 |
 | **`disconnect`** | `intersection_id` | `success: true` | 断开与指定交通机的网络连接并释放底层套接字。 |
 | **`apply_logical_action`** | `action` (0=NEXT, 1=HOLD), `current_stage_idx`, `green_stages`, `stage_codes` | `success: bool` | 将神经网络或安全防火墙决定的逻辑动作映射作用于物理信号灯组。 |
-| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `vehicle_id` | 执行动作确认字符串 | 向现场控制器微秒级下发全绿波应急相位保持或释放指令。 |
+| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `stage_idx`, `stage_codes`, `vehicle_id` | 执行动作确认字符串 | 向现场控制器微秒级下发全绿波应急相位保持或释放指令。 |
 | **`cco_broadcast`** | `data: dict` | `success: true` | 向已建立连接的 CCO SSE 大屏客户端广播实时路况遥测帧。 |
-| **`tailscale_status`** | 无 | `TailscaleStatus` JSON | 查询当前 Tailscale Funnel 域名、节点互联状态以及 CCO 公网访问地址。 |
-| **`emergency_release`** | 无 | `success: true` | 紧急无条件释放全城所有交叉口的所有相位保持锁定。 |
+| **`gateway_set_enabled`** / **`gateway_get_status`** | `enabled: bool` | 状态 JSON | 切换 Web 网关激活守卫状态（禁用时返回 `503`）或查询当前运行状态。 |
+| **`gateway_set_auth_tokens`** | `evp_auth_token`, `cco_auth_token`, `allowed_origin` | 配置标志 | 在运行中的 Go 网关上动态轮换 EVP/CCO 认证令牌与 CORS 来源。 |
+| **`tailscale_status`** / **`tailscale_enable`** / **`tailscale_disable`** | `port`, `domain` | `TailscaleStatus` JSON | 管理 Tailscale Funnel 域名、节点互联状态以及 CCO 公网访问地址。 |
+| **`emergency_release`** | 无 | `success: true` | 暂停心跳并释放所有相位保持锁定，同时保留驱动实例以便后续恢复。 |
+| **`resume_control`** | 无 | `resumed: int` | 在看门狗故障安全恢复后重新启动已暂停的控制器心跳。 |
 
 ---
 
 ## 8. 中央控制调度中心 (CCO) REST 与 SSE 端点规范
 
-在 Go Web 网关 `2201` 端口上提供服务（支持通过 Tailscale Funnel 进行加密穿透）：
+在 Go Web 网关 `2201` 端口（`CARINA_GATEWAY_PORT`）上提供服务（配置 TLS 时启用 HTTPS；禁用时返回 `503 Service Unavailable`）：
 
-- **`GET /health`**: 返回底层网关健康状态与服务可用性。
+- **`GET /` 与 `GET /health`**: 返回底层网关健康状态与服务可用性。
 - **`GET /cco` 与 `GET /cco/`**: 提供编译完成的 React 18 CCO 网页客户端静态资源。
-- **`GET /cco/stream`**: 基于服务器发送事件（SSE）的长连接，向大屏持续广播毫秒级信号灯相位、拥堵热力数据与应急特勤车辆轨迹。
-- **`GET /cco/topology`**: 提供 GeoJSON/JSON 格式的道路拓扑几何坐标、车道连通关系以及交叉口绝对经纬度。
+- **`GET /cco/stream`**: 基于服务器发送事件（SSE）的长连接，向大屏持续广播毫秒级信号灯相位、拥堵热力数据与应急特勤车辆轨迹（通过 `Authorization: Bearer`、`X-CCO-Token` 或 `?token=` 查询参数强制校验 `CARINA_CCO_AUTH_TOKEN`，并校验 `CARINA_CCO_ALLOWED_ORIGIN` CORS）。
+- **`GET /cco/topology`**: 提供 GeoJSON/JSON 格式的道路拓扑几何坐标、车道连通关系以及交叉口绝对经纬度（受令牌保护）。
+- **`POST /cco/broadcast`**: 由 SDS [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) 调用的受保护数据推送端点，采用最新覆盖非阻塞批处理机制、携带 `X-CCO-Token` 认证并支持可选的 SHA-256 证书指纹固定（[`PinnedHTTPSConnection`](../../src/sds/cco_tls_transport.py)）。
 
 ---
 

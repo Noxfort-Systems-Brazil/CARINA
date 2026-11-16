@@ -13,14 +13,17 @@ Este documento detalla el Firewall de Seguridad Neuro-Simbólico de doble etapa 
 
 ## 1. Visión General del Firewall de Seguridad en Doble Etapa
 
-CARINA desacopla completamente la seguridad pública física del rendimiento del aprendizaje por refuerzo profundo. Las políticas neuronales pueden proponer acciones, pero todas las acciones deben ser formalmente validadas y autorizadas a través de un firewall de seguridad antes de su despacho al hardware físico:
+CARINA desacopla completamente la seguridad pública física del rendimiento del aprendizaje por refuerzo profundo. Las políticas neuronales pueden proponer acciones, pero todas las acciones pasan por un enmascaramiento físico de logits y una verificación de seguridad multietapa antes de su despacho al hardware físico:
 
 ```text
-Acción de Fase Propuesta ──> [0. Interceptación EVP] ──> [1. Reglas Simbólicas] ──> [2. Veto Neuronal] ──> Actuación
-                                     │                            │                        │
-                                     ├── Corredor de Emergencia   ├── Verde Mín / Amarillo └── Spillback (Q > 0.8)
-                                     └── Despeje Obligatorio      └── Veto de Conflicto    └── Desahogo Emergencia
+Estado + Latente PAE ──> [PhysicalActionMasker] ──> [ActionVetoResolver] ──> Actuación
+                          (Logits Despeje/VerdeMín)   ├── 0. Interceptación EVP (SR-00)
+                                                      ├── 1. Reglas Simbólicas (SR-01..SR-06)
+                                                      └── 2. Veto de Riesgo QR-D3QN + Noisy-OR
 ```
+
+- [`PhysicalActionMasker`](../../src/engine/physical_action_masker.py): Restringe los logits FP32 de `ActorCriticNet` antes del muestreo, prohibiendo conmutaciones prematuras durante el despeje de amarillo/todo-rojo o por debajo del verde mínimo y forzando transiciones por encima del verde máximo.
+- [`ActionVetoResolver`](../../src/engine/action_veto_resolver.py): Orquesta las anulaciones de preempción EVP (`SR-00`) y los vetos por desbordamiento de `GuardianAgent` (`ACTION_KEEP_STAGE`) en la canalización de paso.
 
 ---
 
@@ -40,12 +43,14 @@ El [`SafetyAuditor`](../../src/core/safety_auditor.py) y [`GuardianSymbolicAudit
 
 ---
 
-## 3. Veto Neuronal contra Desbordamiento / Spillback (`GuardianAgent`)
+## 3. Veto Neuronal Calibrado contra Desbordamiento (`GuardianAgent` y `src/safety/`)
 
-El **Guardian Agent** ([`src/agents/guardian_agent.py`](../../src/agents/guardian_agent.py)) ejecuta una red neuronal Dueling Deep Q-Network sobre representaciones temporales TCN para estimar el **Riesgo de Desbordamiento / Spillback** ($Q_{risk} \in [0.0, 1.0]$):
+El **Guardian Agent** ([`src/agents/guardian_agent.py`](../../src/agents/guardian_agent.py)) integra una **Dueling Double DQN Distributiva por Regresión Cuantílica (`D3QN_TCN`, `num_quantiles = 32`)** con física cinemática consciente de la capacidad y fusión de riesgos no compensatoria:
 
-- **Umbral ($\tau_{risk}$):** $0.80$ (configurable en `config/settings.ini`).
-- **Anulación de Emergencia:** Si $Q(s, a_{propuesta}) > 0.80$, la propuesta del agente táctico es vetada. El Guardian inyecta una fase de despeje de emergencia para desahogar el enlace arterial congestionado antes de que ocurra un bloqueo aguas arriba.
+- **Estimación Cuantílica de Riesgo de Cola ($\text{CVaR}_{\alpha}$):** `GuardianNeuralPredictor` evalúa los cuantiles inferiores en el peor caso ($\alpha = 0.20$) en lugar de únicamente valores Q medios.
+- **Estimación Física Cinemática y PAE ([`GuardianPhysicsEstimator`](../../src/safety/guardian_physics_estimator.py)):** Segmenta estrictamente los tripletes de sensores de aristas entrantes (`edge_feature_dim`), normaliza las colas frente a la capacidad vehicular física de la vía (`edge_capacities`), proyecta el crecimiento de saturación sobre el horizonte de despeje entre verdes $H = \text{yellow} + \text{all\_red}$ y consulta pronósticos contrafactuales del PAE (`decode_with_uncertainty` para `ADVANCE` vs `KEEP`).
+- **Calibración Invariante a la Escala y Fusión Noisy-OR ([`GuardianRiskCalibrator`](../../src/safety/guardian_risk_calibrator.py)):** Calibra las dispersiones cuantílicas mediante regresión logística regularizada y ajuste de umbral por puntuación $F_2$ al graduarse de `CHILD`, combinando los riesgos físico, PAE y QR-D3QN mediante Noisy-OR no compensatorio ($1 - \prod_i (1 - c_i r_i)$) y un piso estricto de desbordamiento físico/PAE.
+- **Entrenamiento Seguro en Sombra Solo en `CHILD` y Congelamiento ([`GuardianShadowTrainer`](../../src/safety/guardian_shadow_trainer.py) y [`GuardianCheckpointService`](../../src/safety/guardian_checkpoint_service.py)):** Entrena QR-D3QN *off-policy* exclusivamente durante `Maturity.CHILD` mientras las señales físicas siguen planes de tiempo fijo; al promocionar a `TEEN`/`ADULT`, ejecuta `finalize_child_calibration()` y `freeze_for_deployment()` (liberando `target_net`, `optimizer` y buffers PER) y persiste atómicamente `guardian_{tl_id}.pth`.
 
 ---
 
@@ -57,9 +62,9 @@ El microservicio `Watchdog` ([`src/watchdog/watchdog_process.py`](../../src/watc
 - **Tiempo de Espera (Timeout) de Latido:** 5.0 segundos (período inicial de gracia: 10 segundos).
 - **Mecanismo Fail-Safe:** Si el `AI_Process` o el `CentralController` se bloquean, caen o pierden latidos consecutivos:
   1. El Watchdog notifica a la bandeja de sistema (tray) de la interfaz de escritorio.
-  2. Envía inmediatamente una señal al [`FailsafeManager`](../../src/controller/failsafe_manager.py) para liberar las retenciones de fase en los controladores físicos.
+  2. Envía una señal a [`FailsafeManager`](../../src/controller/failsafe_manager.py) -> `HardwareGatewayCoordinator.on_failsafe_triggered()`, invocando `EmergencyReleaseControlAll()` en el gateway Go (liberando retenciones mientras mantiene los drivers SNMP y el receptor de traps listos para `resume_control` al recuperarse).
   3. Los controladores de tráfico físicos revierten de forma autónoma a sus planes locales de tiempo fijo o al modo de destello amarillo.
-  4. Dispara el **Supervisor de Procesos F.E.N.I.X.** (`on_fenix_trigger`) para iniciar la recuperación autónoma y la reconciliación del estado.
+  4. Dispara el **Supervisor de Procesos F.E.N.I.X.** (`on_fenix_trigger` mediante la cola `fenix` y [`fenix_supervision_loop.py`](../../src/launcher/fenix_supervision_loop.py)) para iniciar la recuperación autónoma y la reconciliación de estado en lazo cerrado.
   5. **Watchdog de Permanencia de Preempción:** En paralelo, [`EVPPreemptionEngine`](../../src/evp/evp_preemption_engine.py) aplica un estricto timeout de permanencia máxima de preempción de $45.0\text{ s}$, liberando las retenciones arteriales si el checkout del vehículo se retrasa o se pierde.
 
 ---
@@ -113,11 +118,11 @@ Ubicada en [`src/fenix/recovery_policy.py`](../../src/fenix/recovery_policy.py):
 - Calcula el retroceso exponencial entre intentos de reinicio ($2.0\text{ s} \to 4.0\text{ s} \to 8.0\text{ s}$).
 - Evita bucles de reinicio infinitos: si la tasa de caídas supera $M$ fallos (predeterminado: 5), transiciona a `HALTED`.
 
-### 5.3 Traspaso en Límites Limpios (`StateReconciler`)
-Ubicado en [`src/fenix/state_reconciler.py`](../../src/fenix/state_reconciler.py):
+### 5.3 Traspaso en Límites Limpios (`StateReconciler` y `FenixStageDispatcher`)
+Ubicado en [`src/fenix/state_reconciler.py`](../../src/fenix/state_reconciler.py) y [`src/controller/fenix_stage_dispatcher.py`](../../src/controller/fenix_stage_dispatcher.py):
 - **Peligro de Colisión a Mitad de Fase:** Cuando el proceso de IA resucita, inyectar comandos a mitad de fase en una intersección física podría vulnerar intervalos de despeje o provocar cambios bruscos de señal.
-- **Handshake de Cero Riesgo:** El reconciliador interroga las fases actuales de los controladores físicos (`reconcile_with_field`).
-- **Desbloqueo en Transición de Fase:** El control neuronal solo se desbloquea (`on_stage_transition_detected`) cuando el controlador físico transiciona naturalmente a su siguiente fase local, garantizando una reanudación suave y sin riesgo de colisión.
+- **Handshake de Campo en Lazo Cerrado:** `FenixStageDispatcher` consulta instantáneas recientes de los controladores desde el gateway Go, decodifica las etapas físicas activas mediante [`HardwareTelemetryDecoder`](../../src/drivers/hardware_telemetry_decoder.py) y reconcilia `StateReconciler` (`reconcile_with_field` mediante `fenix_post_resurrection`).
+- **Desbloqueo en Transición de Fase:** El control neuronal solo se desbloquea (`on_stage_transition_detected`) cuando el controlador físico transiciona hacia un límite de etapa seguro, emitiendo `fenix_handover_complete` -> `HANDOVER_COMPLETE` para que `FenixSupervisor` confirme la resurrección y reanude los latidos (`resume_control`).
 
 ---
 

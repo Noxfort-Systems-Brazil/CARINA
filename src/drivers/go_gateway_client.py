@@ -51,12 +51,21 @@ class GoGatewayClient:
         """Backward compatibility for direct process inspection."""
         return self.process_manager.process
 
+    @staticmethod
+    def is_remote_gateway_role() -> bool:
+        """Returns True when the current process must delegate gateway access to CentralController."""
+        return os.environ.get("CARINA_GATEWAY_ROLE", "").strip().lower() == "remote"
+
     def is_running(self) -> bool:
         """Checks whether the Go gateway is running via subprocess pipes."""
         return self.transport.is_connected(self.process_manager.process)
 
     def start(self) -> bool:
         """Starts the Go gateway client via anonymous OS pipes (stdin/stdout)."""
+        if self.is_remote_gateway_role():
+            logger.debug("[GoGatewayClient] Processo em papel 'remote'; inicialização local de carina-go bloqueada.")
+            return False
+
         with self._start_lock:
             if self.is_running():
                 return True
@@ -96,6 +105,8 @@ class GoGatewayClient:
     def send_command(self, cmd: str, timeout: float = 3.0, **kwargs) -> Dict[str, Any]:
         """Sends a synchronous command over stdin and waits for its response on stdout."""
         if not self.is_running():
+            if self.is_remote_gateway_role():
+                return {"success": False, "error": "Gateway Go gerenciado remotamente pelo CentralController"}
             if not self.start():
                 return {"success": False, "error": "Gateway Go não está ativo"}
 
@@ -123,6 +134,7 @@ class GoGatewayClient:
         protocol: str = "auto",
         green_stages: Optional[list] = None,
         config_path: Optional[str] = None,
+        snmp_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Connects an intersection to the Go gateway."""
         payload: Dict[str, Any] = {
@@ -135,6 +147,8 @@ class GoGatewayClient:
         }
         if config_path:
             payload["config_path"] = config_path
+        if snmp_config:
+            payload["snmp_config"] = snmp_config
 
         return self.send_command("connect", timeout=5.0, **payload)
 
@@ -206,6 +220,11 @@ class GoGatewayClient:
     def emergency_release_all(self) -> bool:
         """Signals the Go gateway to release control on all active intersections."""
         res = self.send_command("emergency_release", timeout=3.0)
+        return bool(res.get("success", False))
+
+    def resume_control_all(self) -> bool:
+        """Signals the Go gateway to resume controller heartbeats after Watchdog recovery."""
+        res = self.send_command("resume_control", timeout=3.0)
         return bool(res.get("success", False))
 
     def broadcast_cco(self, data: Dict[str, Any]) -> None:

@@ -17,13 +17,13 @@ CARINA coordonne les pipelines multiprocessus locaux, les contrôleurs matériel
 
 | Port | Protocole | Sous-système / Processus | Description |
 | :--- | :--- | :--- | :--- |
-| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | Serveur gRPC externe haute fréquence pour simulateurs microscopiques (SUMO/CityFlow) ou ingestion de perception en périphérie. |
-| **`8080`** | TCP (WS) | Smart Dashboard Service (SDS) | Serveur WebSocket de télémétrie diffusant les données de file en direct aux clients web. |
-| **`2201`** | TCP (HTTP/SSE) | Passerelle Web Go (`src_go/web_gateway`) | Entrée principale périphérique : `POST /api/v1/evp/telemetry` (HTTP 204), `GET /cco/stream` (SSE) et tableau de bord CCO. |
-| **`8085`** | TCP (HTTP) | Récepteur EVP Autonome (`src/evp`) | Écouteur de repli pour la télémétrie GPS des véhicules d'urgence lorsque la passerelle Go est inactive. |
+| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | Serveur gRPC externe haute fréquence avec TLS/mTLS & authentification par jeton Bearer optionnels (`CARINA_GRPC_*`). |
+| **`8080`** | TCP (WS) | Smart Dashboard Service (SDS) | Serveur WebSocket de télémétrie diffusant les données de file en direct avec contre-pression et délais de 2,0 s. |
+| **`2201`** | TCP (HTTP/HTTPS/SSE) | Passerelle Web Go (`src_go/web_gateway`) | Configurable via `CARINA_GATEWAY_PORT` ; en mode fail-closed (`503`) jusqu'à `CARINA_GATEWAY_ENABLED=True` ; protège les points d'accès par jetons & TLS optionnel. |
+| **`8085`** | TCP (HTTP/HTTPS) | Récepteur EVP Autonome (`src_go/evp_go`) | Écouteur de télémétrie GPS des véhicules d'urgence prenant en charge l'authentification Bearer/`X-EVP-Token` & TLS. |
 | **`42123`** | TCP (Local) | SingleInstanceLock (`single_instance.py`) | Mutex système empêchant les instances d'application dupliquées ; envoie le signal `RESTORE`. |
-| **`161`** | UDP (SNMP) | Contrôleurs de Terrain NTCIP 1202 / UTMC | Interrogation et contrôle de maintien de phase (`ascPhaseHold`) envoyés aux têtes de feux tricolores. |
-| **`162`** | UDP (Trap) | Écouteur de Trappes Matérielles (`traplistener`) | Ingestion des trappes de pannes matérielles asynchrones et des activations de détecteurs. |
+| **`161`** | UDP (SNMP) | Contrôleurs NTCIP 1202 / UTMC2 | Interrogation SNMPv2c/v3 et maintiens de phase pilotés exclusivement par `CARINA_GATEWAY_ROLE=owner` (`CentralController`). |
+| **`162`** | UDP (Trap) | Écouteur de Trappes Matérielles (`traplistener`) | Configurable via `CARINA_TRAP_PORT` ; décode les trappes et informs binaires SNMPv1/v2c/v3. |
 
 ---
 
@@ -108,17 +108,28 @@ sudo systemctl start carina
 
 ---
 
-## 5. Déploiement Réseau Zéro-Trust via Tailscale Funnel
+## 5. Passerelle Fail-Closed Zéro-Trust & Déploiement via Tailscale Funnel
 
 Pour les réseaux métropolitains distribués sans IP publique statique :
-1. Générer une clé d'authentification Tailscale avec les fonctionnalités `funnel` depuis la console d'administration Tailscale.
-2. Configurer `.env` :
+1. Maintenez `CARINA_GATEWAY_ENABLED=False` (valeur par défaut dans `.env.example` et `config/settings.ini`) jusqu'à ce que les jetons d'authentification et certificats TLS soient provisionnés ; tant qu'elle est désactivée, la Passerelle Web Go renvoie `503 Service Unavailable` sur les points de terminaison CCO/EVP.
+2. Générez une clé d'authentification Tailscale dotée des capacités `funnel` depuis la console d'administration Tailscale ainsi que des jetons Bearer robustes pour EVP, CCO et Synapse gRPC.
+3. Configurez `.env` :
    ```bash
-   CARINA_GATEWAY_ENABLED=true
+   CARINA_GATEWAY_ENABLED=True
    CARINA_GATEWAY_PORT=2201
+   CARINA_TRAP_PORT=162
+   CARINA_EVP_AUTH_TOKEN=<strong-evp-token>
+   CARINA_CCO_AUTH_TOKEN=<strong-cco-token>
+   CARINA_CCO_ALLOWED_ORIGIN=https://<node-name>.<tailnet>.ts.net
+   CARINA_GATEWAY_TLS_CERT=/etc/carina/certs/gateway.crt
+   CARINA_GATEWAY_TLS_KEY=/etc/carina/certs/gateway.key
+   CARINA_GRPC_AUTH_TOKEN=<strong-grpc-token>
+   CARINA_GRPC_TLS_ENABLED=True
+   CARINA_OUTPUT_DIR=/var/lib/carina
+   CARINA_CONFIG_DIR=/etc/carina
    CARINA_TAILSCALE_AUTH_KEY=tskey-auth-kXXXXX-XXXXXXXX
    ```
-3. Lorsque la passerelle Go démarre, [`src_go/web_gateway/tailscale.go`](../../src_go/web_gateway/tailscale.go) enregistre automatiquement le nœud et démarre un tunnel HTTPS Funnel sur `https://<node-name>.<tailnet>.ts.net:2201`, exposant l'API EVP et le mur d'écrans CCO via TLS public sans aucune modification de pare-feu.
+4. `CentralController` démarre avec `CARINA_GATEWAY_ROLE=owner` (transmettant les jetons et paramètres TLS à `bin/carina-go`), tandis que les workers UI/AI/SDS s'exécutent en `remote`. [`src_go/web_gateway/tailscale.go`](../../src_go/web_gateway/tailscale.go) enregistre le nœud et déploie un tunnel HTTPS Funnel sur `https://<node-name>.<tailnet>.ts.net:2201`.
 
 ---
 

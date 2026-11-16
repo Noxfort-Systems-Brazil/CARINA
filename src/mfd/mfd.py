@@ -13,8 +13,8 @@ itself. It delegates each responsibility to the appropriate specialist.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
 import xml.etree.ElementTree as ET
+from typing import Any, Dict, List, Optional
 
 import sumolib
 
@@ -82,7 +82,11 @@ class MacroscopicFundamentalDiagram:
         self._edge_lengths.clear()
 
         try:
-            net = sumolib.net.readNet(net_file_path, withInternal=False)
+            from utils.sumo_net_cache import read_sumo_net_cached
+
+            net = read_sumo_net_cached(
+                net_file_path, reader_fn=sumolib.net.readNet, with_programs=False, with_internal=False
+            )
 
             for edge in net.getEdges():
                 edge_id = edge.getID()

@@ -42,12 +42,18 @@ class ReportTransducerFactory:
     @staticmethod
     def release_transducer(transducer: Any) -> None:
         """
-        Safely deletes references to the transducer model and triggers explicit garbage collection.
+        Explicitly unloads GPU/RAM weights (when supported), deletes references,
+        and triggers garbage collection.
 
         Args:
             transducer (Any): Transducer instance to be released.
         """
         if transducer is not None:
+            try:
+                if hasattr(transducer, "unload") and callable(transducer.unload):
+                    transducer.unload()
+            except Exception as e:
+                logging.debug(f"[REPORT_TRANSDUCER_FACTORY] Failed to unload transducer: {e}")
             try:
                 del transducer
             except Exception as e:

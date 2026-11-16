@@ -13,13 +13,20 @@ aliases: [Архитектура интерфейса, Сервис дашбор
 
 ## 1. Изолированная десктопная архитектура (`ui/` и `src/sds/`)
 
-Для того чтобы рендеринг графического интерфейса пользователя или задержки сетевых сокетов клиентских браузеров не приводили к пропускам кадров в реальном времени, CARINA полностью изолирует фронтенд в выделенный процесс **`DashboardService` (SDS)** ([`run_sds_worker`](../../src/sds/dashboard_worker.py)).
+Для того чтобы рендеринг графического интерфейса пользователя или задержки сетевых сокетов клиентских браузеров не приводили к пропускам кадров в реальном времени, CARINA полностью изолирует фронтенд в выделенный процесс **`DashboardService` (SDS)** ([`run_sds_worker`](../../src/sds/dashboard_worker.py), работающий в роли `CARINA_GATEWAY_ROLE=remote`).
 
 ```text
-CentralController (gRPC) ──> [Очередь sds] ──> DashboardService (SDS) ──> [Очередь ui] ──> Flet UI (Главный поток)
-                                                    │
-                                                    └──> Сервер телеметрии WebSocket (порт 8080)
+CentralController (owner) ──> [Очередь sds] ──> DashboardService (SDS) ──> [Очередь ui_telemetry] ──> Flet UI (Главный поток)
+                                                    ├──> Сервер WebSocket (порт 8080, таймаут клиента 2.0 с и backpressure)
+                                                    └──> CCOBroadcastClient (Pinned HTTPS -> Веб-шлюз Go :2201)
 ```
+
+- **Оптимизации производительности и памяти (`ui/` и `src/sds/`):**
+  - [`MapAnimator`](../../ui/animators/map_animator.py) и [`WindowManager`](../../ui/managers/window_manager.py): Приостанавливают циклы перерисовки карты при свернутом или скрытом десктопном окне (`_carina_window_hidden`) и ограничивают рендеры флагом `_data_dirty`.
+  - [`AuditLogWidget`](../../ui/widgets/audit_log_widget.py): Выполняет пагинацию записей аудита Guardian ($\le 100$ строк на страницу) для мгновенного обновления таблиц Flet.
+  - [`RemoteGatewaySettingsPersister`](../../ui/controllers/remote_gateway_settings_persister.py): Синхронизирует `gateway_enabled` между `settings.ini`, `SettingsManager`, `.env` и запущенным бэкендом.
+  - [`EVPFleetConnectionCard`](../../ui/cards/evp_fleet_connection_card.py): Детерминированно отписывает слушателей `EVPNotifier` в `will_unmount()`.
+  - [`DashboardDataCoordinator`](../../ui/controllers/dashboard_data_coordinator.py): Обновляет локальные пассивные зеркала `HardwareConnectionManager` (`remote_hardware_status`) из кадров телеметрии IPC.
 
 ---
 
@@ -252,12 +259,13 @@ src_tsx/src_cco/
 
 ---
 
-## 9. Доставка веб-приложения через шлюз на Go
+## 9. Доставка веб-приложения через шлюз на Go, оптимизации CCO и удаленное подключение
 
-Веб-интерфейс CCO отдается высокопроизводительным **шлюзом на Go** ([`src_go/web_gateway/`](../../src_go/web_gateway)), работающим на порту `2201`:
+Веб-интерфейс CCO отдается высокопроизводительным **шлюзом на Go** ([`src_go/web_gateway/`](../../src_go/web_gateway)), работающим на порту `2201` (`CARINA_GATEWAY_PORT`):
 
-- **Раздача статики:** Отдает собранный бандл React по адресу `/cco/` со сжатием gzip и кэширующими заголовками.
-- **Поток SSE с задержкой менее 50 мс:** Эндпоинт `/cco/stream` передает смену сигналов светофоров, теплокарту заторов и кинематику спецмашин без накладных расходов polling-запросов.
+- **Fail-Closed раздача с защитой токенами:** Возвращает `503 Service Unavailable` при отключении (`gateway_enabled=False`), отдает сжатую статику React по адресу `/cco/` и защищает `/cco/stream`, `/cco/topology` и `/cco/broadcast` постоянной по времени проверкой `CARINA_CCO_AUTH_TOKEN`, политикой CORS `CARINA_CCO_ALLOWED_ORIGIN` и опциональным HTTPS/TLS.
+- **Оптимизации потока композитора и вьюпорта (`src_tsx/src_cco/`):** Использует CSS-анимации по ключевым кадрам исключительно на GPU-композиторе (`transform` + `opacity`), панорамирование/зум в `useMapViewport.ts` на базе `requestAnimationFrame` и ref-ссылок, неглубокое сравнение состояний (shallow equality) в `useCcoViewModel.ts` и приостанавливает таймеры очистки машин при `document.hidden === true`.
+- **Поток SSE с задержкой менее 50 мс и пиннинговая отправка:** Эндпоинт `/cco/stream` получает данные от SDS [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) (неблокирующий издатель «побеждает последний» с пиннингом SHA-256 листового сертификата через `PinnedHTTPSConnection`).
 - **Сеть Tailscale Mesh:** Интеграция с Tailscale Funnel для безопасного защищенного доступа из мобильных бригад и диспетчерских пунктов 112/СМП.
 
 ---

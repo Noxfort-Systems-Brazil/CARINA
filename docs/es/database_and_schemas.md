@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS step_decisions (
     maturity_stage SMALLINT NOT NULL DEFAULT 2,     -- 0=CHILD, 1=TEEN, 2=ADULT
     suggested_action SMALLINT NOT NULL DEFAULT 0,   -- 0=KEEP, 1=CHANGE, 2=OVERRIDE
     final_decision SMALLINT NOT NULL DEFAULT 0,     -- 0=APPROVED, 1=DENIED (VETOED)
-    veto_reason_code SMALLINT NOT NULL DEFAULT 0,   -- 0=NONE, 1=MIN_GREEN, 2=YELLOW, 3=SPILLBACK, 4=GRIDLOCK
+    veto_reason_code SMALLINT NOT NULL DEFAULT 0,   -- 0=NONE, 1=MIN_GREEN, 2=YELLOW, 3=ALL_RED, 4=MIN_RED, 5=SPILLBACK, 6=EVP_PREEMPTION
     step_count INTEGER NOT NULL DEFAULT 1,          -- Conteo Consecutivo de Compresión Delta
     total_step_time_ms REAL,
     guardian_time_ms REAL,
@@ -115,7 +115,7 @@ CREATE INDEX idx_sfd_scen_stage_time ON synapse_fluid_dynamics (scenario_name, m
 ```
 
 ### 3.4 Tabla: `hardware_controller_connections`
-Almacena las conexiones con controladores físicos gestionadas por [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py) y definidas en [`config/database/schema_queries.json`](../../config/database/schema_queries.json):
+Almacena los endpoints de conexión a controladores físicos y el JSON opcional de SNMPv2c/v3 / anulaciones de OID (`snmp_config`) gestionados por [`HardwareConnectionRepository`](../../src/repositories/hardware_connection_repo.py) (y la fachada [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py)) según se define en [`config/database/schema_queries.json`](../../config/database/schema_queries.json):
 
 ```sql
 -- Dialecto PostgreSQL
@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT TRUE,
-    last_connected TIMESTAMP DEFAULT NOW()
+    last_connected TIMESTAMP DEFAULT NOW(),
+    snmp_config TEXT
 );
 
 -- Dialecto SQLite (reserva embebida)
@@ -131,11 +132,14 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT 1,
-    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    snmp_config TEXT
 );
 ```
 
-### 3.5 Aislamiento de Seguridad de Usuarios y Persistencia Relacional Híbrida
+*(Nota: Las tablas de resumen horario `synapse_edge_phase_hourly_summary` y `synapse_intersection_phase_hourly_summary` también indexan su clave primaria compuesta en `(..., scenario_name)` para el aislamiento multiescenario, y las consultas de purga e intervalos en PostgreSQL de `config/database/fluid_dynamics_queries.json` utilizan llamadas parametrizadas a `make_interval(...)`.)*
+
+### 3.5 Seguridad de Usuarios y Persistencia Híbrida (`security.json` y SQL)
 CARINA implementa una arquitectura híbrida offline-first para la gestión de usuarios gestionada por [`src/security/`](../../src/security):
 - **Almacenamiento Local Desacoplado (`security.json`):** Empleado en despliegues perimetrales (edge) sin conexión a base de datos relacional mediante [`JsonUserRepository`](../../src/security/json_user_repo.py).
 - **Persistencia Relacional (`system_users` y `system_security_state`):** Gestionada por [`SqlUserRepository`](../../src/security/sql_user_repo.py) y [`SqlSecurityStateRepository`](../../src/security/sql_security_state_repo.py) en PostgreSQL y SQLite, sincronizada mediante [`HybridUserRepository`](../../src/security/hybrid_user_repo.py):
@@ -277,13 +281,16 @@ CREATE INDEX idx_topodict_raw ON topology_dictionary (raw_net_id);
 
 ---
 
-## 5. Agrupamiento de Conexiones, Ciclo de Vida e Idempotencia de Migraciones (`src/database/`)
+## 5. Agrupamiento de Conexiones, SQLite WAL, Ciclo de Vida y Retención (`src/database/`)
 
-- **`DatabaseEngineFactory` (`src/database/engine_factory.py`):** Instancia motores optimizados con `QueuePool` en PostgreSQL o `NullPool` en SQLite con conmutación segura entre subprocesos.
+- **`PostgresConnectionPool` y `db_transaction` ([`src/database/connection_pool.py`](../../src/database/connection_pool.py)):** Agrupamiento de conexiones PostgreSQL seguro para hilos construido sobre `psycopg2.pool.ThreadedConnectionPool` (`minconn=1, maxconn=16`) con `PooledPostgresConnectionProxy` y gestión determinista de commit/rollback/cierre mediante `db_transaction`.
+- **`configure_sqlite_connection` ([`connection_pool.py`](../../src/database/connection_pool.py)):** Aplica `PRAGMA busy_timeout = 30000`, `PRAGMA foreign_keys = ON`, `PRAGMA synchronous = NORMAL`, `PRAGMA temp_store = MEMORY` y un ajuste único `PRAGMA journal_mode = WAL` para eliminar la contención de escritura entre subprocesos.
+- **Modo Worker de Solo Lectura (`enable_step_worker=False`):** Los workers analíticos y de informes (`XaiWorker`, `ReportDataCollector`, `XaiAgentRepository`) adquieren `DatabaseManager.get_instance(..., enable_step_worker=False)` sin iniciar hilos `StepDecisionWorker` redundantes.
+- **`DatabaseEngineFactory` (`src/database/engine_factory.py`):** Instancia motores de migración SQLAlchemy con `QueuePool` en PostgreSQL o `NullPool` en SQLite.
 - **`DatabaseSchemaInitializer` (`src/database/schema_initializer.py`):** Orquesta el arranque de esquemas y ejecuta las migraciones gestionadas por **Alembic** (`migrations/versions/`).
-- **Idempotencia DDL en Migraciones:** Para evitar fallos críticos de `table already exists` al arrancar bases de datos preexistentes, las migraciones (`001_initial_schema.py` y `002_consolidate_missing_tables.py`) inspeccionan tablas en tiempo de ejecución con `sa.inspect(op.get_bind()).get_table_names()`, creando únicamente entidades e índices ausentes.
-- **Recuperación por Marcado Automático de Versión:** Cuando una base de datos ya contiene tablas legadas sin historial en `alembic_version`, `DatabaseSchemaInitializer.apply_migrations` intercepta errores operativos y sincroniza automáticamente el puntero de versión a `head` (`command.stamp(alembic_cfg, "head")`), garantizando un inicio limpio del `DatabaseWorker`.
-- **Cierre Ordenado (Graceful Shutdown):** Durante el apagado (`SIGINT`/`SIGTERM`), el `DatabaseWorker` drena las colas de memoria RAM antes de cerrar conexiones, garantizando cero pérdida de datos.
+- **Idempotencia DDL en Migraciones y Marcado Automático:** Las migraciones (`001_initial_schema.py` y `002_consolidate_missing_tables.py`) inspeccionan tablas en tiempo de ejecución mediante `sa.inspect(op.get_bind()).get_table_names()` y recuperan esquemas legados sin sello de versión mediante `command.stamp(alembic_cfg, "head")`.
+- **Purga Automatizada de Retención (`database_worker.py`):** La consolidación horaria purga `synapse_fluid_dynamics` en bruto con más de 48 horas y elimina `evp_telemetry_records` con más de **168 horas (7 días)**.
+- **Cierre Ordenado (Graceful Shutdown):** Durante el apagado (`SIGINT`/`SIGTERM`), el `DatabaseWorker` drena las colas de memoria RAM antes de cerrar los pools de conexiones (`engine.close()`).
 
 ---
 

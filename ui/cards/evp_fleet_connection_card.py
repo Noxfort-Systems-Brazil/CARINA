@@ -11,6 +11,7 @@ and operations to EVPFleetController.
 
 import logging
 from typing import Any, Dict, List, Optional
+
 import flet as ft
 
 from ui.components.evp_contran_legend import EVPContranLegend
@@ -74,9 +75,23 @@ class EVPFleetConnectionCard(ft.Card):
 
         self._build_layout()
 
+        self._evp_listener = self._on_evp_event
         try:
             from src.evp.evp_notifier import EVPNotifier
-            EVPNotifier.get_instance().register_listener(lambda _: self.refresh_fleet())
+
+            EVPNotifier.get_instance().register_listener(self._evp_listener)
+        except Exception:
+            pass
+
+    def _on_evp_event(self, _payload: Any) -> None:
+        if getattr(self, "page", None):
+            self.refresh_fleet()
+
+    def will_unmount(self):
+        try:
+            from src.evp.evp_notifier import EVPNotifier
+
+            EVPNotifier.get_instance().unregister_listener(self._evp_listener)
         except Exception:
             pass
 
@@ -166,7 +181,11 @@ class EVPFleetConnectionCard(ft.Card):
                 self.save_changes()
             self.refresh_fleet()
         if self.page:
-            msg = f"🗑️ Viatura {vehicle_id} removida com sucesso!" if success else f"⚠️ Viatura {vehicle_id} não encontrada."
+            msg = (
+                f"🗑️ Viatura {vehicle_id} removida com sucesso!"
+                if success
+                else f"⚠️ Viatura {vehicle_id} não encontrada."
+            )
             self.page.snack_bar = ft.SnackBar(content=ft.Text(msg))
             self.page.snack_bar.open = True
             self.page.update()

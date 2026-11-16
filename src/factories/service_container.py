@@ -17,7 +17,9 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from communication.grpc_server_manager import GrpcServerManager
 from communication.monitor_client import MonitorClient
+from communication.pipe_utils import wrap_thread_safe_pipe
 from controller.failsafe_manager import FailsafeManager
+from controller.hardware_gateway_coordinator import HardwareGatewayCoordinator
 from controller.health_monitor import AIHealthMonitor
 from controller.override_manager import OverrideManager
 from controller.request_processor import RequestProcessor
@@ -59,16 +61,14 @@ class CentralControllerContainer:
         factory_namespace: Optional[Any] = None,
     ) -> None:
         self.settings = settings
-        self.ai_pipe_conn = ai_pipe_conn
+        self.ai_pipe_conn = wrap_thread_safe_pipe(ai_pipe_conn)
         self.watchdog_queue = watchdog_queue
         self.sds_data_queue = sds_data_queue
         self.sas_data_queue = sas_data_queue
         self.ui_command_queue = ui_command_queue
         self.locale_manager = locale_manager
         self.mfd_trigger_queue = mfd_trigger_queue
-        self.project_root = project_root or os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..")
-        )
+        self.project_root = project_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         self.overrides: Dict[str, Any] = dict(overrides) if overrides else {}
         self._ns = factory_namespace
 
@@ -102,21 +102,33 @@ class CentralControllerContainer:
             monitor_client = monitor_cls(settings_mgr_cls(), self.locale_manager)
             monitor_client.start()
 
-        failsafe_cls = self._resolve_cls("FailsafeManager", FailsafeManager)
-        failsafe_manager = ov.get("failsafe_manager") or failsafe_cls(
-            ai_pipe_conn=self.ai_pipe_conn,
-            monitor_client=monitor_client,
-            locale_manager=self.locale_manager,
-        )
-        if hasattr(failsafe_manager, "set_failsafe_timeout"):
-            failsafe_manager.set_failsafe_timeout(heartbeat_timeout)
-
         topo_cls = self._resolve_cls("TopologyManager", ControllerTopologyCoordinator)
         topology_manager = ov.get("topology_manager") or topo_cls(
             project_root=self.project_root,
             ai_pipe_conn=self.ai_pipe_conn,
             sds_data_queue=self.sds_data_queue,
         )
+
+        if "hardware_gateway_coordinator" in ov:
+            hardware_gateway_coordinator = ov["hardware_gateway_coordinator"]
+        else:
+            hw_gw_cls = self._resolve_cls("HardwareGatewayCoordinator", HardwareGatewayCoordinator)
+            hardware_gateway_coordinator = hw_gw_cls(
+                sds_data_queue=self.sds_data_queue,
+                ai_pipe_conn=self.ai_pipe_conn,
+                topology_manager=topology_manager,
+                locale_manager=self.locale_manager,
+            )
+
+        failsafe_cls = self._resolve_cls("FailsafeManager", FailsafeManager)
+        failsafe_manager = ov.get("failsafe_manager") or failsafe_cls(
+            ai_pipe_conn=self.ai_pipe_conn,
+            monitor_client=monitor_client,
+            locale_manager=self.locale_manager,
+            hardware_gateway_coordinator=hardware_gateway_coordinator,
+        )
+        if hasattr(failsafe_manager, "set_failsafe_timeout"):
+            failsafe_manager.set_failsafe_timeout(heartbeat_timeout)
 
         db_manager = ov.get("db_manager")
         traffic_data_recorder = ov.get("traffic_data_recorder")
@@ -125,17 +137,16 @@ class CentralControllerContainer:
                 db_cls = self._resolve_cls("DatabaseManager", DatabaseManager)
                 rec_cls = self._resolve_cls("TrafficDataRecorder", TrafficDataRecorder)
                 db_manager = db_cls(self.locale_manager)
-                traffic_data_recorder = rec_cls(
-                    db_manager=db_manager, batch_size=10, topology_manager=topology_manager
-                )
+                traffic_data_recorder = rec_cls(db_manager=db_manager, batch_size=10, topology_manager=topology_manager)
             except Exception as e:
                 logging.warning(
                     self.locale_manager.get_string(
                         "central_controller.traffic_recorder_fail",
                         default="[CentralController] Failed to initialize TrafficDataRecorder: {error}",
                         error=e,
-                    )
-                , exc_info=True)
+                    ),
+                    exc_info=True,
+                )
                 db_manager = None
                 traffic_data_recorder = None
 
@@ -149,6 +160,7 @@ class CentralControllerContainer:
             telemetry_aggregator=telemetry_aggregator,
             override_manager=override_manager,
             traffic_data_recorder=traffic_data_recorder,
+            hardware_gateway_coordinator=hardware_gateway_coordinator,
         )
 
         schedule_config = {}
@@ -177,14 +189,13 @@ class CentralControllerContainer:
             topology_manager=topology_manager,
             mfd_trigger_queue=self.mfd_trigger_queue,
             yellow_schedule_manager=yellow_schedule_manager,
+            hardware_gateway_coordinator=hardware_gateway_coordinator,
         )
 
         latch_cls = self._resolve_cls("SystemReadinessLatch", SystemReadinessLatch)
         readiness_latch = ov.get("readiness_latch") or latch_cls(traffic_frame_processor)
         if hasattr(request_processor, "set_readiness_callbacks"):
-            request_processor.set_readiness_callbacks(
-                readiness_latch.set_ui_ready, readiness_latch.set_backend_ready
-            )
+            request_processor.set_readiness_callbacks(readiness_latch.set_ui_ready, readiness_latch.set_backend_ready)
 
         bridge_cls = self._resolve_cls("TopologyRecorderBridge", TopologyRecorderBridge)
         topology_recorder_bridge = ov.get("topology_recorder_bridge") or bridge_cls(
@@ -238,6 +249,7 @@ class CentralControllerContainer:
             "hft_system_facade": hft_system_facade,
             "grpc_server_manager": grpc_server_manager,
             "hft_event_loop": hft_event_loop,
+            "hardware_gateway_coordinator": hardware_gateway_coordinator,
         }
 
 

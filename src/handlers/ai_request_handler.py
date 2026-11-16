@@ -13,13 +13,23 @@ class AIRequestHandler:
     Can be HFT Tuples or Standard TraCI Commands.
     """
 
-    def __init__(self, locale_manager, topology_manager, sds_queue, sas_queue, health_monitor, override_manager):
+    def __init__(
+        self,
+        locale_manager,
+        topology_manager,
+        sds_queue,
+        sas_queue,
+        health_monitor,
+        override_manager,
+        hardware_gateway_coordinator=None,
+    ):
         self.locale_manager = locale_manager
         self.topology_manager = topology_manager
         self.sds_queue = sds_queue
         self.sas_queue = sas_queue
         self.health_monitor = health_monitor
         self.override_manager = override_manager
+        self.hardware_gateway_coordinator = hardware_gateway_coordinator
 
         self.maturity_phases = {}
         self.current_run_id = None
@@ -53,21 +63,52 @@ class AIRequestHandler:
                         self.topology_manager.tls_phases_cache = {}
                     self.topology_manager.tls_phases_cache.update(payload["tls_phases"])
 
-                # Routes to SAS (Analysis) for metric logging AND to SDS (UI) for Traffic Light updates!
+                # Routes to SAS (Analysis) and SDS (UI) independently so a full queue never starves the other
                 try:
                     self.sas_queue.put_nowait(("hft_rich_update", payload))
+                except Full:
+                    pass
 
-                    # Prevent raw 'edges' data from overwriting UI telemetry
-                    # Keep 'tls_phases', 'tls_lanes_state', and 'maturity' for fast UI updates
-                    ui_payload = payload.copy()
-                    if "edges" in ui_payload:
-                        del ui_payload["edges"]
-
+                # Keep 'tls_phases', 'tls_lanes_state', and 'maturity' for fast UI updates without stale edges
+                ui_payload = (
+                    {k: v for k, v in payload.items() if k != "edges"} if "edges" in payload else payload.copy()
+                )
+                coord = getattr(self, "hardware_gateway_coordinator", None)
+                if coord is not None and "hardware_status" not in ui_payload:
+                    hw_snapshot = coord.get_cached_hardware_status()
+                    if hw_snapshot:
+                        ui_payload["hardware_status"] = hw_snapshot
+                try:
                     self.sds_queue.put_nowait(("hft_rich_update", ui_payload))
                 except Full:
                     pass
 
                 # AI Telemetry updates are push data, not commands to TraCI/Override
+                return
+
+            elif msg_type == "ai_hardware_cmd":
+                coord = getattr(self, "hardware_gateway_coordinator", None)
+                if coord is not None:
+                    coord.submit_task(coord.execute_ai_hardware_cmd, payload)
+                return
+
+            elif msg_type == "ai_evp_preempt":
+                coord = getattr(self, "hardware_gateway_coordinator", None)
+                if coord is not None:
+                    coord.submit_task(coord.execute_ai_evp_preempt, payload)
+                return
+
+            elif msg_type == "fenix_handover_complete":
+                coord = getattr(self, "hardware_gateway_coordinator", None)
+                if coord is not None:
+                    coord.handle_fenix_handover_complete(payload if isinstance(payload, dict) else {})
+                else:
+                    fenix_q = getattr(self, "fenix_queue", None)
+                    if fenix_q is not None:
+                        try:
+                            fenix_q.put_nowait(("HANDOVER_COMPLETE", payload if isinstance(payload, dict) else {}))
+                        except Exception:
+                            pass
                 return
 
             elif msg_type == "system" and payload == "backend_ready":

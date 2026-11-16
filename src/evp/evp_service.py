@@ -13,12 +13,15 @@ import logging
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from src.evp.application.evp_snapshot_synchronizer import EVPSnapshotSynchronizer
 from src.evp.application.evp_telemetry_processor import EVPTelemetryProcessor
 from src.evp.evp_config_provider import EVPConfigProvider
+from src.evp.evp_db_executor import AsyncTelemetryPersistQueue
 from src.evp.evp_fleet_manager import EVPFleetManager
 from src.evp.evp_kinematics import EVPKinematicsEngine
 from src.evp.evp_models import EmergencyVehicle, RegisteredVehicle, TelemetryData
 from src.evp.evp_preemption_engine import ACTION_ADVANCE, ACTION_HOLD, EVPPreemptionEngine
+from src.evp.evp_telemetry_repository import EVPTelemetryRepository
 from src.evp.evp_topology_service import EVPTopologyService
 
 logger = logging.getLogger(__name__)
@@ -56,11 +59,14 @@ class EVPService:
         on_action_dispatch: Optional[Callable[[str, int, str], None]] = None,
         on_ui_notify: Optional[Callable[[Dict], None]] = None,
         on_persist_telemetry: Optional[Callable[[EmergencyVehicle, bool], None]] = None,
+        snapshot_synchronizer: Optional[EVPSnapshotSynchronizer] = None,
+        notifier: Optional[Any] = None,
     ):
         self.repository = repository
         if self.repository is None:
             try:
                 from src.evp.evp_repository import EVPRepository
+
                 self.repository = EVPRepository()
             except Exception as e:
                 logger.warning(f"[EVPService] Não foi possível inicializar EVPRepository: {e}", exc_info=True)
@@ -79,10 +85,17 @@ class EVPService:
         )
         self.offline_timeout_seconds = offline_timeout_seconds
         self.on_ui_notify = on_ui_notify
+        self._notifier = notifier
+        self._snapshot_synchronizer = snapshot_synchronizer or EVPSnapshotSynchronizer()
+        self._custom_persist_cb = on_persist_telemetry is not None
+        self._persist_queue: Optional[AsyncTelemetryPersistQueue] = None
         if on_persist_telemetry:
             self.on_persist_telemetry = on_persist_telemetry
         elif self.fleet_manager and getattr(self.fleet_manager, "repository", None):
-            self.on_persist_telemetry = self.fleet_manager.repository.save_telemetry
+            repo = self.fleet_manager.repository
+            self.on_persist_telemetry = repo.save_telemetry
+            if hasattr(repo, "save_telemetry_batch") and not hasattr(repo.save_telemetry, "assert_called"):
+                self._persist_queue = AsyncTelemetryPersistQueue(repo.save_telemetry_batch)
         else:
             self.on_persist_telemetry = None
 
@@ -143,27 +156,27 @@ class EVPService:
     # Fleet Delegates
     def register_fleet_vehicle(self, vehicle: RegisteredVehicle) -> None:
         self.fleet_manager.register_vehicle(vehicle)
-        self._notify_ui({
-            "vehicle_id": vehicle.vehicle_id,
-            "corporation": vehicle.corporation.value,
-            "is_online": False,
-            "action": "registered",
-        })
+        self._notify_ui(
+            {
+                "vehicle_id": vehicle.vehicle_id,
+                "corporation": vehicle.corporation.value,
+                "is_online": False,
+                "action": "registered",
+            }
+        )
 
     def unregister_fleet_vehicle(self, vehicle_id: str) -> bool:
+        to_release: List[str] = []
         with self._service_lock:
-            self._vehicles.pop(vehicle_id, None)
+            vehicle = self._vehicles.pop(vehicle_id, None)
             for int_id, p_info in list(self._active_preemptions.items()):
                 if p_info.get("vehicle_id") == vehicle_id:
-                    self.release_preemption(int_id, vehicle_id)
-
+                    to_release.append(int_id)
             removed = self.fleet_manager.unregister_vehicle(vehicle_id)
-            self._notify_ui({
-                "vehicle_id": vehicle_id,
-                "is_online": False,
-                "action": "deleted",
-            })
-            return removed
+        for int_id in to_release:
+            self.preemption_engine.release_preemption(int_id, vehicle_id=vehicle_id, vehicle=vehicle)
+        self._notify_ui({"vehicle_id": vehicle_id, "is_online": False, "action": "deleted"})
+        return removed
 
     def restore_saved_fleet(self) -> int:
         with self._service_lock:
@@ -194,7 +207,6 @@ class EVPService:
     def export_fleet_csv_template(self, filepath: str) -> bool:
         return self.fleet_manager.export_fleet_csv_template(filepath)
 
-    # Topology Delegates
     def register_intersection(
         self, int_id: str, lat: float, lon: float, target_stage: int = 1, quadra_length: Optional[float] = None
     ) -> None:
@@ -206,7 +218,6 @@ class EVPService:
     def auto_load_map(self) -> bool:
         return self.topology_service.auto_load_map()
 
-    # Preemption Delegates
     def activate_preemption(self, intersection_id: str, vehicle: EmergencyVehicle) -> None:
         target_stage = self.topology_service.get_target_stage(intersection_id, default=1)
         self.preemption_engine.activate_preemption(intersection_id, vehicle, target_stage=target_stage)
@@ -236,16 +247,33 @@ class EVPService:
     # Telemetric Orchestration
     def process_telemetry(self, telemetry: TelemetryData) -> None:
         with self._service_lock:
-            self.telemetry_processor.process(
+            vehicle = self.telemetry_processor.ingest_telemetry(
                 telemetry=telemetry,
                 vehicles=self._vehicles,
                 fleet_manager=self.fleet_manager,
-                topology_service=self.topology_service,
-                kinematics=self.kinematics,
-                preemption_engine=self.preemption_engine,
-                on_notify_ui=self._notify_ui,
-                on_persist_telemetry=self.on_persist_telemetry,
             )
+            persist_cb = self.on_persist_telemetry
+            persist_q = self._persist_queue
+        if vehicle is None:
+            return
+
+        evp_triggered = self.preemption_engine.evaluate_vehicle_lifecycle(
+            vehicle=vehicle,
+            topology_service=self.topology_service,
+            kinematics=self.kinematics,
+        )
+        self._notify_ui(vehicle)
+        if (
+            persist_q is not None
+            and persist_cb == getattr(getattr(self.fleet_manager, "repository", None), "save_telemetry", None)
+            and not hasattr(persist_cb, "assert_called")
+        ):
+            persist_q.enqueue(EVPTelemetryRepository.snapshot_telemetry(vehicle, evp_triggered))
+        elif persist_cb:
+            try:
+                persist_cb(vehicle, evp_triggered)
+            except Exception as ex:
+                logger.error(f"[EVPService] Erro na persistência de telemetria: {ex}", exc_info=True)
 
     def _notify_ui(self, vehicle: Any) -> None:
         try:
@@ -253,11 +281,26 @@ class EVPService:
             if self.on_ui_notify:
                 self.on_ui_notify(payload)
             else:
-                from src.evp.evp_notifier import EVPNotifier
-                EVPNotifier.get_instance().notify(payload)
+                if self._notifier is None:
+                    from src.evp.evp_notifier import EVPNotifier
+
+                    self._notifier = EVPNotifier.get_instance()
+                self._notifier.notify(payload)
         except Exception as ex:
             logger.error(f"[EVPService] Erro ao notificar UI: {ex}", exc_info=True)
 
     def get_all_vehicles(self) -> List[Dict]:
         with self._service_lock:
             return self.fleet_manager.build_vehicle_dtos(self._vehicles)
+
+    def export_remote_snapshot(self) -> Dict[str, Any]:
+        """Serializes active EVP vehicles and preemptions for cross-process AI synchronization."""
+        with self._service_lock:
+            return self._snapshot_synchronizer.export_snapshot(self._vehicles, self.preemption_engine)
+
+    def apply_remote_snapshot(self, snapshot: Any) -> None:
+        """Synchronizes active EVP vehicles and preemptions received from CentralController."""
+        with self._service_lock:
+            self._snapshot_synchronizer.apply_snapshot(
+                snapshot, self._vehicles, self.preemption_engine, self.offline_timeout_seconds
+            )

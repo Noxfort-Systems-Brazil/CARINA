@@ -49,7 +49,7 @@ Onde:
 A suíte analítica do MFD é composta por 35 módulos especializados em [`src/mfd/`](../../src/mfd):
 
 ### 3.1 Processo MFD Worker (`mfd_worker.py`)
-Executa como um processo de sistema operacional isolado inicializado pelo `ProcessManager`. Escuta a fila IPC `mfd_trigger`, realiza regressões macroscópicas e retorna os resultados na fila `mfd_results`.
+Executa como um processo de sistema operacional isolado inicializado pelo `ProcessManager` com `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1` e `OPENBLAS_NUM_THREADS=1`. Escuta a fila IPC `mfd_trigger`, realiza o parse de malhas SUMO através do cache LRU [`read_sumo_net_cached()`](../../src/utils/sumo_net_cache.py), renderiza curvas offscreen via [`mpl_utils.py`](../../src/rendering/mpl_utils.py), executa a narração SLM sob [`slm_process_lock()`](../../src/slm/slm_lock.py) com `unload()` explícito e retorna os resultados na fila `mfd_results`.
 
 ### 3.2 Motor de Comparação & Gerenciador de Linha de Base (`mfd_comparison_engine.py` & `mfd_baseline_manager.py`)
 - Compara continuamente o fluxo da IA adaptativa em tempo real com curvas de referência de planos de tempo fixo.

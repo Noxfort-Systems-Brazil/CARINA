@@ -12,6 +12,7 @@ from agents.local_agent import LocalAgent
 from core.enums import Maturity
 from manager.agent_checkpoint_repository import AgentCheckpointRepository
 from utils.paths import get_base_output_dir
+from utils.sumo_net_cache import read_sumo_net_cached
 
 
 class AgentPopulationLoader:
@@ -57,8 +58,8 @@ class AgentPopulationLoader:
         state_extractor.load_topology(map_path)
 
         try:
-            # 2. Network Reading via Sumolib
-            net = sumolib.net.readNet(map_path, withPrograms=True, withInternal=False)
+            # 2. Network Reading via Sumolib (cached if already parsed by StateExtractor)
+            net = read_sumo_net_cached(map_path, reader_fn=sumolib.net.readNet, with_programs=True, with_internal=False)
             tls_list = net.getTrafficLights()
 
             # 2.1 Dynamic Maturity Auto-Pacing (if enabled in settings)

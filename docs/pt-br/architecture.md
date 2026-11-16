@@ -13,23 +13,24 @@ Este documento especifica a arquitetura interna de engenharia do ecossistema CAR
 
 ## 1. Modelo de Concorrência de Microsserviços Multiprocesso
 
-O Global Interpreter Lock (GIL) do Python impede inferência de IA intensiva em CPU e operações pesadas de I/O em verdadeiro paralelismo multithread. Para garantir latência de atuação em sub-milissegundos, o CARINA implementa um **modelo de microsserviços multiprocesso** orquestrado por [`carina.py`](../../carina.py) e [`src/launcher/process_manager.py`](../../src/launcher/process_manager.py), combinado com um **Gateway Industrial de Hardware & Web em Go** (`bin/carina-go`):
+O Global Interpreter Lock (GIL) do Python impede inferência de IA intensiva em CPU e operações pesadas de I/O em verdadeiro paralelismo multithread. Para garantir latência de atuação em sub-milissegundos, o CARINA implementa um **modelo de microsserviços multiprocesso** orquestrado por [`carina.py`](../../carina.py) e [`src/launcher/process_manager.py`](../../src/launcher/process_manager.py) (modularizado com [`backend_service_registry.py`](../../src/launcher/backend_service_registry.py), [`fenix_supervision_loop.py`](../../src/launcher/fenix_supervision_loop.py) e [`worker_entrypoints.py`](../../src/launcher/worker_entrypoints.py)), combinado com um **Gateway Industrial de Hardware & Web em Go** (`bin/carina-go`) de propriedade exclusiva do `CentralController` (`CARINA_GATEWAY_ROLE=owner`):
 
 ```mermaid
 graph TD
-    Launcher[carina.py / Bandeja de Sistema] -->|Inicializa e Monitora| PM[ProcessManager]
+    Launcher[carina.py / Bandeja de Sistema - remote] -->|Inicializa e Monitora| PM[ProcessManager]
 
-    PM --> CC[1. Processo CentralController]
-    PM --> AI[2. Motor AI_Process]
+    PM --> CC[1. Processo CentralController - owner]
+    PM --> AI[2. Motor AI_Process - remote]
     PM --> WD[3. Processo Watchdog]
-    PM --> SDS[4. DashboardService SDS]
+    PM --> SDS[4. DashboardService SDS - remote]
     PM --> SAS[5. AnalysisService SAS]
     PM --> DB[6. StepDecisionWorker & DatabaseWorker]
     PM --> XAI[7. XAI_Worker LLM]
     PM --> MFD[8. Motor MFD_Worker]
 
-    CC <-->|IPC Pipe| AI
-    CC -->|Fila wd (Heartbeats)| WD
+    CC <-->|ThreadSafePipeConnection| AI
+    CC -->|Fila wd Heartbeats| WD
+    WD -->|Fila fenix| PM
     AI -->|Fila db| DB
     CC -->|Fila sds| SDS
     CC -->|Fila sas| SAS
@@ -39,11 +40,17 @@ graph TD
     XAI -->|Logs HFT em Disco| AI
 
     CC <-->|Tubo Anônimo Stdin/Stdout NDJSON| GW[Go Gateway carina-go]
-    GW --> NTCIP[Controladores NTCIP / UTMC UDP 161]
-    GW --> WebGW[Go Web Gateway Porta 2201 / Tailscale]
+    GW --> NTCIP[Controladores NTCIP 1202 / UTMC2 UDP 161]
+    GW --> WebGW[Go Web Gateway Porta 2201 / TLS / Tailscale]
     WebGW --> CCO[Videowall CCO React/TSX src_tsx]
-    WebGW <--|POST 204 Telemetria| EVP[Antenas GPS EVP Porta 8085]
+    WebGW <--|POST 204 Auth Token| EVP[Antenas GPS EVP Porta 8085 / 2201]
 ```
+
+### 1.1 Propriedade Única do Gateway (`CARINA_GATEWAY_ROLE`) & Sincronia de Hardware em Malha Fechada
+Para evitar sondagem SNMP dividida (*split-brain*), conflitos na porta `162` de traps e processos filhos `carina-go` duplicados entre workers multiprocesso:
+- **Processo Proprietário (`CARINA_GATEWAY_ROLE=owner`):** Definido estritamente dentro de [`execute_controller_process`](../../src/launcher/worker_entrypoints.py) para o `CentralController`. Inicializa o [`HardwareGatewayCoordinator`](../../src/controller/hardware_gateway_coordinator.py) (composto por `GatewayRuntimeWorker`, `HardwareCommandService`, `FenixStageDispatcher` e `TailscaleGatewayAdapter`), que detém propriedade exclusiva sobre `bin/carina-go`, conexões SNMP locais do `HardwareConnectionManager` e ingestão de telemetria do `EVPService`.
+- **Processos Espelho Remotos (`CARINA_GATEWAY_ROLE=remote`):** Definido em [`carina.py`](../../carina.py), [`src/main.py`](../../src/main.py) (`AI_Process`) e [`dashboard_worker.py`](../../src/sds/dashboard_worker.py). Os processos remotos sincronizam o status espelhado via IPC (`RemoteHardwareDriverProxy` por meio de [`remote_proxy_synchronizer.py`](../../src/drivers/remote_proxy_synchronizer.py)) e encaminham ações/preempções (`ai_hardware_cmd`, `ai_evp_preempt`, `set_hardware_connection`) através de [`ThreadSafePipeConnection`](../../src/communication/pipe_utils.py).
+- **Telemetria de Hardware em Malha Fechada (`HardwareTelemetrySynchronizer`):** Dentro do loop de IA, [`HardwareTelemetrySynchronizer`](../../src/engine/hardware_telemetry_synchronizer.py) e [`decode_stage_from_telemetry`](../../src/drivers/hardware_telemetry_decoder.py) decodificam máscaras de bits reais de NTCIP 1202 / UTMC2 (`active_greens`, `active_yellows`, `active_reds`, `current_stage`) para índices de estágio 0-based do SUMO, permitindo controle verdadeiro em malha fechada e reconciliação de handover do F.E.N.I.X.
 
 ---
 
@@ -76,32 +83,39 @@ graph TD
                           └─────────────────────────────┘
 ```
 
-### 2.1 Módulo ST-GATv2 Lite (`src/models/st_gatv2_lite.py`)
-- **Propósito:** Sincronização espacial de "Ondas Verdes" arteriais entre cruzamentos vizinhos no grafo viário urbano.
-- **Ponderação Dinâmica:** Embora a topologia física seja estática, os coeficientes dinâmicos de atenção espacial $\alpha_{ij}(t)$ são recalculados em tempo real com base nas densidades de veículos e gradientes de velocidade.
-- **Coordenação Descentralizada:** O Strategist calcula periodicamente o tensor de contexto espaço-temporal da rede e o entrega aos agentes locais e guardiões, permitindo ondas verdes emergentes sem comandos centralizados imperativos de ponto único de falha.
+### 2.1 Módulo ST-GATv2 Lite (`src/models/st_gatv2_lite.py` & `src/engine/strategic_coordinator.py`)
+- **Propósito:** Sincronização espacial de "Ondas Verdes" arteriais entre cruzamentos vizinhos no grafo viário urbano usando `TemporalConvNetLite` (`GroupNorm(1, C)` + `SiLU` + `TemporalAttentionPool`) seguido por duas camadas residuais `GATv2Conv`.
+- **Cabeças Auxiliares Online & CTDE:** Inclui uma cabeça auxiliar de previsão de próximo passo (`pred_head`) e uma cabeça de valor global cooperativo (`global_critic_head`). [`StrategicCoordinator`](../../src/engine/strategic_coordinator.py) agrega sequências de nós via chamadas não-mutantes [`StateExtractor.peek_state()`](../../src/engine/state_extractor.py) para que leituras secundárias do grafo nunca corrompam as EMAs do `HistoricalAggregator`.
+- **Coordenação Descentralizada:** O Strategist calcula periodicamente o tensor de contexto espaço-temporal da rede e o entrega aos agentes locais via gating residual tanh (`PAEStateAugmentor`), permitindo ondas verdes emergentes sem comandos centralizados de ponto único de falha.
 
-### 2.2 Autoencoder Preditivo Universal (`src/models/pae.py`)
-- **Propósito:** Motor de representação física de alta capacidade compartilhada, comprimindo dinâmicas temporais sequenciais em espaços latentes invariantes ($Z \in \mathbb{R}^{16\dots 128}$).
-- **Enriquecimento Direcionado:** Fornece representações latentes temporais compactas tanto para as decisões de política do LocalAgent quanto para a auditoria de risco de spillback do GuardianAgent.
+### 2.2 Autoencoder Preditivo Universal iTransformer Condicionado à Ação (`src/models/pae.py`)
+- **Propósito:** Modelo de mundo físico compartilhado de alta capacidade que projeta dinâmicas espaço-temporais futuras ($t + \Delta t$) entre topologias heterogêneas de cruzamentos.
+- **Arquitetura iTransformer & Incerteza:** Emprega RevIN por variável + embedding de escala `[mean, std]`, camadas encoder Transformer invertidas sobre as variáveis de sensores, pooling latente por atenção cruzada com `key_padding_mask` (`valid_dims`) para que faixas com zero-padding nunca contaminem vetores latentes, condicionamento binário à ação (`0 = ADVANCE`, `1 = KEEP`) e estimação de incerteza heteroscedástica (`decode_with_uncertainty -> (mean, log_var)`), com aquecimento opcional via `torch.compile` (`torch_compile_helper.py`).
+- **Codificação em Lote de Passagem Única:** Executado uma vez por passo de simulação em todas as interseções via [`BatchedPAEEncoder`](../../src/engine/batched_pae_encoder.py) e reutilizado no [`PPOOptimizer`](../../src/optimizer/ppo_optimizer.py) ao longo das épocas de rollout por meio de `precomputed_latents`.
 
-### 2.3 Auto-Escalonador Topológico $O(1)$ (`src/utils/topo_scaler.py`)
+### 2.3 Vetorização Tática & Segurança Distribucional do Guardião (`src/engine/`, `src/safety/`)
+- **Backbone TCN Causal Unificado (`src/models/tcn_backbone.py`):** Substitui o obsoleto `weight_norm` por `TemporalConv1d`, `GroupNorm(1, C)` causal por canal, `SiLU`, inicialização ortogonal e `TemporalAttentionPool`. `ActorCriticNet` emite logits FP32 brutos (`forward_logits`) mascarados diretamente pelo [`PhysicalActionMasker`](../../src/engine/physical_action_masker.py) (impondo entreverdes de amarelo/vermelho total, verde mínimo e verde máximo).
+- **Inferência Homogênea com `torch.vmap` (`src/engine/fleet_batch_inferencer.py`):** Agrupa `LocalAgent`s por assinatura arquitetural e executa passagens forward vetorizadas via `torch.func.stack_module_state` + `torch.vmap`, empacotando escalares em buffers NumPy na CPU (`last_cpu_decisions`) e usando GAE em NumPy no host no `PPOOptimizer`, além de `ReplayMemory` / `StateReplayMemory` residentes na CPU (`pin_memory`, cache `_max_priority` em $O(1)$, `push_batch`).
+- **Guardião QR-D3QN Calibrado & Noisy-OR (`src/safety/`):** `D3QN_TCN` modela `num_quantiles = 32` por ação binária para risco de cauda $\text{CVaR}_{0.20}$. [`GuardianPhysicsEstimator`](../../src/safety/guardian_physics_estimator.py) normaliza a saturação das vias de entrada pelas capacidades reais em veículos e projeta sobre o horizonte de entreverde $H = \text{yellow} + \text{all\_red}$; [`GuardianRiskCalibrator`](../../src/safety/guardian_risk_calibrator.py) realiza calibração logística ajustada por $F_2$-score e **fusão Noisy-OR** não-compensatória. [`GuardianShadowTrainer`](../../src/safety/guardian_shadow_trainer.py) treina o Guardião exclusivamente durante `Maturity.CHILD`, executando em seguida `freeze_for_deployment()` na graduação e persistindo `guardian_{tl_id}.pth` via [`GuardianCheckpointService`](../../src/safety/guardian_checkpoint_service.py).
+
+### 2.4 Auto-Escalonador Topológico $O(1)$ (`src/utils/topo_scaler.py`)
 - **Escalonamento Algorítmico:** Detecta automaticamente a densidade da rede ($N$ interseções) e ajusta as dimensões neurais em potências de 2 otimizadas para TensorCores NVIDIA:
   - $N \le 20 \implies \text{dim} = 32, \text{heads} = 2$
   - $20 < N \le 80 \implies \text{dim} = 64, \text{heads} = 4$
   - $80 < N \le 250 \implies \text{dim} = 128, \text{heads} = 8$ (ex: Malha Metropolitana de Londrina)
   - $N > 250 \implies \text{dim} = 256, \text{heads} = 16$ (Grandes Megalópoles)
 
-### 2.4 Aceleração Universal AMP & TensorCore
+### 2.5 Aceleração Universal AMP & TensorCore
 - Todos os passos forward de redes neurais são envelopados em `torch.amp.autocast`, habilitando aceleração nativa FP16/TF32 em TensorCores NVIDIA e restringindo o consumo total de VRAM a apenas **~20 MB** para os modelos centrais.
 
 ---
 
-## 3. Armazenamento Delta Assíncrono no PostgreSQL
+## 3. Armazenamento Delta Assíncrono & Pooling de Conexões
 
-O CARINA implementa um motor de persistência assíncrono com **Compressão Delta por Run-Length Encoding** no PostgreSQL:
+O CARINA implementa um motor de persistência assíncrono com **Compressão Delta por Run-Length Encoding** e pool de conexões thread-safe em PostgreSQL e SQLite:
 - **`step_decisions`**: Registra sugestões, vetos de segurança e cronômetros via [`StepDecisionWorker`](../../src/database/step_decision_worker.py) em filas de RAM não-bloqueantes ($< 0,001\text{ ms}$ de sobrecarga).
 - **`edge_dictionary`**: Mapeia nomes extensos de vias para inteiros de 4 bytes para indexação ultracompacta.
+- **Pool de Conexões & Pragmas (`src/database/connection_pool.py`):** Provê `PostgresConnectionPool` (`psycopg2.pool.ThreadedConnectionPool`, `minconn=1, maxconn=16`), gerenciamento determinístico de contexto `db_transaction`, tuning SQLite WAL (`busy_timeout=30000`, `synchronous=NORMAL`, `temp_store=MEMORY`, `journal_mode=WAL`), opção `enable_step_worker=False` para workers somente-leitura (`XaiWorker`), consultas parametrizadas `make_interval(...)` e expurgo automático de telemetria EVP após 168 horas.
 - **Redução de Espaço:** Redução global de **97,9% no volume de armazenamento** (~380 MB/dia para 200 cruzamentos em malha metropolitana).
 
 Para especificações detalhadas de tabelas e esquemas SQL, consulte [Arquitetura de Banco de Dados & Esquemas](database_and_schemas.md).
@@ -131,11 +145,12 @@ Em conformidade com os princípios de **Responsabilidade Única** e **Segregaç�
         └─────────────────────┘
 ```
 
-- **`SettingsSchema` (`src/settings/schema.py`):** Registro autoritativo definindo mapeamentos chave-seção, valores padrão de fallback e regras de validação de tipo.
+- **`SettingsSchema` (`src/settings/schema.py`):** Registro autoritativo definindo mapeamentos chave-seção (incluindo chaves gRPC TLS/token em `[SYNAPSE]` e chaves TLS/CORS/porta em `[REMOTE_GATEWAY]`), valores padrão de fallback e regras de validação de tipo.
 - **`IniFileStorage` (`src/settings/ini_storage.py`):** Gerencia leitura e gravação persistente no arquivo `config/settings.ini`.
-- **`DotenvSecretProvider` (`src/settings/env_provider.py`):** Resolve segredos de infraestrutura sensíveis a partir de variáveis de ambiente no `.env`.
+- **`DotenvSecretProvider` (`src/settings/env_provider.py`):** Resolve segredos de infraestrutura sensíveis a partir de variáveis de ambiente no `.env` (incluindo `CARINA_EVP_AUTH_TOKEN`, `CARINA_CCO_AUTH_TOKEN`, `CARINA_CCO_ALLOWED_ORIGIN`, `CARINA_GATEWAY_TLS_*`, `CARINA_GATEWAY_PORT` e `CARINA_TRAP_PORT`).
 - **`SettingsService` (`src/settings/service.py`):** Serviço central orquestrando recuperação, validação e serialização.
 - **`SettingsManager` (`src/utils/settings_manager.py`):** Fachada retrocompatível garantindo zero regressões em chamadas legadas.
+- **Protocolos SOLID (`src/interfaces/`):** Interfaces segregadas entre `controller.py`, `drivers.py`, `engine.py` e `repositories.py` desacoplando camadas de coordenação, gateway, driver, PAE, mascaramento de ações e persistência.
 
 ---
 
@@ -223,10 +238,11 @@ Para atingir confiabilidade industrial, determinismo de rede em sub-milissegundo
 ```
 
 ### 6.1 Propriedades Arquiteturais Centrais
-- **Zero Portas Abertas no Host:** A ligação de controle entre Python e Go roda exclusivamente através de pipes anônimos padrão do sistema operacional (`pipe(2)` nos buffers do kernel). Nenhuma porta de localhost, socket ou serviço HTTP é exposto.
-- **Fail-Safe de Segurança Atômico:** Caso o processo de IA em Python sofra uma queda abrupta, o kernel fecha o pipe. O binário em Go detecta `EOF` em `os.Stdin` em microssegundos e imediatamente dispara `EmergencyReleaseControlAll()` via SNMP, liberando remotamente as retenções de fase e devolvendo os controladores para seus planos locais fixos.
-- **Zero Contenção de GIL:** Goroutines executam sondagem concorrente, heartbeats de keepalive a cada 2,0s e escuta de traps UDP 162 de forma totalmente independente das operações tensoriais pesadas do PyTorch em Python.
-- **Adaptador Transparente (`GoTrafficDriverProxy`):** Adere ao Princípio de Substituição de Liskov (LSP) implementando `BaseTrafficDriver`, tornando o gateway Go 100% transparente para todo o restante da base de código do CARINA.
+- **Propriedade em Processo Único & Zero Portas de Controle Locais:** Apenas o `CentralController` (`CARINA_GATEWAY_ROLE=owner`) inicializa `bin/carina-go`. A ligação de controle entre Python e Go opera estritamente via pipes anônimos do sistema operacional (`pipe(2)` NDJSON `stdin`/`stdout`), enquanto `AI_Process` e `UI` espelham o estado por meio de [`RemoteHardwareDriverProxy`](../../src/drivers/remote_hardware_driver.py).
+- **NTCIP 1202, UTMC2 & SNMPv3 USM:** Implementa OIDs canônicos NTCIP 1202 (`.4.1.*` status / `.5.1.*` controle), OIDs UTMC2 de demanda/estágio, decodificação de inteiros e octet-strings `GetBitmask` (`src_go/pkg/snmp/codec.go`), SNMPv3 USM completo (`NoAuthNoPriv`, `AuthNoPriv`, `AuthPriv`) e sobrescritas de OIDs por interseção via `config_path` persistidas em `hardware_controller_connections.snmp_config` e planilhas CSV.
+- **Decodificador Binário de Traps SNMP & Guarda de Entreverdes:** [`snmp_decoder.go`](../../src_go/pkg/traplistener/snmp_decoder.go) decodifica Traps e Informs binários SNMPv1/v2c/v3, enquanto [`HardwareStageActuator`](../../src/drivers/hardware_stage_actuator.py) ignora retenções conflitantes durante intervalos de entreverdes amarelo/vermelho total.
+- **Fail-Safe Atômico & Recuperação:** Em `EOF`/`SIGPIPE`, o Go invoca `ShutdownAll()` via SNMP; durante timeouts de execução do Watchdog, `EmergencyReleaseControlAll()` pausa os heartbeats e libera as retenções mantendo drivers/trap listener ativos para que `resume_control` (`ResumeControlAll()`) recupere a operação sem reconectar sockets.
+- **Adaptador Transparente (`GoTrafficDriverProxy` & `RemoteHardwareDriverProxy`):** Ambos os proxies locais e remotos implementam `BaseTrafficDriver` (LSP), mantendo a orquestração de hardware transparente para `ActionSupervisor` e `StepProcessor`.
 
 ---
 
@@ -255,15 +271,15 @@ O CARINA integra o subsistema **F.E.N.I.X.** (Fault-tolerant Engine for Networke
                                       ┌─────────────────────────┐
                                       │     StateReconciler     │
                                       │- Telemetria FROZEN_SYNC │
-                                      │- Handshake de fronteira │
+                                      │- FenixStageDispatcher   │
                                       │- Transição sem colisões │
                                       └─────────────────────────┘
 ```
 
-- **`FenixSupervisor` (`src/fenix/fenix_supervisor.py`):** Coordena encerramento de processos, backoff de recuperação, ressurreição de filhos e reconciliação de estado.
+- **`FenixSupervisor` (`src/fenix/fenix_supervisor.py`) & `fenix_supervision_loop.py`:** Coordena encerramento de processos, backoff de recuperação, ressurreição de filhos e confirmação `HANDOVER_COMPLETE`.
 - **`WindowedCrashRecoveryPolicy` (`src/fenix/recovery_policy.py`):** Computa backoffs exponenciais e impõe limites de reinício para prevenir tempestades de reinicializações cíclicas.
 - **`SubprocessRunner` (`src/fenix/process_runner.py`):** Gerenciamento de baixo nível garantindo isolamento determinístico de processos e encerramento limpo via SIGTERM com fallback para SIGKILL.
-- **`StateReconciler` (`src/fenix/state_reconciler.py`):** Garante que o motor de IA ressuscitado opere em modo `FROZEN_SYNC` e só assuma controle da atuação semafórica em fronteiras limpas de estágio, quando os controladores de rua transitam naturalmente de ciclo.
+- **`StateReconciler` (`src/fenix/state_reconciler.py`) & `FenixStageDispatcher` (`src/controller/fenix_stage_dispatcher.py`):** Mantém o motor de IA ressuscitado em modo `FROZEN_SYNC`, consulta os estágios reais dos controladores via `HardwareTelemetryDecoder` e dispara `fenix_post_resurrection` -> `fenix_handover_complete` apenas em fronteiras de fase livres de colisão.
 
 ---
 
@@ -343,17 +359,19 @@ Para especificações técnicas completas, consulte [Preempção de Veículos de
 
 ---
 
-## 12. Arquitetura Web da Central de Controle Operacional (CCO) (`src_go/web_gateway/`, `src_tsx/src_cco/`)
+## 12. Arquitetura Web da Central de Controle Operacional (CCO) & Segurança de Transporte (`src_go/web_gateway/`, `src_tsx/src_cco/`)
 
-O CARINA disponibiliza uma central de operações web para videowalls municipais e monitoramento remoto:
-- **`WebGatewayServer` (`src_go/web_gateway/server.go`):** Servidor HTTP Go embutido rodando na porta 2201 fornecendo streaming de eventos via SSE (`/cco/stream`), endpoints de topologia (`/cco/topology`) e tunelamento criptografado via Tailscale Funnel.
-- **`Aplicação Web CCO` (`src_tsx/src_cco/`):** Dashboard moderno em React 18, TypeScript, Tailwind CSS, renderizador de camadas vetoriais SVG e Apache ECharts exibindo posições de veículos em tempo real, tempos semafóricos e alertas de preempção.
+O CARINA disponibiliza uma central de operações web segura para videowalls municipais e monitoramento remoto:
+- **`WebGatewayServer` (`src_go/web_gateway/server.go`, `auth.go`):** Servidor HTTP/HTTPS em Go embutido rodando na porta 2201 (`CARINA_GATEWAY_PORT`). Assume `gateway_enabled=False` por padrão (retornando `503 Service Unavailable` até ser habilitado), impõe autenticação em tempo constante por token Bearer/header (`CARINA_CCO_AUTH_TOKEN`, `CARINA_EVP_AUTH_TOKEN`), origens CORS explícitas (`CARINA_CCO_ALLOWED_ORIGIN`), terminação TLS (`CARINA_GATEWAY_TLS_CERT`/`KEY`), streaming SSE (`/cco/stream`), endpoints de topologia (`/cco/topology`) e tunelamento via Tailscale Funnel.
+- **`CCOBroadcastClient` (`src/sds/cco_broadcast_client.py`, `cco_tls_transport.py`):** Publicador não-bloqueante *latest-wins* que encaminha atualizações do SDS para `/cco/broadcast` com autenticação `X-CCO-Token`, verificação TLS de CA e pinning opcional de certificado folha SHA-256 (`PinnedHTTPSConnection`).
+- **`Segurança Synapse gRPC` (`src/communication/grpc_security.py`):** Suporta TLS/mTLS (`CARINA_GRPC_TLS_ENABLED`, `CARINA_GRPC_REQUIRE_CLIENT_CERT`) e `BearerTokenServerInterceptor` (`CARINA_GRPC_AUTH_TOKEN`) na porta `:50051`.
+- **`Aplicação Web CCO` (`src_tsx/src_cco/`):** Dashboard moderno em React 18, TypeScript, Tailwind CSS, renderizador de camadas vetoriais SVG e Apache ECharts com animações CSS exclusivas no compositor (`transform`/`opacity`), referências de pan/zoom guiadas por `requestAnimationFrame`, diffing de view-model por igualdade rasa e pausa de temporizadores quando `document.hidden` é verdadeiro.
 
 ---
 
 <div align="center">
   <img src="../assets/noxfort-logo.png" alt="Noxfort Systems Logo" width="45" /><br/>
   <b>Noxfort Systems</b> — <i>A State Of Art Company</i><br/>
-  <i>Engenharia de Mobilidade Inteligente • CARINA CORE v1.2.0</i><br/>
+  <i>Controlled Artificial Road-traffic Intelligence Network Architecture • CARINA CORE v1.2.0</i><br/>
   <small>© 2026 Noxfort Systems. Licenciado sob AGPLv3 ou posterior (SPDX: <code>AGPL-3.0-or-later</code>).</small>
 </div>

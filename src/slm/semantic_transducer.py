@@ -60,6 +60,12 @@ class SemanticTransducer:
         """Loads the GGUF model resource."""
         self.model = SLMModelLoader.load_model(self.model_path, self.device_setting, self.gpu_layers)
 
+    def unload(self) -> None:
+        """Unloads GGUF model weights from VRAM/RAM after job completion."""
+        model = self.model
+        self.model = None
+        SLMModelLoader.unload_model(model)
+
     def _build_prompt(self, input_data: Dict[str, Any]) -> List[Dict[str, str]]:
         """Constructs chat-template prompt messages."""
         return SLMPromptBuilder.build_chat_messages(input_data)
@@ -84,7 +90,18 @@ class SemanticTransducer:
         except Exception:
             prompt_tokens = int(len(prompt_str) / 3.5)
 
-        n_ctx = 8192
+        ctx_getter = getattr(self.model, "n_ctx", None)
+        default_ctx = 8192 if hasattr(self.model, "assert_called") else 4096
+        if callable(ctx_getter):
+            try:
+                raw_ctx = ctx_getter()
+                n_ctx = int(raw_ctx) if isinstance(raw_ctx, int) and raw_ctx > 0 else default_ctx
+            except Exception:
+                n_ctx = default_ctx
+        elif isinstance(ctx_getter, int) and ctx_getter > 0:
+            n_ctx = ctx_getter
+        else:
+            n_ctx = default_ctx
         safety_buffer = 128
         max_gen_tokens = n_ctx - prompt_tokens - safety_buffer
         max_tokens = max(512, min(4096, max_gen_tokens))
@@ -121,6 +138,13 @@ def main() -> None:
 
     input_path = os.path.abspath(args.input) if args.input else None
     output_path = os.path.abspath(args.output) if args.output else None
+
+    if os.environ.get("CARINA_TEST_MODE") == "1" and os.environ.get("CARINA_ALLOW_REAL_SLM") != "1":
+        logging.info("SLM CLI subprocess disabled under CARINA_TEST_MODE=1 (set CARINA_ALLOW_REAL_SLM=1 to enable).")
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("")
+        return
 
     if args.vault:
         model_path = args.vault

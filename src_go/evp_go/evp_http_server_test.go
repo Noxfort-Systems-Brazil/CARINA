@@ -84,3 +84,25 @@ func TestEVPServer_StartAndStop(t *testing.T) {
 		t.Fatalf("Falha ao parar servidor: %v", err)
 	}
 }
+
+func TestEVPServer_EnvFallbackAndDynamicSetMasterToken(t *testing.T) {
+	t.Setenv("CARINA_EVP_AUTH_TOKEN", "env-evp-secret")
+	server := NewEVPServer(8085, "", nil)
+
+	body := []byte(`{"latitude": -23.55, "longitude": -46.63}`)
+	reqUnauth := httptest.NewRequest(http.MethodPost, "/amb/v1", bytes.NewBuffer(body))
+	wUnauth := httptest.NewRecorder()
+	server.handleRequest(wUnauth, reqUnauth)
+	if wUnauth.Code != http.StatusUnauthorized {
+		t.Fatalf("Esperado 401 com CARINA_EVP_AUTH_TOKEN ativo, obteve %d", wUnauth.Code)
+	}
+
+	server.SetMasterToken("rotated-secret")
+	reqAuth := httptest.NewRequest(http.MethodPost, "/amb/v1", bytes.NewBuffer(body))
+	reqAuth.Header.Set("X-EVP-Token", "rotated-secret")
+	wAuth := httptest.NewRecorder()
+	server.handleRequest(wAuth, reqAuth)
+	if wAuth.Code != http.StatusNoContent {
+		t.Fatalf("Esperado 204 após SetMasterToken, obteve %d", wAuth.Code)
+	}
+}

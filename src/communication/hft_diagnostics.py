@@ -4,25 +4,27 @@
 
 import logging
 import os
+import time
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 
 class HFTDiagnostics:
     """
     Handles logging sub-systems and metrics recording for the HFT Link.
-    This class ensures all diagnostic logic is decoupled from the main networking layer.
+    Throttles routine per-frame file writes to 1Hz window summaries with rotating logs.
     """
 
-
-class HFTDiagnostics:
-    """
-    Handles logging sub-systems and metrics recording for the HFT Link.
-    This class ensures all diagnostic logic is decoupled from the main networking layer.
-    """
-
-    def __init__(self, locale_manager=None):
+    def __init__(self, locale_manager=None, summary_interval_sec: float = 1.0):
         self.locale_manager = locale_manager
+        self._summary_interval_sec = max(0.25, float(summary_interval_sec))
+        self._last_interval_flush = 0.0
+        self._last_proc_flush = 0.0
+        self._recv_count = 0
+        self._recv_max_ms = 0.0
+        self._proc_count = 0
+        self._proc_max_ms = 0.0
         self.interval_logger = self._setup_interval_logger()
         self.diagnostics_logger = self._setup_diagnostics_logger()
 
@@ -48,7 +50,7 @@ class HFTDiagnostics:
             logger.propagate = False  # Prevent propagation to root logger (console)
 
             if not logger.handlers:
-                handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+                handler = RotatingFileHandler(log_file, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8")
                 formatter = logging.Formatter("%(message)s")
                 handler.setFormatter(formatter)
                 logger.addHandler(handler)
@@ -60,8 +62,9 @@ class HFTDiagnostics:
                     "hft_diagnostics.interval_setup_error",
                     default="[HFT] Failed to setup interval logger: {error}",
                     error=e,
-                )
-            , exc_info=True)
+                ),
+                exc_info=True,
+            )
             return None
 
     def _setup_diagnostics_logger(self) -> Optional[logging.Logger]:
@@ -81,7 +84,7 @@ class HFTDiagnostics:
             logger.propagate = False
 
             if not logger.handlers:
-                handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+                handler = RotatingFileHandler(log_file, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8")
                 formatter = logging.Formatter("%(message)s")
                 handler.setFormatter(formatter)
                 logger.addHandler(handler)
@@ -91,19 +94,30 @@ class HFTDiagnostics:
             logging.error(
                 self._get_string(
                     "hft_diagnostics.setup_error", default="[HFT] Failed to setup diagnostics logger: {error}", error=e
-                )
-            , exc_info=True)
+                ),
+                exc_info=True,
+            )
             return None
 
     def log_recv_delta(self, current_recv_time: float, delta_ms: float, queue_depth: int):
-        """Logs the time taken to receive a frame from Synapse along with diagnostics info."""
-        if self.interval_logger:
+        """Logs throttled inter-arrival telemetry and immediate high-delay warnings."""
+        self._recv_count += 1
+        if delta_ms > self._recv_max_ms:
+            self._recv_max_ms = delta_ms
+        now = time.monotonic()
+        if (now - self._last_interval_flush) >= self._summary_interval_sec:
             ts_str = datetime.fromtimestamp(current_recv_time).strftime("%H:%M:%S.%f")[:-3]
-            self.interval_logger.info(f"[{ts_str}] Delta: {delta_ms:.2f} ms")
-
-        if self.diagnostics_logger:
-            ts_str = datetime.fromtimestamp(current_recv_time).strftime("%H:%M:%S.%f")[:-3]
-            self.diagnostics_logger.info(f"[{ts_str}] recv_delta={delta_ms:.1f}ms | queue_depth={queue_depth}")
+            if self.interval_logger:
+                self.interval_logger.info(
+                    f"[{ts_str}] Delta: {delta_ms:.2f} ms (max={self._recv_max_ms:.2f}ms, n={self._recv_count})"
+                )
+            if self.diagnostics_logger:
+                self.diagnostics_logger.info(
+                    f"[{ts_str}] recv_delta={delta_ms:.1f}ms max={self._recv_max_ms:.1f}ms | queue_depth={queue_depth}"
+                )
+            self._last_interval_flush = now
+            self._recv_count = 0
+            self._recv_max_ms = 0.0
 
         if delta_ms > 300000:
             logging.warning(
@@ -115,10 +129,20 @@ class HFTDiagnostics:
             )
 
     def log_processing(self, recv_time: float, proc_delta_ms: float, queue_depth: int, backpressure_threshold: int):
-        """Logs internal controller processing performance and backpressure warnings."""
-        if self.diagnostics_logger:
-            ts_str = datetime.fromtimestamp(recv_time).strftime("%H:%M:%S.%f")[:-3]
-            self.diagnostics_logger.info(f"[{ts_str}] proc_delta={proc_delta_ms:.1f}ms | queue_depth={queue_depth}")
+        """Logs throttled controller processing diagnostics and immediate SLA warnings."""
+        self._proc_count += 1
+        if proc_delta_ms > self._proc_max_ms:
+            self._proc_max_ms = proc_delta_ms
+        now = time.monotonic()
+        if (now - self._last_proc_flush) >= self._summary_interval_sec:
+            if self.diagnostics_logger:
+                ts_str = datetime.fromtimestamp(recv_time).strftime("%H:%M:%S.%f")[:-3]
+                self.diagnostics_logger.info(
+                    f"[{ts_str}] proc_delta={proc_delta_ms:.1f}ms max={self._proc_max_ms:.1f}ms n={self._proc_count} | queue_depth={queue_depth}"
+                )
+            self._last_proc_flush = now
+            self._proc_count = 0
+            self._proc_max_ms = 0.0
 
         if queue_depth > backpressure_threshold:
             logging.warning(

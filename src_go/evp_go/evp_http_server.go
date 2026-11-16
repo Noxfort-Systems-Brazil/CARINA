@@ -6,11 +6,13 @@ package evp_go
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +38,8 @@ type EVPServer struct {
 	mu          sync.RWMutex
 	port        int
 	masterToken string
+	tlsCertFile string
+	tlsKeyFile  string
 	server      *http.Server
 	callback    TelemetryCallback
 	isRunning   bool
@@ -46,11 +50,39 @@ func NewEVPServer(port int, masterToken string, callback TelemetryCallback) *EVP
 	if port <= 0 {
 		port = 8085
 	}
+	resolvedToken := strings.TrimSpace(masterToken)
+	if resolvedToken == "" {
+		resolvedToken = strings.TrimSpace(os.Getenv("CARINA_EVP_AUTH_TOKEN"))
+	}
 	return &EVPServer{
 		port:        port,
-		masterToken: strings.TrimSpace(masterToken),
+		masterToken: resolvedToken,
+		tlsCertFile: strings.TrimSpace(os.Getenv("CARINA_GATEWAY_TLS_CERT")),
+		tlsKeyFile:  strings.TrimSpace(os.Getenv("CARINA_GATEWAY_TLS_KEY")),
 		callback:    callback,
 	}
+}
+
+// SetMasterToken dynamically updates the bearer/header token expected on POST telemetry calls.
+func (s *EVPServer) SetMasterToken(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.masterToken = strings.TrimSpace(token)
+}
+
+// getMasterToken returns the currently active master token safely.
+func (s *EVPServer) getMasterToken() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.masterToken
+}
+
+// SetTLSConfig sets optional TLS certificate paths before Start().
+func (s *EVPServer) SetTLSConfig(certFile, keyFile string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tlsCertFile = strings.TrimSpace(certFile)
+	s.tlsKeyFile = strings.TrimSpace(keyFile)
 }
 
 // Start begins listening in background.
@@ -70,12 +102,20 @@ func (s *EVPServer) Start() error {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
+	certFile := s.tlsCertFile
+	keyFile := s.tlsKeyFile
 	s.isRunning = true
 	s.mu.Unlock()
 
 	go func() {
-		log.Printf("[EVP-Go] 📡 Servidor de Ingestão EVP ouvindo na porta %d (somente recebimento)...", s.port)
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("[EVP-Go] 📡 Servidor de Ingestão EVP ouvindo na porta %d (tls=%v)...", s.port, certFile != "" && keyFile != "")
+		var err error
+		if certFile != "" && keyFile != "" {
+			err = s.server.ListenAndServeTLS(certFile, keyFile)
+		} else {
+			err = s.server.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			log.Printf("[EVP-Go] Erro no servidor HTTP: %v", err)
 		}
 	}()
@@ -116,18 +156,18 @@ func (s *EVPServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Token Security Validation (if masterToken is configured)
-	if s.masterToken != "" {
-		authHeader := r.Header.Get("Authorization")
-		customToken := r.Header.Get("X-EVP-Token")
+	if expectedToken := s.getMasterToken(); expectedToken != "" {
+		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+		customToken := strings.TrimSpace(r.Header.Get("X-EVP-Token"))
 
 		tokenReceived := ""
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			tokenReceived = strings.TrimPrefix(authHeader, "Bearer ")
+		if len(authHeader) > 7 && strings.EqualFold(authHeader[:7], "Bearer ") {
+			tokenReceived = strings.TrimSpace(authHeader[7:])
 		} else if customToken != "" {
 			tokenReceived = customToken
 		}
 
-		if strings.TrimSpace(tokenReceived) != s.masterToken {
+		if subtle.ConstantTimeCompare([]byte(tokenReceived), []byte(expectedToken)) != 1 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

@@ -45,10 +45,11 @@ Localizado em `src/blocks/markdown_to_docx.py`:
 - Realiza o parse de títulos hierárquicos (`#`, `##`, `###`), listas numeradas/não-ordenadas, citações e caixas de destaque.
 - Aplica estilos tipográficos formais (família tipográfica: *Arial*, tamanhos padronizados, espaçamento entrelinhas 1,5 e recuos de parágrafo ABNT).
 
-### 2.3 Sanitizadores Semânticos (`report_semantic_cleaner.py`)
-Localizado em `src/blocks/report_semantic_cleaner.py`:
+### 2.3 Sanitizadores Semânticos & Formatação com Cache (`report_semantic_cleaner.py` & `report_number_formatter.py`)
+Localizado em [`src/blocks/report_semantic_cleaner.py`](../../src/blocks/report_semantic_cleaner.py) e [`src/blocks/report_number_formatter.py`](../../src/blocks/report_number_formatter.py):
 - Remove alucinações de LLMs, tokens residuais ou tags de código bruto antes da montagem final.
-- Garante consistência numérica e formata separadores decimais localizados (ex.: vírgula `,` para `pt_BR`, ponto `.` para `en_US`).
+- Utiliza cache de configuração validado via `stat` em `ReportNumberFormatter` para formatar unidades (`metros`, `segundos`) e separadores decimais/de milhar localizados (ex.: vírgula `,` para `pt_BR`, ponto `.` para `en_US`) sem re-parsear `settings.ini` a cada célula.
+- Coordena a síntese de narrativas por LLM offline entre `XAI_Worker`, `MFD_Worker` e `AnalysisService` sob [`slm_process_lock()`](../../src/slm/slm_lock.py) (`slm_gguf.lock`) com descarregamento determinístico do modelo via `ReportTransducerFactory.release_transducer()`.
 
 ---
 

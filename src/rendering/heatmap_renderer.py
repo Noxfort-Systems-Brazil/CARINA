@@ -2,8 +2,6 @@
 # SPDX-FileCopyrightText: 2026 Noxfort Systems
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import base64
-import io
 import logging
 import threading
 from typing import TYPE_CHECKING
@@ -12,7 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
-import matplotlib.pyplot as plt
+from rendering.mpl_utils import close_offscreen_figure, create_offscreen_figure, render_figure_to_base64
 
 
 class HeatmapRenderer:
@@ -55,74 +53,71 @@ class HeatmapRenderer:
             nodes, edges = map_data
 
             # Use smaller figure for higher speed
-            fig, ax = plt.subplots(figsize=(4.0, 2.4), dpi=80)  # Reduced size and DPI for speed
+            fig, ax = create_offscreen_figure((4.0, 2.4), dpi=80)  # Reduced size and DPI for speed
+            try:
+                threshold = max(saturation_threshold, 1.0)
 
-            cmap = plt.get_cmap("viridis")  # Use more precise colormap to represent data
+                # Optimization: only process edges with congestion data
+                congestion_edges = {k for k in congestion_data.keys()}
 
-            threshold = max(saturation_threshold, 1.0)
+                for edge in edges:
+                    edge_id = edge.get("id", "")
 
-            # Optimization: only process edges with congestion data
-            congestion_edges = {k for k in congestion_data.keys()}
+                    # Only process edges with congestion data
+                    if edge_id not in congestion_edges:
+                        continue
 
-            for edge in edges:
-                edge_id = edge.get("id", "")
+                    congestion_index = congestion_data.get(edge_id, 0.0)
 
-                # Only process edges with congestion data
-                if edge_id not in congestion_edges:
-                    continue
+                    # Use the new improved function to get more precise colors
+                    rgb_color = self.get_enhanced_color_for_congestion(congestion_index, threshold)
+                    color = rgb_color
 
-                congestion_index = congestion_data.get(edge_id, 0.0)
+                    shape = edge["shape"]
+                    if len(shape) < 2:
+                        continue
 
-                # Use the new improved function to get more precise colors
-                rgb_color = self.get_enhanced_color_for_congestion(congestion_index, threshold)
-                color = rgb_color
+                    x_coords, y_coords = zip(*shape)
 
-                shape = edge["shape"]
-                if len(shape) < 2:
-                    continue
+                    # Reduce width and quality for higher speed
+                    ax.plot(
+                        x_coords,
+                        y_coords,
+                        color=color,
+                        linewidth=1.5,  # Linewidth reduzido
+                        zorder=1,
+                        solid_capstyle="round",
+                        antialiased=False,  # Disable anti-aliasing for speed
+                    )
 
-                x_coords, y_coords = zip(*shape)
+                # Draw nodes if they exist, with reduced size
+                if nodes:
+                    node_x = [n["x"] for n in nodes.values() if "x" in n and "y" in n]
+                    node_y = [n["y"] for n in nodes.values() if "x" in n and "y" in n]
+                    if node_x and node_y:
+                        ax.scatter(
+                            node_x, node_y, s=5, color="#808080", zorder=2, alpha=0.7
+                        )  # Reduced size and opacity
 
-                # Reduce width and quality for higher speed
-                ax.plot(
-                    x_coords,
-                    y_coords,
-                    color=color,
-                    linewidth=1.5,  # Linewidth reduzido
-                    zorder=1,
-                    solid_capstyle="round",
-                    antialiased=False,  # Disable anti-aliasing for speed
+                ax.set_aspect("equal", adjustable="box")
+                # Remove axes for speed
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.axis("off")
+                ax.set_facecolor("#F7F7F7")
+
+                image_base64 = render_figure_to_base64(
+                    fig,
+                    close_fig=False,
+                    format="png",
+                    dpi=80,
+                    facecolor=ax.get_facecolor(),
+                    bbox_inches="tight",
+                    pad_inches=0.02,
+                    edgecolor="none",
                 )
-
-            # Draw nodes if they exist, with reduced size
-            if nodes:
-                node_x = [n["x"] for n in nodes.values() if "x" in n and "y" in n]
-                node_y = [n["y"] for n in nodes.values() if "x" in n and "y" in n]
-                if node_x and node_y:
-                    ax.scatter(node_x, node_y, s=5, color="#808080", zorder=2, alpha=0.7)  # Reduced size and opacity
-
-            ax.set_aspect("equal", adjustable="box")
-            # Remove axes for speed
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.axis("off")
-            ax.set_facecolor("#F7F7F7")
-
-            buf = io.BytesIO()
-            # Save with optimized settings for speed
-            plt.savefig(
-                buf,
-                format="png",
-                dpi=80,
-                facecolor=ax.get_facecolor(),
-                bbox_inches="tight",
-                pad_inches=0.02,
-                edgecolor="none",
-            )
-            plt.close(fig)
-            buf.seek(0)
-
-            image_base64 = base64.b64encode(buf.read()).decode("utf-8")
+            finally:
+                close_offscreen_figure(fig)
 
             # Store in cache
             with self._cache_lock:

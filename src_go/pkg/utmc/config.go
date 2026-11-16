@@ -17,6 +17,7 @@ import (
 type StageControlConfig struct {
 	Hold     string `json:"hold"`
 	ForceOff string `json:"force_off"`
+	Demand   string `json:"demand"`
 	Omit     string `json:"omit"`
 	Extend   string `json:"extend"`
 }
@@ -38,9 +39,10 @@ type SystemConfig struct {
 
 // Config encapsulates the complete UTMC2 schema loaded from JSON.
 type Config struct {
-	StageControl StageControlConfig `json:"stage_control"`
-	Telemetry    TelemetryConfig    `json:"telemetry"`
-	System       SystemConfig       `json:"system"`
+	StageControl   StageControlConfig `json:"stage_control"`
+	Telemetry      TelemetryConfig    `json:"telemetry"`
+	System         SystemConfig       `json:"system"`
+	FailsafeOmitMs int                `json:"failsafe_omit_ms,omitempty"`
 }
 
 // LoadConfig loads UTMC configuration from custom disk path or embedded defaults.
@@ -79,6 +81,10 @@ func LoadConfig(customPath string) (*Config, error) {
 	var cfg Config
 	if err = json.Unmarshal(rawData, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse UTMC JSON: %w", err)
+	}
+
+	if cfg.FailsafeOmitMs <= 0 {
+		cfg.FailsafeOmitMs = 2000
 	}
 
 	return &cfg, nil

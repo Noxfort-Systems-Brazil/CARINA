@@ -14,6 +14,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from src.database.connection_pool import db_transaction
 from src.utils.paths import get_base_output_dir, get_user_config_dir
 
 logger = logging.getLogger("AuditLogger")
@@ -81,16 +82,13 @@ class AuditLogger:
         # 2. Central Database persistence
         if self.db_engine:
             try:
-                conn = self.db_engine.get_connection() if hasattr(self.db_engine, "get_connection") else self.db_engine
-                if conn:
-                    cursor = conn.cursor()
-                    placeholder = "%s" if getattr(self.db_engine, "db_type", "sqlite") == "postgres" else "?"
-                    cursor.execute(
-                        f"INSERT INTO security_audit_logs (created_at, username, action, details) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
-                        (entry["timestamp"], entry["username"], entry["action"], entry["details"]),
-                    )
-                    if hasattr(conn, "commit"):
-                        conn.commit()
+                with db_transaction(self.db_engine, commit=True) as (conn, cursor):
+                    if conn and cursor:
+                        placeholder = "%s" if getattr(self.db_engine, "db_type", "sqlite") == "postgres" else "?"
+                        cursor.execute(
+                            f"INSERT INTO security_audit_logs (created_at, username, action, details) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+                            (entry["timestamp"], entry["username"], entry["action"], entry["details"]),
+                        )
             except Exception as dbe:
                 logger.debug(f"[DB AUDIT] Database record skipped (offline or uninitialized): {dbe}")
 
@@ -100,25 +98,24 @@ class AuditLogger:
         """Returns the most recent logs first, preferring DB and falling back to JSON."""
         if self.db_engine:
             try:
-                conn = self.db_engine.get_connection() if hasattr(self.db_engine, "get_connection") else self.db_engine
-                if conn:
-                    cursor = conn.cursor()
-                    placeholder = "%s" if getattr(self.db_engine, "db_type", "sqlite") == "postgres" else "?"
-                    cursor.execute(
-                        f"SELECT created_at, username, action, details FROM security_audit_logs ORDER BY created_at DESC LIMIT {placeholder}",
-                        (limit,),
-                    )
-                    rows = cursor.fetchall()
-                    if rows:
-                        return [
-                            {
-                                "timestamp": r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0]),
-                                "username": r[1],
-                                "action": r[2],
-                                "details": r[3] or "",
-                            }
-                            for r in rows
-                        ]
+                with db_transaction(self.db_engine, commit=False) as (conn, cursor):
+                    if conn and cursor:
+                        placeholder = "%s" if getattr(self.db_engine, "db_type", "sqlite") == "postgres" else "?"
+                        cursor.execute(
+                            f"SELECT created_at, username, action, details FROM security_audit_logs ORDER BY created_at DESC LIMIT {placeholder}",
+                            (limit,),
+                        )
+                        rows = cursor.fetchall()
+                        if rows:
+                            return [
+                                {
+                                    "timestamp": r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0]),
+                                    "username": r[1],
+                                    "action": r[2],
+                                    "details": r[3] or "",
+                                }
+                                for r in rows
+                            ]
             except Exception as dbe:
                 logger.debug(f"[DB AUDIT] Database fetch fallback to JSON: {dbe}")
 
@@ -150,4 +147,3 @@ class AuditLogger:
             self.log_action(event.username, "USER_REMOVED", f"User {event.username} deleted")
         elif hasattr(event, "username"):
             self.log_action(getattr(event, "username", "SYSTEM"), event.__class__.__name__)
-

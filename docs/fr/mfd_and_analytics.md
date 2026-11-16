@@ -49,7 +49,7 @@ Où :
 La suite analytique MFD est composée de 35 modules spécialisés dans [`src/mfd/`](../../src/mfd) :
 
 ### 3.1 Processus MFD Worker (`mfd_worker.py`)
-S'exécute comme un processus de système d'exploitation isolé généré par le `ProcessManager`. Il écoute la file IPC `mfd_trigger`, exécute des régressions macroscopiques et renvoie les résultats sur `mfd_results`.
+S'exécute comme un processus de système d'exploitation isolé généré par le `ProcessManager` avec `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1` et `OPENBLAS_NUM_THREADS=1`. Il écoute la file IPC `mfd_trigger`, analyse les réseaux SUMO via le cache LRU [`read_sumo_net_cached()`](../../src/utils/sumo_net_cache.py), restitue les courbes hors écran via [`mpl_utils.py`](../../src/rendering/mpl_utils.py), exécute la narration SLM sous [`slm_process_lock()`](../../src/slm/slm_lock.py) avec `unload()` explicite et renvoie les résultats sur `mfd_results`.
 
 ### 3.2 Moteur de Comparaison & Gestionnaire de Référence (`mfd_comparison_engine.py` & `mfd_baseline_manager.py`)
 - Compare en continu le débit adaptatif actuel de l'IA par rapport aux courbes de référence à temps fixe (*fixed-time*).

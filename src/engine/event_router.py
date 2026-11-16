@@ -64,6 +64,7 @@ class EventRouter:
                             continue
 
                         module, func, args = cmd[0], cmd[1], cmd[2]
+                        kwargs = cmd[3] if len(cmd) > 3 and isinstance(cmd[3], dict) else {}
 
                         if module == "custom" and func == "hft_step":
                             if hft_command is not None:
@@ -71,14 +72,15 @@ class EventRouter:
                             hft_command = cmd
                         else:
                             # 3. ROUTE ADMIN COMMANDS IMMEDIATELY
-                            self._execute_command(module, func, args)
+                            self._execute_command(module, func, args, kwargs=kwargs)
 
                     if dropped_frames > 0:
                         logging.debug(f"[SYNC] Drained {dropped_frames} stale frames.")
 
                     # 4. ROUTE THE LATEST HFT FRAME
                     if hft_command:
-                        self._execute_command(hft_command[0], hft_command[1], hft_command[2])
+                        hft_kwargs = hft_command[3] if len(hft_command) > 3 and isinstance(hft_command[3], dict) else {}
+                        self._execute_command(hft_command[0], hft_command[1], hft_command[2], kwargs=hft_kwargs)
 
             except (EOFError, KeyboardInterrupt, SystemExit):
                 self.trainer.is_running = False
@@ -86,8 +88,9 @@ class EventRouter:
             except Exception as e:
                 logging.error(f"Event Loop Error: {e}", exc_info=True)
 
-    def _execute_command(self, module: str, func: str, args: tuple):
+    def _execute_command(self, module: str, func: str, args: tuple, kwargs: dict = None):
         """Routes unpacked commands to the correct modules."""
+        kwargs = kwargs if isinstance(kwargs, dict) else {}
         if module == "custom" and func == "hft_step":
             if not self.trainer.agents:
                 if not hasattr(self, "_last_warn_time"):
@@ -115,16 +118,67 @@ class EventRouter:
             conn_mgr = getattr(self.trainer, "connection_manager", None)
             if not conn_mgr and hasattr(self.step_processor, "action_supervisor"):
                 conn_mgr = getattr(self.step_processor.action_supervisor, "connection_manager", None)
+            supervisor = getattr(self.trainer, "action_supervisor", None) or getattr(
+                self.step_processor, "action_supervisor", None
+            )
 
-            if conn_mgr:
+            try:
+                from drivers.go_gateway_client import GoGatewayClient
+            except ImportError:
+                from src.drivers.go_gateway_client import GoGatewayClient
+
+            if GoGatewayClient.is_remote_gateway_role() and conn_mgr is not None:
+                try:
+                    from src.drivers.remote_hardware_driver import RemoteHardwareDriverProxy
+                    from src.drivers.remote_proxy_synchronizer import sync_remote_driver_proxies
+                except ImportError:
+                    from drivers.remote_hardware_driver import RemoteHardwareDriverProxy
+                    from drivers.remote_proxy_synchronizer import sync_remote_driver_proxies
+
+                hw_status = kwargs.get("hardware_status")
+                if isinstance(hw_status, dict):
+                    if hasattr(conn_mgr, "update_remote_hardware_status"):
+                        conn_mgr.update_remote_hardware_status(hw_status)
+                    disconnected = sync_remote_driver_proxies(
+                        conn_mgr=conn_mgr,
+                        hardware_status=hw_status,
+                        pipe_conn=self.pipe_conn,
+                        state_extractor=getattr(self.step_processor, "state_extractor", None),
+                        prune_missing=True,
+                    )
+                    if supervisor:
+                        for d_id in disconnected:
+                            supervisor.cleanup_intersection(d_id)
+                elif args:
+                    tl_id = str(args[0])
+                    ip_addr = str(args[1] or "") if len(args) > 1 else ""
+                    active_conns = getattr(conn_mgr, "active_connections", None)
+                    if isinstance(active_conns, dict):
+                        should_connect = action == "connect" or (action == "toggle" and tl_id not in active_conns)
+                        if should_connect:
+                            active_conns[tl_id] = RemoteHardwareDriverProxy(
+                                intersection_id=tl_id,
+                                ip_address=ip_addr,
+                                is_connected=True,
+                                pipe_conn=self.pipe_conn,
+                            )
+                        else:
+                            removed = active_conns.pop(tl_id, None)
+                            if removed and hasattr(removed, "shutdown"):
+                                removed.shutdown()
+                            if supervisor:
+                                supervisor.cleanup_intersection(tl_id)
+            elif conn_mgr:
                 is_conn = conn_mgr.toggle_connection(args[0], args[1], action=action)
-                supervisor = getattr(self.trainer, "action_supervisor", None) or getattr(
-                    self.step_processor, "action_supervisor", None
-                )
                 if not is_conn and supervisor:
                     supervisor.cleanup_intersection(args[0])
             else:
                 logging.error("[EventRouter] Cannot toggle connection: HardwareConnectionManager not available.")
+
+        elif module == "hardware" and func == "failsafe_state":
+            hw_act = getattr(self.step_processor, "hardware_actuator", None)
+            if hw_act is not None and hasattr(hw_act, "reset"):
+                hw_act.reset()
 
         elif module == "hardware" and func == "apply_override":
             supervisor = getattr(self.trainer, "action_supervisor", None) or getattr(

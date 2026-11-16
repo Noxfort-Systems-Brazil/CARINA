@@ -7,7 +7,7 @@ aliases: [Explainable AI, SAS Analytics, XAI Pipeline, Forensic Auditing]
 
 This document specifies CARINA's forensic explainability pipeline located in [`src/xai/`](../../src/xai) and [`src/sas/`](../../src/sas). It details **Google Captum Integrated Gradients**, the 5 formal neural equations, Guardian Agent safety veto audit tables, and ABNT NBR 14724 report generation.
 
-⬅️ Back to [Main Documentation Hub](../CARINA_MOC.md) | 📄 See [Report Blocks & Word](../REPORT_BLOCKS_AND_TEMPLATES.md) | 🤖 See [Small Language Models](../SLM_AND_LOCAL_LLM.md)
+⬅️ Back to [Main Documentation Hub](carina_moc.md) | 📄 See [Report Blocks & Word](report_blocks_and_templates.md) | 🤖 See [Small Language Models](slm_and_local_llm.md)
 
 ---
 
@@ -24,10 +24,12 @@ In municipal traffic management, black-box AI decisions are legally unacceptable
 ```
 
 The XAI pipeline uses a modular multi-agent builder architecture:
+- [`src/xai/xai_worker.py`](../../src/xai/xai_worker.py) & [`report_pipeline.py`](../../src/xai/report_pipeline.py): Execute per-agent Captum attribution once and reuse the resulting `captum_result` cache (`precomputed_analyses`) across consolidated multi-agent report generation, gating heavy SLM textual synthesis (`run_slm`) strictly to the primary target agent under `slm_process_lock()` and accessing DB via `DatabaseManager.get_instance(..., enable_step_worker=False)`.
 - [`src/xai/multi_agent_report_builder.py`](../../src/xai/multi_agent_report_builder.py): Coordinates the generation of municipal reports across all intersections.
-- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Computes gradient attributions along the interpolation path from baseline to current input.
+- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Computes gradient attributions along the interpolation path from baseline to current input with wrapped model parameter gradients frozen (`requires_grad_(False)`).
 - [`src/xai/network_attribution_aggregator.py`](../../src/xai/network_attribution_aggregator.py): Aggregates feature importance across arterial avenues.
-- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Dispatches report sections to specialized renderers.
+- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Dispatches report sections to specialized renderers (with offscreen chart rendering via `mpl_utils.py`).
+- [`src/sas/sas_helpers.py`](../../src/sas/sas_helpers.py) & [`sas_historical_data_processor.py`](../../src/sas/sas_historical_data_processor.py): Compute 100 quantiles in a single pass via `TrafficMetricsCalculator.compute_percentiles` and avoid redundant synthetic sample expansion (`SyntheticSampleGenerator`).
 
 ---
 
@@ -63,8 +65,8 @@ The report queries PostgreSQL `step_decisions` to generate the official **Guardi
 | **Junction ID 1193472566** | 1,420 | 1,396 | 24 | **98.3%** | Minimum Green Time Protection (7s) |
 | **Junction ID 2281940123** | 1,420 | 1,418 | 2 | **99.8%** | Yellow Clearance Enforcement (3s) |
 
-For document formatting and OMML math rendering details, see [Report Blocks & Word](../REPORT_BLOCKS_AND_TEMPLATES.md).
-For offline natural language justification synthesis, see [Small Language Models (SLM)](../SLM_AND_LOCAL_LLM.md).
+For document formatting and OMML math rendering details, see [Report Blocks & Word](report_blocks_and_templates.md).
+For offline natural language justification synthesis, see [Small Language Models (SLM)](slm_and_local_llm.md).
 
 ---
 

@@ -30,9 +30,7 @@ class OnlinePAETrainer:
 
         # --- Configuration ---
         try:
-            self.pae_update_frequency = int(
-                self.settings.getint("PAE", "update_frequency_seconds", fallback=5)
-            )
+            self.pae_update_frequency = int(self.settings.getint("PAE", "update_frequency_seconds", fallback=5))
         except (TypeError, ValueError, AttributeError):
             self.pae_update_frequency = 5
 
@@ -48,10 +46,21 @@ class OnlinePAETrainer:
             self.pae_optimizer = PAEOptimizer(learning_rate=pae_lr)
 
         self.pae_memory = None
+        self.last_prediction_mse: Optional[float] = None
 
     def reset(self) -> None:
         """Resets the internal timers and state for a new session or map."""
         self._last_pae_update_time = -self.pae_update_frequency
+        self.last_prediction_mse = None
+
+    def _record_pae_mse(self, loss_val: Any) -> None:
+        if isinstance(loss_val, (int, float)) and not isinstance(loss_val, bool):
+            val = float(loss_val)
+            if 0.0 <= val < 1e9:
+                if self.last_prediction_mse is None:
+                    self.last_prediction_mse = val
+                else:
+                    self.last_prediction_mse = 0.20 * val + 0.80 * self.last_prediction_mse
 
     def train_step(self, sim_time: float, agents: Dict[str, Any]) -> None:
         """
@@ -86,6 +95,8 @@ class OnlinePAETrainer:
         else:
             opt_device = raw_dev or torch.device("cpu")
 
+        cpu_device = torch.device("cpu") if isinstance(getattr(torch, "device", None), type) else opt_device
+
         curr_seqs = []
         next_vecs = []
         curr_acts = []
@@ -111,7 +122,8 @@ class OnlinePAETrainer:
                     else:
                         target_frame = st_curr
 
-                    seq_t = torch.as_tensor(st_prev, dtype=torch.float32, device=opt_device)
+                    # Build and standardize tensors on CPU first so the entire fleet transfers to GPU in 1 batch
+                    seq_t = torch.as_tensor(st_prev, dtype=torch.float32, device=cpu_device)
                     orig_dim = (
                         int(seq_t.shape[-1])
                         if hasattr(seq_t, "shape") and len(seq_t.shape) >= 1 and isinstance(seq_t.shape[-1], int)
@@ -124,7 +136,7 @@ class OnlinePAETrainer:
                             seq_t = shared_pae.standardize_sequence(seq_t).squeeze(0)
                     seq_t = shared_pae.pad_to_input_dim(seq_t)
 
-                    tgt_t = torch.as_tensor(target_frame, dtype=torch.float32, device=opt_device)
+                    tgt_t = torch.as_tensor(target_frame, dtype=torch.float32, device=cpu_device)
                     if hasattr(tgt_t, "dim") and tgt_t.dim() > 1:
                         tgt_t = tgt_t[-1]
                     tgt_t = shared_pae.pad_to_input_dim(tgt_t)
@@ -136,9 +148,6 @@ class OnlinePAETrainer:
                         raw_int = int(raw_act.item()) if hasattr(raw_act, "item") else int(raw_act)
                         act_val = 1 if raw_int >= 1 else 0
 
-                    if self.pae_memory is not None:
-                        self.pae_memory.push(seq_t, tgt_t, action=act_val, valid_dim=orig_dim)
-
                     curr_seqs.append(seq_t)
                     next_vecs.append(tgt_t)
                     curr_acts.append(act_val)
@@ -146,10 +155,27 @@ class OnlinePAETrainer:
                 except Exception as e_sample:
                     logging.debug(f"[OnlinePAETrainer] PAE transition sampling skipped for {tl_id}: {e_sample}")
 
+        if curr_seqs and self.pae_memory is not None:
+            try:
+                batch_curr = torch.stack(curr_seqs).to(device=opt_device)
+                batch_next = torch.stack(next_vecs).to(device=opt_device)
+                batch_acts = torch.tensor(curr_acts, dtype=torch.long, device=opt_device)
+                batch_vdims = torch.tensor(curr_valid_dims, dtype=torch.long, device=opt_device)
+                if callable(getattr(self.pae_memory, "push_batch", None)):
+                    self.pae_memory.push_batch(batch_curr, batch_next, actions=batch_acts, valid_dims=batch_vdims)
+                else:
+                    for i in range(len(curr_seqs)):
+                        self.pae_memory.push(
+                            batch_curr[i], batch_next[i], action=curr_acts[i], valid_dim=curr_valid_dims[i]
+                        )
+            except Exception as e_push:
+                logging.debug(f"[OnlinePAETrainer] Batch memory push skipped: {e_push}")
+
         if self.pae_memory is not None and len(self.pae_memory) >= 32:
             try:
                 batch_size = min(len(self.pae_memory), 64)
                 pae_loss = self.pae_optimizer.step_from_memory(shared_pae, self.pae_memory, batch_size=batch_size)
+                self._record_pae_mse(pae_loss)
                 logging.debug(
                     f"[PAE_ONLINE] Memory-buffered training step completed. Loss: {pae_loss:.6f} (buffer: {len(self.pae_memory)})"
                 )
@@ -157,8 +183,8 @@ class OnlinePAETrainer:
                 logging.debug(f"[PAE_ONLINE] Memory-buffered training step skipped: {e_train}")
         elif curr_seqs and next_vecs:
             try:
-                batch_curr = torch.stack(curr_seqs)
-                batch_next = torch.stack(next_vecs)
+                batch_curr = torch.stack(curr_seqs).to(device=opt_device)
+                batch_next = torch.stack(next_vecs).to(device=opt_device)
                 if type(self.pae_optimizer) is PAEOptimizer:
                     batch_acts = torch.tensor(curr_acts, dtype=torch.long, device=opt_device)
                     batch_vdims = torch.tensor(curr_valid_dims, dtype=torch.long, device=opt_device)
@@ -167,6 +193,7 @@ class OnlinePAETrainer:
                     )
                 else:
                     pae_loss = self.pae_optimizer.step(shared_pae, batch_curr, batch_next)
+                self._record_pae_mse(pae_loss)
                 logging.debug(
                     f"[PAE_ONLINE] Self-supervised training step completed. Loss: {pae_loss:.6f} ({len(curr_seqs)} agents)"
                 )

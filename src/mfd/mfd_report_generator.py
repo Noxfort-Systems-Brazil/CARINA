@@ -88,31 +88,45 @@ class MFDReportGenerator:
         logging.info("[MFD_REPORT_GENERATOR] Generating Macroscopic Fundamental Diagram (MFD) plot base64...")
         img_base64 = MFDPlotter.generate_mfd_curve_base64(mfd_history_data, stages_data, scenario_name=scenario_name)
 
-        # 3. Instantiate or resolve SLM Transducer
+        # 3. Instantiate or resolve SLM Transducer under inter-process lock and always unload afterward
+        from slm.slm_lock import slm_process_lock
+
+        owned_transducer = None
         if transducer is None:
             try:
                 from slm.semantic_transducer import SemanticTransducer
 
                 st = SemanticTransducer()
-                st.load_resources()
+                with slm_process_lock():
+                    st.load_resources()
                 if getattr(st, "model", None) is not None:
                     transducer = st
+                    owned_transducer = st
                 else:
+                    st.unload()
                     transducer = None
             except Exception as transducer_err:
-                logging.warning(f"[MFD_REPORT_GENERATOR] Could not load in-memory SemanticTransducer: {transducer_err}", exc_info=True)
+                logging.warning(
+                    f"[MFD_REPORT_GENERATOR] Could not load in-memory SemanticTransducer: {transducer_err}",
+                    exc_info=True,
+                )
                 transducer = None
 
-        # 4. Build narrative sections (1 to 5) and ANEXO I audit sheets
-        narrative_text, raw_exec_summary = MFDSectionBuilder.build_narrative_sections(
-            normalized_data, transducer=transducer, lang=lang
-        )
-        anexo_content = MFDSectionBuilder.build_anexo_fichas(normalized_data, transducer=transducer, lang=lang)
+        try:
+            with slm_process_lock():
+                # 4. Build narrative sections (1 to 5) and ANEXO I audit sheets
+                narrative_text, raw_exec_summary = MFDSectionBuilder.build_narrative_sections(
+                    normalized_data, transducer=transducer, lang=lang
+                )
+                anexo_content = MFDSectionBuilder.build_anexo_fichas(normalized_data, transducer=transducer, lang=lang)
 
-        # 5. Execute 2nd pass neural proofreading pass on narrative text
-        revised_narrative = MFDNeuralProofreader.proofread_narrative(
-            narrative_text, raw_exec_summary=raw_exec_summary, transducer=transducer, lang=lang
-        )
+                # 5. Execute 2nd pass neural proofreading pass on narrative text
+                revised_narrative = MFDNeuralProofreader.proofread_narrative(
+                    narrative_text, raw_exec_summary=raw_exec_summary, transducer=transducer, lang=lang
+                )
+        finally:
+            if owned_transducer is not None and callable(getattr(owned_transducer, "unload", None)):
+                owned_transducer.unload()
 
         # 6. Assemble Final Document with SIGNATURE_BLOCK tag, pagebreak, and ANEXO I
         final_report_text = (

@@ -15,8 +15,8 @@ This document serves as the authoritative interface specification for CARINA. It
 
 CARINA interfaces with external sensors, physical traffic controllers, and microscopic simulation environments (SUMO/CityFlow) via the **Synapse HFT Protocol** over gRPC.
 
-- **Default Port:** `50051` (Configurable in `config/settings.ini`)
-- **Transport:** HTTP/2 over TCP with optional TLS encryption.
+- **Default Port:** `50051` (Configurable in `config/settings.ini` under `[SYNAPSE]`)
+- **Transport:** HTTP/2 over TCP with optional **TLS / mTLS** (`grpc.ssl_server_credentials`) and **Bearer Token Authentication** (`BearerTokenServerInterceptor` in [`src/communication/grpc_security.py`](../../src/communication/grpc_security.py)) configured via `CARINA_GRPC_AUTH_TOKEN`, `CARINA_GRPC_TLS_ENABLED`, `CARINA_GRPC_TLS_CERT`, `CARINA_GRPC_TLS_KEY`, `CARINA_GRPC_TLS_CA`, and `CARINA_GRPC_REQUIRE_CLIENT_CERT`. Accepts `Authorization: Bearer <token>` or `x-carina-token: <token>` metadata verified via constant-time `hmac.compare_digest`.
 - **Protocol Package:** `synapse.hft`
 
 ```protobuf
@@ -86,16 +86,16 @@ message ScenarioDefinition {
 
 ## 3. Inter-Process Communication (IPC) Queue Specifications
 
-CARINA coordinates 11 bounded IPC queues and 1 duplex pipe connection managed by [`ProcessManager`](../../src/launcher/process_manager.py):
+CARINA coordinates **12 bounded IPC queues** and **1 thread-safe duplex pipe connection** (`ThreadSafePipeConnection` in [`src/communication/pipe_utils.py`](../../src/communication/pipe_utils.py)) managed by [`ProcessManager`](../../src/launcher/process_manager.py):
 
 | Queue Name | Max Size | Producer Process | Consumer Process | Payload Schema / Message Type |
 | :--- | :---: | :--- | :--- | :--- |
-| **`controller_conn`** | Pipe | `CentralController` | `AI_Process` | `("state", frame_id, traffic_frame_dict)` |
-| **`ai_conn`** | Pipe | `AI_Process` | `CentralController` | `("actuation", frame_id, signal_group_actions)` |
-| **`wd`** | 500 | All Microservices | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
-| **`sds`** | 500 | `CentralController` | `DashboardService` | `{"timestamp": float, "telemetry": dict, "active_phase": int}` |
+| **`controller_conn` / `ai_conn`** | Pipe | `CentralController` ↔ `AI_Process` | Bidirectional | `("custom", "hft_step", ...)`, `("hft_telemetry_push", ...)`, `("ai_hardware_cmd", ...)`, `("ai_evp_preempt", ...)`, `("fenix_handover_complete", ...)` |
+| **`wd`** | 500 | `CentralController` / Microservices | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
+| **`fenix`** | 50 | `Watchdog` / `CentralController` | `FenixSupervisionController` | `("TRIGGER_RESURRECTION", reason)` / `("HANDOVER_COMPLETE", payload)` |
+| **`sds`** | 500 | `CentralController` | `DashboardService` | `("hft_rich_update", payload)` (fast 0.5s & slow heatmap telemetry + `hardware_status`) |
 | **`sas`** | 500 | `CentralController` | `AnalysisService` | Historical traffic metrics for PostgreSQL aggregation |
-| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | UI commands, overrides, manual timing & settings |
+| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | UI commands, `set_hardware_connection`, `tailscale_*`, `fenix_post_resurrection` |
 | **`ui_telemetry`** | 500 | `DashboardService` | `LiveDataProvider` | Zero-port in-memory real-time telemetry packets, congestion & maturity |
 | **`db`** | 500 | `AI_Process` | `DatabaseWorker` | `(state_tensor, action_int, reward_float, next_state_tensor)` |
 | **`g_state`** | 500 | `AI_Process` | `GuardianWorker` | `(lane_queues, pae_latent_vector_z, strategic_gat_vector)` |
@@ -175,7 +175,8 @@ The factory function [`create_monitor_transport()`](../../src/transports/factory
 The compiled Go Web Gateway exposes high-throughput, unidirectional (fire-and-forget) ingestion for emergency vehicle GPS transponders:
 
 - **Endpoint:** `POST /api/v1/evp/telemetry` (alias: `POST /amb` or `POST /amb/`)
-- **Port:** `2201` (Go Web Gateway / Tailscale Funnel) or `8085` (dedicated Go EVP server [`src_go/evp_go/`](../../src_go/evp_go) / standalone receiver)
+- **Port:** `2201` (`CARINA_GATEWAY_PORT`, Go Web Gateway / Tailscale Funnel) or `8085` (dedicated Go EVP server [`src_go/evp_go/`](../../src_go/evp_go))
+- **Security:** Fail-closed when `CARINA_GATEWAY_ENABLED=False` (returns `503 Service Unavailable`); validates `CARINA_EVP_AUTH_TOKEN` in constant time via `Authorization: Bearer <token>`, `X-EVP-Token`, or `X-Auth-Token` (returns `401 Unauthorized` on mismatch) and supports HTTPS/TLS (`CARINA_GATEWAY_TLS_CERT` / `CARINA_GATEWAY_TLS_KEY`).
 - **Response:** `204 No Content` (Immediate return for sub-millisecond execution)
 - **Payload Schema:**
   ```json
@@ -195,29 +196,33 @@ The compiled Go Web Gateway exposes high-throughput, unidirectional (fire-and-fo
 
 ## 7. Go Hardware & Web Gateway NDJSON IPC Command Set
 
-Commands dispatched from CARINA's Python core to `bin/carina-go` via anonymous standard pipes (`stdin`/`stdout`):
+Commands dispatched from CARINA's owner process (`CentralController`) to `bin/carina-go` via anonymous standard pipes (`stdin`/`stdout`):
 
 | Command (`cmd`) | Arguments / Payload | Response Data | Description |
 | :--- | :--- | :--- | :--- |
 | **`ping`** | None | `"pong"` | Verifies gateway liveness ($< 1\text{ ms}$). |
-| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `protocol`, `green_stages` | Connection metadata | Establishes SNMP/UDP session with field controller. |
+| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `snmp_config`, `config_path`, `protocol`, `green_stages` | Connection metadata | Establishes SNMPv2c/v3 UDP session and optional custom OID JSON profile. |
 | **`disconnect`** | `intersection_id` | `success: true` | Closes connection and releases socket. |
 | **`apply_logical_action`** | `action` (0=NEXT, 1=HOLD), `current_stage_idx`, `green_stages`, `stage_codes` | `success: bool` | Applies neural or safety action to physical signal groups. |
-| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `vehicle_id` | Action executed string | Dispatches microsecond stage preemption holds to field controllers. |
+| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `stage_idx`, `stage_codes`, `vehicle_id` | Action executed string | Dispatches microsecond stage preemption holds to field controllers. |
 | **`cco_broadcast`** | `data: dict` | `success: true` | Transmits fire-and-forget telemetry frames to connected CCO SSE clients. |
-| **`tailscale_status`** | None | `TailscaleStatus` JSON | Queries Tailscale Funnel domain, node state, and public CCO URLs. |
-| **`emergency_release`** | None | `success: true` | Unconditionally drops all phase holds across the entire metropolitan network. |
+| **`gateway_set_enabled`** / **`gateway_get_status`** | `enabled: bool` | Status JSON | Toggles Web Gateway active guard (`503` when disabled) or inspects state. |
+| **`gateway_set_auth_tokens`** | `evp_auth_token`, `cco_auth_token`, `allowed_origin` | Config flags | Dynamically rotates EVP/CCO tokens and CORS origin on running Go gateway. |
+| **`tailscale_status`** / **`tailscale_enable`** / **`tailscale_disable`** | `port`, `domain` | `TailscaleStatus` JSON | Manages Tailscale Funnel domain, node state, and public CCO URLs. |
+| **`emergency_release`** | None | `success: true` | Pauses heartbeats and releases phase holds while preserving drivers for recovery. |
+| **`resume_control`** | None | `resumed: int` | Restarts paused controller heartbeats after Watchdog failsafe recovery. |
 
 ---
 
 ## 8. Central Control Operator (CCO) REST & SSE Endpoints
 
-Available on Go Web Gateway port `2201` (and secured via Tailscale Funnel):
+Available on Go Web Gateway port `2201` (`CARINA_GATEWAY_PORT`, HTTPS when TLS is configured, returning `503 Service Unavailable` when disabled):
 
-- **`GET /health`**: Returns system health status and gateway availability.
+- **`GET /` & `GET /health`**: Returns system health status and gateway availability.
 - **`GET /cco` & `GET /cco/`**: Serves the compiled React 18 CCO web interface.
-- **`GET /cco/stream`**: Server-Sent Events (SSE) persistent stream broadcasting real-time signal states, congestion heatmaps, and emergency vehicle locations to videowalls.
-- **`GET /cco/topology`**: Serves GeoJSON/JSON street link geometries, lane mappings, and junction coordinates for map rendering.
+- **`GET /cco/stream`**: Server-Sent Events (SSE) persistent stream broadcasting real-time signal states, congestion heatmaps, and emergency vehicle locations to videowalls (enforces `CARINA_CCO_AUTH_TOKEN` via `Authorization: Bearer`, `X-CCO-Token`, or `?token=` query parameter, plus `CARINA_CCO_ALLOWED_ORIGIN` CORS).
+- **`GET /cco/topology`**: Serves GeoJSON/JSON street link geometries, lane mappings, and junction coordinates for map rendering (token-protected).
+- **`POST /cco/broadcast`**: Protected ingestion endpoint called by SDS [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) using latest-wins non-blocking batching, `X-CCO-Token` auth, and optional SHA-256 certificate pinning ([`PinnedHTTPSConnection`](../../src/sds/cco_tls_transport.py)).
 
 ---
 

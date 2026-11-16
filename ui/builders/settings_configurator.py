@@ -5,23 +5,23 @@
 import flet as ft
 
 from src.controller.connection_manager import HardwareConnectionManager
+from src.evp.evp_service import EVPService
 from ui.cards.account_settings_card import AccountSettingsCard
 from ui.cards.advanced_dqn_card import AdvancedDQNCard
 from ui.cards.advanced_ppo_card import AdvancedPPOCard
 from ui.cards.advanced_system_card import AdvancedSystemCard
 from ui.cards.dashboard_settings_card import DashboardSettingsCard
 from ui.cards.database_settings_card import DatabaseSettingsCard
+from ui.cards.evp_fleet_connection_card import EVPFleetConnectionCard
 from ui.cards.general_settings_card import GeneralSettingsCard
 from ui.cards.hardware_connection_card import HardwareConnectionCard
 from ui.cards.monitor_settings_card import MonitorSettingsCard
 from ui.cards.piloting_school_card import PilotingSchoolCard
+from ui.cards.remote_gateway_card import RemoteGatewayCard
 from ui.cards.report_formatting_card import ReportFormattingCard
-from src.evp.evp_service import EVPService
 from ui.cards.reward_weights_card import RewardWeightsCard
 from ui.cards.traffic_rules_card import TrafficRulesCard
 from ui.cards.yellow_schedule_card import YellowScheduleCard
-from ui.cards.evp_fleet_connection_card import EVPFleetConnectionCard
-from ui.cards.remote_gateway_card import RemoteGatewayCard
 from ui.handlers.account_settings_handler import AccountSettingsHandler
 from ui.handlers.evp_settings_handler import EVPSettingsHandler
 from ui.handlers.hardware_settings_handler import HardwareSettingsHandler
@@ -109,10 +109,13 @@ def build_settings_view(locale_manager, settings_client):
         locale_manager=locale_manager,
         handler=evp_handler,
     )
+    from ui.controllers.remote_gateway_controller import RemoteGatewayController
+
     remote_gateway_card = RemoteGatewayCard(
         initial_settings,
         on_toggle_connection=_on_gateway_connection_toggle,
         locale_manager=locale_manager,
+        controller=RemoteGatewayController(settings_client=settings_client),
     )
 
     warning_text = ft.Text(size=12, expand=True, italic=True)
@@ -197,5 +200,6 @@ def build_settings_view(locale_manager, settings_client):
     view.evp_handler = evp_handler
     view.evp_card = evp_connection_card
     view.account_card = account_card
+    view.remote_gateway_card = remote_gateway_card
 
     return view

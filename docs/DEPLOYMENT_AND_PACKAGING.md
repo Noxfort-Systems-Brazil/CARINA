@@ -17,13 +17,13 @@ CARINA coordinates local multiprocessing pipelines, hardware controllers, and cl
 
 | Port | Protocol | Subsystem / Process | Description |
 | :--- | :--- | :--- | :--- |
-| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | External high-frequency gRPC server for microscopic simulators (SUMO/CityFlow) or edge perception ingest. |
-| **`8080`** | TCP (WS) | Smart Dashboard Service (SDS) | Telemetry WebSocket server streaming live queue data to web clients. |
-| **`2201`** | TCP (HTTP/SSE) | Go Web Gateway (`src_go/web_gateway`) | Primary edge ingress: `POST /api/v1/evp/telemetry` (HTTP 204), `GET /cco/stream` (SSE), and CCO dashboard. |
-| **`8085`** | TCP (HTTP) | Standalone EVP Receiver (`src/evp`) | Fallback emergency vehicle GPS telemetry listener when Go gateway is inactive. |
+| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | External high-frequency gRPC server with optional TLS/mTLS & Bearer token auth (`CARINA_GRPC_*`). |
+| **`8080`** | TCP (WS) | Smart Dashboard Service (SDS) | Telemetry WebSocket server streaming live queue data with backpressure & 2.0s timeouts. |
+| **`2201`** | TCP (HTTP/HTTPS/SSE) | Go Web Gateway (`src_go/web_gateway`) | Configurable via `CARINA_GATEWAY_PORT`; fails closed (`503`) until `CARINA_GATEWAY_ENABLED=True`; protects endpoints with tokens & optional TLS. |
+| **`8085`** | TCP (HTTP/HTTPS) | Standalone EVP Receiver (`src_go/evp_go`) | Emergency vehicle GPS telemetry listener supporting Bearer/`X-EVP-Token` auth & TLS. |
 | **`42123`** | TCP (Local) | SingleInstanceLock (`single_instance.py`) | OS mutex preventing duplicate application instances; sends `RESTORE` signal. |
-| **`161`** | UDP (SNMP) | NTCIP 1202 / UTMC Field Controllers | Polling and phase hold control (`ascPhaseHold`) sent to traffic signal heads. |
-| **`162`** | UDP (Trap) | Hardware Trap Listener (`traplistener`) | Ingestion of asynchronous hardware fault traps and detector actuations. |
+| **`161`** | UDP (SNMP) | NTCIP 1202 / UTMC2 Controllers | SNMPv2c/v3 polling and phase holds driven exclusively by `CARINA_GATEWAY_ROLE=owner` (`CentralController`). |
+| **`162`** | UDP (Trap) | Hardware Trap Listener (`traplistener`) | Configurable via `CARINA_TRAP_PORT`; decodes binary SNMPv1/v2c/v3 Traps & Informs. |
 
 ---
 
@@ -108,17 +108,28 @@ sudo systemctl start carina
 
 ---
 
-## 5. Zero-Trust Mesh Deployment via Tailscale Funnel
+## 5. Zero-Trust Fail-Closed Gateway & Tailscale Funnel Deployment
 
 For distributed metropolitan networks without public static IPs:
-1. Generate a Tailscale Auth Key with `funnel` capabilities from the Tailscale Admin Console.
-2. Configure `.env`:
+1. Keep `CARINA_GATEWAY_ENABLED=False` (default in `.env.example` and `config/settings.ini`) until auth tokens and TLS certificates are provisioned; while disabled, the Go Web Gateway serves `503 Service Unavailable` on CCO/EVP endpoints.
+2. Generate a Tailscale Auth Key with `funnel` capabilities from the Tailscale Admin Console and strong Bearer tokens for EVP, CCO, and Synapse gRPC.
+3. Configure `.env`:
    ```bash
-   CARINA_GATEWAY_ENABLED=true
+   CARINA_GATEWAY_ENABLED=True
    CARINA_GATEWAY_PORT=2201
+   CARINA_TRAP_PORT=162
+   CARINA_EVP_AUTH_TOKEN=<strong-evp-token>
+   CARINA_CCO_AUTH_TOKEN=<strong-cco-token>
+   CARINA_CCO_ALLOWED_ORIGIN=https://<node-name>.<tailnet>.ts.net
+   CARINA_GATEWAY_TLS_CERT=/etc/carina/certs/gateway.crt
+   CARINA_GATEWAY_TLS_KEY=/etc/carina/certs/gateway.key
+   CARINA_GRPC_AUTH_TOKEN=<strong-grpc-token>
+   CARINA_GRPC_TLS_ENABLED=True
+   CARINA_OUTPUT_DIR=/var/lib/carina
+   CARINA_CONFIG_DIR=/etc/carina
    CARINA_TAILSCALE_AUTH_KEY=tskey-auth-kXXXXX-XXXXXXXX
    ```
-3. When the Go Gateway starts, [`src_go/web_gateway/tailscale.go`](../src_go/web_gateway/tailscale.go) automatically registers the node and spins up an HTTPS Funnel at `https://<node-name>.<tailnet>.ts.net:2201`, exposing the EVP API and CCO videowall over public TLS with zero firewall changes.
+4. `CentralController` boots with `CARINA_GATEWAY_ROLE=owner` (forwarding tokens/TLS settings to `bin/carina-go`), while UI/AI/SDS workers run as `remote`. [`src_go/web_gateway/tailscale.go`](../src_go/web_gateway/tailscale.go) registers the node and spins up an HTTPS Funnel at `https://<node-name>.<tailnet>.ts.net:2201`.
 
 ---
 

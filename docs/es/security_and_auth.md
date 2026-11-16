@@ -21,8 +21,13 @@ CARINA gobierna infraestructura municipal de misión crítica. El acceso no auto
    - `OPERATOR`: Monitoreo rutinario de intersecciones, llamadas manuales de fases, inspección de telemetría y diagnósticos de sólo lectura.
    - `SUPERUSER`: Acceso administrativo total, creación/eliminación de usuarios, modificación de políticas y levantamiento de bloqueos (`lockdown`).
 4. **Almacenamiento Híbrido de Credenciales (Offline-First y Relacional):** Soporta almacenamiento local desacoplado (`security.json` gestionado por [`JsonUserRepository`](../../src/security/json_user_repo.py)), persistencia relacional en PostgreSQL y SQLite (`system_users` y `system_security_state` mediante [`SqlUserRepository`](../../src/security/sql_user_repo.py)) y sincronización resiliente vía [`HybridUserRepository`](../../src/security/hybrid_user_repo.py).
-5. **Cifrado de Campos y Auditoría:** Secretos y tokens cifrados en reposo con [`FieldEncryptor`](../../src/security/field_encryptor.py) y registro inmutable de auditoría mediante [`AuditLogger`](../../src/security/audit_logger.py).
-6. **Aislamiento de Secretos 12-Factor:** Desacoplamiento absoluto de secretos del código fuente a través de variables de entorno `.env`.
+5. **Cifrado de Campos y Auditoría:** Secretos y tokens cifrados en reposo con [`FieldEncryptor`](../../src/security/field_encryptor.py) y registro inmutable de auditoría mediante [`AuditLogger`](../../src/security/audit_logger.py) (con escrituras transaccionales agrupadas mediante `db_transaction`).
+6. **Fortalecimiento de Transporte, Endpoints y SQL:**
+   - **Seguridad Synapse gRPC (`:50051`) ([`grpc_security.py`](../../src/communication/grpc_security.py)):** Soporta TLS/mTLS (`grpc.ssl_server_credentials`) y validación en tiempo constante de Bearer / `x-carina-token` (`BearerTokenServerInterceptor`).
+   - **Web Gateway *Fail-Closed* y Autenticación EVP ([`auth.go`](../../src_go/web_gateway/auth.go), [`evp_http_server.go`](../../src_go/evp_go/evp_http_server.go)):** `gateway_enabled` tiene por defecto el valor `False` (respondiendo `503 Service Unavailable` cuando está inactivo), impone comparación de tokens en tiempo constante (`subtle.ConstantTimeCompare`), CORS explícito (`CARINA_CCO_ALLOWED_ORIGIN`) y terminación HTTPS/TLS.
+   - **Fijación (*Pinning*) de Certificados SHA-256 ([`cco_tls_transport.py`](../../src/sds/cco_tls_transport.py)):** `PinnedHTTPSConnection` verifica la confianza de la CA y fija opcionalmente el resumen SHA-256 del certificado hoja cuando SDS envía `/cco/broadcast`.
+   - **Intervalos SQL Parametrizados:** Las consultas PostgreSQL utilizan `make_interval(...)` en lugar de interpolación de cadenas.
+7. **Aislamiento de Secretos 12-Factor:** Desacoplamiento absoluto de secretos del código fuente a través de variables de entorno `.env`.
 
 ```text
  Cliente (Interfaz Desktop / CCO / CLI)
@@ -102,15 +107,33 @@ CARINA_MQTT_HOST=127.0.0.1                     # Broker local o https://tunnel.n
 CARINA_MQTT_PORT=1883
 CARINA_MQTT_USER=
 CARINA_MQTT_PASSWORD=
+
+# --- Seguridad del Gateway Remoto y Transporte CCO/EVP ---
+CARINA_GATEWAY_ENABLED=False                   # Fail-closed hasta configurar los tokens
+CARINA_EVP_AUTH_TOKEN=
+CARINA_CCO_AUTH_TOKEN=
+CARINA_CCO_ALLOWED_ORIGIN=                     # Origen CORS explícito para endpoints CCO
+CARINA_GATEWAY_TLS_CERT=
+CARINA_GATEWAY_TLS_KEY=
+CARINA_GATEWAY_TLS_CA=
+CARINA_GATEWAY_TLS_SERVER_NAME=
+
+# --- Seguridad Synapse gRPC (:50051) ---
+CARINA_GRPC_AUTH_TOKEN=
+CARINA_GRPC_TLS_ENABLED=False
+CARINA_GRPC_TLS_CERT=
+CARINA_GRPC_TLS_KEY=
+CARINA_GRPC_TLS_CA=
+CARINA_GRPC_REQUIRE_CLIENT_CERT=False
 ```
 
 ---
 
 ## 4. Directrices de Fortalecimiento (Hardening) en Producción
 
-1. **Rotar Cadenas de Comunidad SNMP:** Nunca utilizar la cadena predeterminada `"public"` en despliegues reales.
-2. **Restringir Interfaces IPC y gRPC:** En producción, vincular interfaces gRPC (`50051`) y WebSocket (`8080`) a VLANs privadas locales o `127.0.0.1`, a menos que estén detrás de un proxy inverso con TLS.
-3. **Mínimo Privilegio en Base de Datos:** Conceder al usuario de la base de datos únicamente permisos `SELECT`, `INSERT` y `UPDATE` en los esquemas operacionales.
+1. **Rotar Cadenas de Comunidad SNMP y Habilitar SNMPv3:** Evite comunidades `"public"` predeterminadas en producción; prefiera **SNMPv3 `AuthPriv`** (`SHA256` + `AES`) configurado vía `snmp_config` en `hardware_controller_connections`.
+2. **Habilitar TLS + Tokens en gRPC y Web Gateway:** Nunca active `CARINA_GATEWAY_ENABLED=True` en producción sin configurar `CARINA_EVP_AUTH_TOKEN`, `CARINA_CCO_AUTH_TOKEN`, `CARINA_CCO_ALLOWED_ORIGIN` y `CARINA_GRPC_AUTH_TOKEN` robustos junto con certificados TLS.
+3. **Mínimo Privilegio en Base de Datos:** Conceder al usuario de la base de datos únicamente permisos `SELECT`, `INSERT`, `UPDATE` y `DELETE` (para purgas de retención) en los esquemas operacionales.
 4. **Mecanismo Fail-Safe en Controladores Físicos:** Asegurar que todos los controladores físicos tengan configurados planes de destello amarillo local si se pierde la comunicación.
 5. **Permisos Seguros en Bóveda JSON:** Restringir los permisos de archivo en `security.json` y `lockdown.flag` al usuario del servicio de la aplicación (`chmod 600`).
 

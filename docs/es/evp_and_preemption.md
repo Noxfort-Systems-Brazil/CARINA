@@ -113,9 +113,9 @@ $$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \quad d = R \cdot
 
 ### 4.1 Disparador de Entrada al Bloque (`is_at_block_entrance`)
 - Evalúa si la distancia hacia la intersección satisface:
-  
+
   $$d_{\text{min}} \le d_{\text{vehículo}} \le d_{\text{max}}$$
-  
+
   Donde $d_{\text{min}} = 60.0\text{ m}$ y $d_{\text{max}} = 160.0\text{ m}$ (o la longitud real del segmento topológico vial $L_{\text{cuadra}}$ provista por [`EVPTopologyService`](../../src/evp/evp_topology_service.py)).
 
 ### 4.2 Detección de Salida / Checkout (`has_checked_out`)
@@ -131,16 +131,16 @@ La máquina de estados de preempción coordina las transiciones de fases semafó
 stateDiagram-v2
     [*] --> Idle: Operación Semafórica Nominal
     Idle --> Approaching: Vehículo en Zona de Aproximación & Sirena Activa
-    
+
     state Approaching {
         [*] --> CheckCurrentStage
         CheckCurrentStage --> StageDivergent: Fase Actual != Fase Destino
         CheckCurrentStage --> StageAligned: Fase Actual == Fase Destino
-        
+
         StageDivergent --> Advancing: ACTION_ADVANCE (0)
         Advancing --> EnforceClearance: Amarillo (3s) + Todo-Rojo (2s)
         EnforceClearance --> StageAligned: Fase Verde Destino Alcanzada
-        
+
         StageAligned --> HoldGreen: ACTION_HOLD (1)
     }
 
@@ -191,10 +191,11 @@ except Exception:
 
 El binario compilado en Go (`bin/carina-go`) procesa la ejecución en microsegundos de las retenciones de preempción sobre controladores NTCIP 1202 y UTMC2:
 
-### 7.1 Enrutamiento de Comandos del Despachador (`dispatcher.go`)
-- Recibe los sobres de comando `PreemptionCommand` desde el enrutador del gateway.
-- `activate_preempt`: Inyecta máscaras de bits OID físicas de `ascPhaseHold` vía SNMP en el puerto UDP 161.
+### 7.1 Enrutamiento de Comandos del Despachador (`dispatcher.go`) y Sincronización Interproceso
+- Recibe los sobres de comando `PreemptionCommand` (`stage_idx`, `stage_codes`, `target_stage`, `vehicle_id`) desde el enrutador del gateway.
+- `activate_preempt`: Inyecta máscaras de bits físicas `phase_control.hold` (`1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1`) o retenciones de etapa UTMC vía SNMP en el puerto UDP 161.
 - `release_preempt`: Borra las máscaras de bits de retención de fase, retornando el control a la actuación local o temporizadores de ciclo nominales.
+- **Sincronización Interproceso (`EVPSnapshotSynchronizer` y `ai_evp_preempt`):** Bajo propiedad única del gateway (`CARINA_GATEWAY_ROLE=owner` en `CentralController`, `remote` en `AI_Process`), [`EVPSnapshotSynchronizer`](../../src/evp/application/evp_snapshot_synchronizer.py) replica los vehículos de emergencia activos y las preempciones hacia `AI_Process`, mientras que [`EVPBridge`](../../src/evp/evp_bridge.py) reenvía los disparadores remotos de preempción mediante comandos IPC `ai_evp_preempt`.
 
 ---
 
@@ -214,9 +215,10 @@ El Gateway Web en Go aloja endpoints externos para la telemática de los vehícu
     - HTTP 204 No Content               - Tramas de Telemetría JSON en Vivo
 ```
 
-### 8.1 Ingestión Unidireccional de GPS (`handlers_evp.go`)
-- **Ruta:** `POST /api/v1/evp/telemetry` (y `/amb`)
-- **Respuesta de Estado:** `204 No Content`
+### 8.1 Ingestión Unidireccional de GPS (`handlers_evp.go` y `evp_http_server.go`)
+- **Ruta:** `POST /api/v1/evp/telemetry` (y `/amb`, `/amb/`)
+- **Respuesta de Estado:** `204 No Content` (o `503 Service Unavailable` cuando `CARINA_GATEWAY_ENABLED=False`, `401 Unauthorized` si falla la validación en tiempo constante de `CARINA_EVP_AUTH_TOKEN` vía Bearer/`X-EVP-Token`)
+- **Cifrado TLS:** Soporta HTTPS mediante `CARINA_GATEWAY_TLS_CERT` y `CARINA_GATEWAY_TLS_KEY`.
 - **Latencia de Ingestión:** $< 0.5\text{ ms}$
 - **Esquema del Payload:**
   ```json
@@ -294,6 +296,7 @@ CREATE TABLE IF NOT EXISTS evp_registered_fleet (
 ```
 
 ### 11.2 Tabla: `evp_telemetry_records`
+*(Purgada automáticamente más allá de 168 horas / 7 días por `database_worker.py` mediante `EVPTelemetryRepository.purge_old_telemetry`.)*
 ```sql
 CREATE TABLE IF NOT EXISTS evp_telemetry_records (
     id BIGSERIAL PRIMARY KEY,

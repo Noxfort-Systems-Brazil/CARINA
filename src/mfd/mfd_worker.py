@@ -70,7 +70,9 @@ class MFDOrchestrator:
                         )
                         self.process_mfd_job()
                     except Exception as trig_err:
-                        logging.error(f"[MFD_ORCHESTRATOR] Error processing MFD trigger packet: {trig_err}", exc_info=True)
+                        logging.error(
+                            f"[MFD_ORCHESTRATOR] Error processing MFD trigger packet: {trig_err}", exc_info=True
+                        )
 
                 time.sleep(1)
             except (KeyboardInterrupt, SystemExit):
@@ -86,6 +88,9 @@ def run_mfd_worker(
     settings: configparser.ConfigParser, scenario_results_dir: str, mfd_result_queue=None, mfd_trigger_queue=None
 ):
     """Entry point for multiprocessing MFD Worker."""
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
     from utils.logging_setup import setup_logging
     from utils.paths import get_base_output_dir

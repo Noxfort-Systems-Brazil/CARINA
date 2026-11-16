@@ -37,6 +37,15 @@ class DotenvSecretProvider(IEnvironmentProvider):
         "CARINA_MQTT_PORT": "monitor_mqtt_port",
         "CARINA_MONITOR_ENABLED": "monitor_enabled",
         "CARINA_GATEWAY_ENABLED": "gateway_enabled",
+        "CARINA_EVP_AUTH_TOKEN": "evp_auth_token",
+        "CARINA_CCO_AUTH_TOKEN": "cco_auth_token",
+        "CARINA_CCO_ALLOWED_ORIGIN": "cco_allowed_origin",
+        "CARINA_GATEWAY_TLS_CERT": "gateway_tls_cert",
+        "CARINA_GATEWAY_TLS_KEY": "gateway_tls_key",
+        "CARINA_GATEWAY_TLS_CA": "gateway_tls_ca",
+        "CARINA_GATEWAY_TLS_SERVER_NAME": "gateway_tls_server_name",
+        "CARINA_GATEWAY_PORT": "gateway_web_port",
+        "CARINA_TRAP_PORT": "gateway_trap_port",
     }
 
     SETTINGS_TO_ENV_MAP: Dict[str, str] = {v: k for k, v in DEFAULT_ENV_TO_SETTINGS_MAP.items()}

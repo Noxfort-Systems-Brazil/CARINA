@@ -64,9 +64,7 @@ class AgentFactory:
         """Instantiates the Global ST-GATv2 Strategist Agent with dynamic observation & topological scaling."""
         try:
             resolved_input_dim = input_dim or (
-                settings.getint("GAT_STRATEGIST", "input_dim", fallback=0)
-                if hasattr(settings, "getint")
-                else 0
+                settings.getint("GAT_STRATEGIST", "input_dim", fallback=0) if hasattr(settings, "getint") else 0
             )
             if not resolved_input_dim or resolved_input_dim <= 0:
                 resolved_input_dim = (
@@ -74,14 +72,10 @@ class AgentFactory:
                 )
 
             hidden_dim = (
-                settings.getint("GAT_STRATEGIST", "hidden_dim", fallback=64)
-                if hasattr(settings, "getint")
-                else 64
+                settings.getint("GAT_STRATEGIST", "hidden_dim", fallback=64) if hasattr(settings, "getint") else 64
             )
             output_dim = (
-                settings.getint("GAT_STRATEGIST", "output_dim", fallback=8)
-                if hasattr(settings, "getint")
-                else 8
+                settings.getint("GAT_STRATEGIST", "output_dim", fallback=8) if hasattr(settings, "getint") else 8
             )
             default_heads = TopologicalScaler.calculate_num_heads(num_nodes) if num_nodes > 0 else 4
             heads = (
@@ -108,7 +102,12 @@ class AgentFactory:
 
     @classmethod
     def create_guardians(
-        cls, settings: Any, agents: Dict[str, Any], shared_pae: Any, lm: Optional[Any] = None
+        cls,
+        settings: Any,
+        agents: Dict[str, Any],
+        shared_pae: Any,
+        lm: Optional[Any] = None,
+        state_extractor: Optional[Any] = None,
     ) -> Dict[str, GuardianAgent]:
         """Instantiates Distributional QR-D3QN GuardianAgent instances for each traffic light."""
         guardians = {}
@@ -117,11 +116,23 @@ class AgentFactory:
         locale_mgr = lm or LocaleManagerBackend()
 
         for tl_id, agent in agents.items():
+            edge_dim = (
+                state_extractor.get_edge_feature_dim(tl_id)
+                if state_extractor is not None and hasattr(state_extractor, "get_edge_feature_dim")
+                else None
+            )
+            edge_caps = (
+                state_extractor.get_edge_capacities(tl_id)
+                if state_extractor is not None and hasattr(state_extractor, "get_edge_capacities")
+                else None
+            )
             guardians[tl_id] = GuardianAgent(
                 aiconfig=guardian_config,
                 traffic_rules_config=traffic_rules_config,
                 locale_manager=locale_mgr,
                 shared_pae=shared_pae,
                 n_observations=agent.n_observations,
+                edge_feature_dim=edge_dim,
+                edge_capacities=edge_caps,
             )
         return guardians

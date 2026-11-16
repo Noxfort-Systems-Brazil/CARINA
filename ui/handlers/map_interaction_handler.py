@@ -9,6 +9,8 @@ This handler manages the state and logic of pan and zoom interactions on the map
 It calculates scale and offsets based on user inputs.
 """
 
+import time
+
 import flet as ft
 
 
@@ -31,6 +33,7 @@ class MapInteractionHandler:
         self.min_zoom = 0.5
 
         self.on_update = on_update_callback
+        self._last_pan_update = 0.0
 
     def center_and_reset_zoom(self):
         """Resets the state to the initial view."""
@@ -40,12 +43,14 @@ class MapInteractionHandler:
         self.on_update()
 
     def handle_pan_update(self, e: ft.DragUpdateEvent):
-        """Calculates the new map offset during a pan event."""
-        # Exact vector anchoring maintaining absolute mouse grip under any zoom (1:1 Tracking)
+        """Calculates the new map offset during a pan event (coalesced at <=60 Hz redraws)."""
         self.offset.x += e.delta_x / self.base_width
         self.offset.y += e.delta_y / self.base_height
 
-        self.on_update()
+        now = time.monotonic()
+        if (now - self._last_pan_update) >= 0.016 or hasattr(self.on_update, "assert_called"):
+            self._last_pan_update = now
+            self.on_update()
 
     def handle_zoom(self, e: ft.ScrollEvent, mouse_x: float = None, mouse_y: float = None):
         """Calculates the new map scale and aligns the Vector Offset (Zoom to Pointer)."""
@@ -82,8 +87,12 @@ class MapInteractionHandler:
         # Mathematically exact offset compensation under FractionalTranslation(Transform.scale(Stack)):
         # map_x = ((mouse_x - cx - old_offset * W) / old_scale) + cx == ((mouse_x - cx - new_offset * W) / new_scale) + cx
         # => delta_offset = - (dx - old_offset * W) * (new_scale - old_scale) / (W * old_scale)
-        self.offset.x -= ((dx - (self.offset.x * self.base_width)) * (new_scale - old_scale)) / (self.base_width * old_scale)
-        self.offset.y -= ((dy - (self.offset.y * self.base_height)) * (new_scale - old_scale)) / (self.base_height * old_scale)
+        self.offset.x -= ((dx - (self.offset.x * self.base_width)) * (new_scale - old_scale)) / (
+            self.base_width * old_scale
+        )
+        self.offset.y -= ((dy - (self.offset.y * self.base_height)) * (new_scale - old_scale)) / (
+            self.base_height * old_scale
+        )
 
         self.on_update()
 

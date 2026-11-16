@@ -10,6 +10,8 @@ from typing import Any, Dict
 
 import sumolib  # type: ignore
 
+from utils.sumo_net_cache import read_sumo_net_cached
+
 
 class MapProcessor:
     """
@@ -36,7 +38,9 @@ class MapProcessor:
         maturity_cache = {}
 
         try:
-            net = sumolib.net.readNet(net_file, withInternal=False)
+            net = read_sumo_net_cached(
+                net_file, reader_fn=sumolib.net.readNet, with_programs=False, with_internal=False
+            )
 
             bbox = net.getBBoxXY()
             bounds = {"min_x": bbox[0][0], "min_y": bbox[0][1], "max_x": bbox[1][0], "max_y": bbox[1][1]}

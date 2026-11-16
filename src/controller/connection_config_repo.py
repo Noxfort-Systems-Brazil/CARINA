@@ -3,240 +3,86 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-Description:
-Repository class responsible for CSV import/export of connection configurations.
-Helps satisfy Single Responsibility Principle (SRP) for Connection Manager.
+Backward-compatible controller facade delegating CSV operations to ConnectionCSVStore
+and SQL operations to HardwareConnectionRepository (Clean Architecture / SRP).
 """
 
-import csv
-import logging
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
+from src.repositories.connection_csv_store import ConnectionCSVStore
+from src.repositories.hardware_connection_repo import HardwareConnectionRepository
 
 
 class ConnectionConfigRepository:
-    """
-    Manages loading, saving, importing, and exporting of intersection connection configurations.
-    """
+    """Legacy static facade forwarding CSV and DB connection persistence to src/repositories/."""
 
-    @staticmethod
-    def export_csv_template(filepath: str, saved_ips: Dict[str, str], known_intersections: List[str]) -> bool:
-        """
-        Generates a CSV spreadsheet template containing all known intersections and their configured IPs.
-        Ensures proper .csv extension and UTF-8 encoding.
-        """
-        try:
-            if not filepath.lower().endswith(".csv"):
-                filepath = f"{filepath}.csv"
-            with open(filepath, mode="w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["Intersection ID", "IP Address"])
-                for tl_id in known_intersections:
-                    ip = saved_ips.get(tl_id, "")
-                    writer.writerow([tl_id, ip])
-            logger.info(f"Hardware template exported successfully to {filepath}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to export hardware template: {e}", exc_info=True)
-            return False
+    _csv_store = ConnectionCSVStore()
+    _db_repo = HardwareConnectionRepository()
 
-    @staticmethod
-    def import_csv_config(filepath: str) -> Dict[str, str]:
-        """
-        Reads a CSV spreadsheet containing intersection connection configurations.
-        Supports UTF-8 / UTF-8 with BOM, multiple delimiters (, ; \t), and header aliases.
-        Returns a dictionary mapping intersection IDs to IP addresses.
-        """
-        configs = {}
-        try:
-            with open(filepath, mode="r", encoding="utf-8-sig") as f:
-                content = f.read()
+    @classmethod
+    def export_csv_template(cls, filepath: str, saved_ips: Dict[str, str], known_intersections: List[str]) -> bool:
+        return cls._csv_store.export_csv_template(filepath, saved_ips, known_intersections)
 
-            if not content.strip():
-                logger.warning(f"CSV file is empty: {filepath}")
-                return configs
+    @classmethod
+    def import_csv_entries(cls, filepath: str) -> Dict[str, Dict[str, Any]]:
+        return cls._csv_store.import_csv_entries(filepath)
 
-            # Determine delimiter dynamically
-            first_line = content.splitlines()[0] if content.splitlines() else ""
-            delimiter = ","
-            if ";" in first_line and first_line.count(";") >= first_line.count(","):
-                delimiter = ";"
-            elif "\t" in first_line and first_line.count("\t") > first_line.count(","):
-                delimiter = "\t"
+    @classmethod
+    def import_csv_config(cls, filepath: str) -> Dict[str, str]:
+        entries = cls.import_csv_entries(filepath)
+        return {tl_id: entry["ip"] for tl_id, entry in entries.items()}
 
-            import io
-
-            reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
-
-            for row in reader:
-                tl_id = ""
-                ip = ""
-                for key, val in row.items():
-                    if not key:
-                        continue
-                    clean_k = key.strip().lstrip("\ufeff").strip().lower()
-                    if clean_k in [
-                        "intersection id",
-                        "intersection_id",
-                        "id do cruzamento",
-                        "id",
-                        "cruzamento",
-                        "agent_id",
-                        "intersection",
-                        "semaforo",
-                        "semáforo",
-                    ]:
-                        tl_id = str(val).strip() if val else ""
-                    elif clean_k in [
-                        "ip address",
-                        "ip_address",
-                        "endereço ip",
-                        "endereco ip",
-                        "ip",
-                        "ip_addr",
-                        "address",
-                        "host",
-                    ]:
-                        ip = str(val).strip() if val else ""
-
-                if tl_id and ip:
-                    configs[tl_id] = ip
-
-            logger.info(f"Imported {len(configs)} configurations from CSV: {filepath}")
-        except Exception as e:
-            logger.error(f"Failed to import CSV configuration: {e}", exc_info=True)
-        return configs
-
-    @staticmethod
+    @classmethod
     def save_connection_db(
-        intersection_id: str, ip_address: str, locale_manager=None, engine=None
+        cls,
+        intersection_id: str,
+        ip_address: str,
+        locale_manager: Any = None,
+        engine: Optional[Any] = None,
+        snmp_config: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """
-        Saves or updates an intersection IP connection config in PostgreSQL/SQLite database.
-        """
-        try:
-            if engine is None:
-                from src.database.db_engine import DatabaseEngine
+        return cls._db_repo.save_connection_db(
+            intersection_id=intersection_id,
+            ip_address=ip_address,
+            locale_manager=locale_manager,
+            engine=engine,
+            snmp_config=snmp_config,
+        )
 
-                engine = DatabaseEngine(locale_manager=locale_manager)
-            conn = engine.get_connection()
-            if not conn:
-                return False
-            cursor = conn.cursor()
-            if engine.db_type == "postgres":
-                cursor.execute(
-                    """
-                    INSERT INTO hardware_controller_connections (intersection_id, ip_address, auto_connect, last_connected)
-                    VALUES (%s, %s, TRUE, NOW())
-                    ON CONFLICT (intersection_id)
-                    DO UPDATE SET ip_address = EXCLUDED.ip_address, auto_connect = TRUE, last_connected = NOW();
-                """,
-                    (str(intersection_id), str(ip_address)),
-                )
-            else:
-                cursor.execute(
-                    """
-                    INSERT INTO hardware_controller_connections (intersection_id, ip_address, auto_connect, last_connected)
-                    VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
-                    ON CONFLICT(intersection_id)
-                    DO UPDATE SET ip_address = excluded.ip_address, auto_connect = TRUE, last_connected = CURRENT_TIMESTAMP;
-                """,
-                    (str(intersection_id), str(ip_address)),
-                )
-            conn.commit()
-            conn.close()
-            logger.info(f"[DB Persistence] Saved hardware connection for '{intersection_id}' at {ip_address}")
-            return True
-        except Exception as e:
-            logger.error(f"[DB Persistence] Failed to save hardware connection to database: {e}", exc_info=True)
-            return False
-
-    @staticmethod
+    @classmethod
     def remove_connection_db(
-        intersection_id: str, locale_manager=None, engine=None
+        cls, intersection_id: str, locale_manager: Any = None, engine: Optional[Any] = None
     ) -> bool:
-        """
-        Deletes the intersection IP connection record completely from PostgreSQL/SQLite database.
-        Deletes both the raw ID and any 'tl_' prefixed variant to ensure complete cleanup.
-        """
-        try:
-            if engine is None:
-                from src.database.db_engine import DatabaseEngine
+        return cls._db_repo.remove_connection_db(
+            intersection_id=intersection_id,
+            locale_manager=locale_manager,
+            engine=engine,
+        )
 
-                engine = DatabaseEngine(locale_manager=locale_manager)
-            conn = engine.get_connection()
-            if not conn:
-                return False
-            cursor = conn.cursor()
+    @classmethod
+    def load_connection_configs_with_snmp_db(
+        cls, locale_manager: Any = None, engine: Optional[Any] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        return cls._db_repo.load_connection_configs_with_snmp_db(
+            locale_manager=locale_manager,
+            engine=engine,
+        )
 
-            clean_id = str(intersection_id).strip()
-            alt_id = clean_id.replace("tl_", "") if clean_id.startswith("tl_") else f"tl_{clean_id}"
+    @classmethod
+    def load_all_snmp_configs_db(
+        cls, locale_manager: Any = None, engine: Optional[Any] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        detailed = cls.load_connection_configs_with_snmp_db(locale_manager=locale_manager, engine=engine)
+        return {tl_id: entry["snmp_config"] for tl_id, entry in detailed.items() if entry.get("snmp_config")}
 
-            if engine.db_type == "postgres":
-                cursor.execute(
-                    "DELETE FROM hardware_controller_connections WHERE intersection_id = %s OR intersection_id = %s;",
-                    (clean_id, alt_id),
-                )
-            else:
-                cursor.execute(
-                    "DELETE FROM hardware_controller_connections WHERE intersection_id = ? OR intersection_id = ?;",
-                    (clean_id, alt_id),
-                )
-            conn.commit()
-            conn.close()
-            logger.info(f"[DB Persistence] Deleted connection record for '{clean_id}' and '{alt_id}' from database.")
-            return True
-        except Exception as e:
-            logger.error(f"[DB Persistence] Failed to delete hardware connection from database: {e}", exc_info=True)
-            return False
+    @classmethod
+    def load_all_connections_db(cls, locale_manager: Any = None, engine: Optional[Any] = None) -> Dict[str, str]:
+        detailed = cls.load_connection_configs_with_snmp_db(locale_manager=locale_manager, engine=engine)
+        return {tl_id: entry["ip"] for tl_id, entry in detailed.items()}
 
-    @staticmethod
-    def load_all_connections_db(locale_manager=None, engine=None) -> Dict[str, str]:
-        """
-        Loads all saved auto-connect hardware connections from PostgreSQL/SQLite database.
-        """
-        configs = {}
-        try:
-            if engine is None:
-                from src.database.db_engine import DatabaseEngine
-
-                engine = DatabaseEngine(locale_manager=locale_manager)
-            conn = engine.get_connection()
-            if not conn:
-                return configs
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT intersection_id, ip_address FROM hardware_controller_connections WHERE auto_connect = TRUE;"
-            )
-            rows = cursor.fetchall()
-            for row in rows:
-                configs[str(row[0])] = str(row[1])
-            conn.close()
-            logger.info(f"[DB Persistence] Loaded {len(configs)} saved hardware connection configs from database.")
-        except Exception as e:
-            logger.error(f"[DB Persistence] Failed to load hardware connections from database: {e}", exc_info=True)
-        return configs
-
-    @staticmethod
-    def clear_all_connections_db(locale_manager=None, engine=None) -> bool:
-        """
-        Deletes all hardware connection entries completely from PostgreSQL/SQLite database.
-        """
-        try:
-            if engine is None:
-                from src.database.db_engine import DatabaseEngine
-
-                engine = DatabaseEngine(locale_manager=locale_manager)
-            conn = engine.get_connection()
-            if not conn:
-                return False
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM hardware_controller_connections;")
-            conn.commit()
-            conn.close()
-            logger.info("[DB Persistence] Cleared (deleted) all hardware connection records from database.")
-            return True
-        except Exception as e:
-            logger.error(f"[DB Persistence] Failed to clear hardware connections in database: {e}", exc_info=True)
-            return False
+    @classmethod
+    def clear_all_connections_db(cls, locale_manager: Any = None, engine: Optional[Any] = None) -> bool:
+        return cls._db_repo.clear_all_connections_db(
+            locale_manager=locale_manager,
+            engine=engine,
+        )

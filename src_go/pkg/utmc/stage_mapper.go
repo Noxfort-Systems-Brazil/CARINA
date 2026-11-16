@@ -7,10 +7,35 @@ package utmc
 import (
 	"fmt"
 	"strings"
+
+	"carina/src_go/pkg/protocol"
 )
 
-// ConvertStageToHardwareMask converts stage index to UTMC2 bitmask (bit stage_idx).
+// ConvertStageToHardwareMask converts a 0-based stage index to a UTMC2 stage bitmask.
+// When greenStages is sparse (e.g. [0, 3]), stage 3 maps to hardware stage bit 1 (mask 2).
 func (d *Driver) ConvertStageToHardwareMask(stageIdx int, greenStages []int, stageCodes map[int]string) int {
+	if pos := protocol.IndexOfStage(stageIdx, greenStages); pos >= 0 {
+		return 1 << pos
+	}
+
+	if stageCodes != nil {
+		if stateStr, ok := stageCodes[stageIdx]; ok {
+			hasGreen := false
+			for _, r := range stateStr {
+				if r == 'g' || r == 'G' {
+					hasGreen = true
+					break
+				}
+			}
+			if !hasGreen {
+				return 0
+			}
+		}
+	}
+
+	if stageIdx < 0 {
+		return 0
+	}
 	return 1 << stageIdx
 }
 
@@ -18,6 +43,7 @@ func (d *Driver) ConvertStageToHardwareMask(stageIdx int, greenStages []int, sta
 func (d *Driver) ApplyDecision(action string) (bool, error) {
 	actionUpper := strings.ToUpper(strings.TrimSpace(action))
 
+	d.mu.Lock()
 	numStages := len(d.GreenStages)
 	if numStages == 0 {
 		numStages = 4
@@ -25,14 +51,14 @@ func (d *Driver) ApplyDecision(action string) (bool, error) {
 
 	if actionUpper == "ADVANCE" || actionUpper == "0" {
 		d.CurrentStage = (d.CurrentStage % numStages) + 1
-	} else {
-		// HOLD
-		if d.CurrentStage <= 0 {
-			d.CurrentStage = 1
-		}
+	} else if d.CurrentStage <= 0 {
+		d.CurrentStage = 1
 	}
+	logicalPos := d.CurrentStage - 1
+	d.mu.Unlock()
 
-	stageMask := 1 << (d.CurrentStage - 1)
+	stageMask := 1 << logicalPos
+	d.cancelFailsafeTimer()
 	err := d.Client.Set(d.Config.StageControl.Hold, stageMask)
 	return err == nil, err
 }
@@ -43,15 +69,12 @@ func (d *Driver) ApplyLogicalAction(action int, currentStageIdx int, greenStages
 		return false, fmt.Errorf("greenStages is empty")
 	}
 
-	currentListIdx := -1
-	for idx, s := range greenStages {
-		if s == currentStageIdx {
-			currentListIdx = idx
-			break
-		}
-	}
+	currentListIdx := protocol.IndexOfStage(currentStageIdx, greenStages)
 	if currentListIdx == -1 {
-		return false, fmt.Errorf("currentStageIdx %d is not in greenStages", currentStageIdx)
+		if action == 0 {
+			return d.ApplyAction(map[string]interface{}{"action_type": "release_hold"})
+		}
+		return true, nil
 	}
 
 	if action == 0 { // NEXT_STAGE
@@ -60,15 +83,15 @@ func (d *Driver) ApplyLogicalAction(action int, currentStageIdx int, greenStages
 		nextStageMask := d.ConvertStageToHardwareMask(targetStageIdx, greenStages, stageCodes)
 		currentStageMask := d.ConvertStageToHardwareMask(currentStageIdx, greenStages, stageCodes)
 
-		// 1. Release active hold
+		d.mu.Lock()
+		d.CurrentStage = nextListIdx + 1
+		d.mu.Unlock()
+
 		_, _ = d.ApplyAction(map[string]interface{}{"action_type": "release_hold"})
-		// 2. Force off current stage
 		_, _ = d.ApplyAction(map[string]interface{}{"action_type": "force_off", "stage_mask": currentStageMask})
-		// 3. Demand next stage
-		return d.ApplyAction(map[string]interface{}{"action_type": "demand", "stage_mask": nextStageMask})
+		return d.ApplyAction(map[string]interface{}{"action_type": "demand", "stage_mask": nextStageMask, "stage_idx": targetStageIdx})
 	}
 
-	// HOLD
 	stageMask := d.ConvertStageToHardwareMask(currentStageIdx, greenStages, stageCodes)
-	return d.ApplyAction(map[string]interface{}{"action_type": "hold", "stage_mask": stageMask})
+	return d.ApplyAction(map[string]interface{}{"action_type": "hold", "stage_mask": stageMask, "stage_idx": currentStageIdx})
 }

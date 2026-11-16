@@ -14,6 +14,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,12 +24,49 @@ import (
 	"carina/src_go/web_gateway"
 )
 
+func resolveFlagOrEnv(flagVal, envKey string) string {
+	if trimmed := strings.TrimSpace(flagVal); trimmed != "" {
+		return trimmed
+	}
+	return strings.TrimSpace(os.Getenv(envKey))
+}
+
+func resolvePortFlagOrEnv(explicitFlags map[string]bool, flagName string, flagVal int, envKey string) int {
+	if explicitFlags[flagName] {
+		return flagVal
+	}
+	if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 65535 {
+			return parsed
+		}
+	}
+	return flagVal
+}
+
 func main() {
 	trapPort := flag.Int("trap-port", 162, "UDP port for listening to SNMP Traps")
 	webPort := flag.Int("web-port", 2201, "HTTP port for Remote Gateway (CCO & EVP)")
 	evpPort := flag.Int("evp-port", 8085, "HTTP port for EVP vehicle telemetry ingestion")
 	webEnabled := flag.Bool("web-enabled", false, "Initial enabled state for Remote Gateway")
+	evpTokenFlag := flag.String("evp-token", "", "Authentication token for EVP HTTP endpoints")
+	ccoTokenFlag := flag.String("cco-token", "", "Authentication token for CCO HTTP/SSE endpoints")
+	allowedOriginFlag := flag.String("allowed-origin", "", "Allowed CORS origin for CCO endpoints")
+	tlsCertFlag := flag.String("tls-cert", "", "Optional TLS certificate file path for HTTP servers")
+	tlsKeyFlag := flag.String("tls-key", "", "Optional TLS private key file path for HTTP servers")
 	flag.Parse()
+
+	explicitFlags := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) {
+		explicitFlags[f.Name] = true
+	})
+
+	resolvedTrapPort := resolvePortFlagOrEnv(explicitFlags, "trap-port", *trapPort, "CARINA_TRAP_PORT")
+	resolvedWebPort := resolvePortFlagOrEnv(explicitFlags, "web-port", *webPort, "CARINA_GATEWAY_PORT")
+	resolvedEVPToken := resolveFlagOrEnv(*evpTokenFlag, "CARINA_EVP_AUTH_TOKEN")
+	resolvedCCOToken := resolveFlagOrEnv(*ccoTokenFlag, "CARINA_CCO_AUTH_TOKEN")
+	resolvedOrigin := resolveFlagOrEnv(*allowedOriginFlag, "CARINA_CCO_ALLOWED_ORIGIN")
+	resolvedCert := resolveFlagOrEnv(*tlsCertFlag, "CARINA_GATEWAY_TLS_CERT")
+	resolvedKey := resolveFlagOrEnv(*tlsKeyFlag, "CARINA_GATEWAY_TLS_KEY")
 
 	// Redirect all Go logs to stderr, reserving stdout strictly for NDJSON data
 	log.SetOutput(os.Stderr)
@@ -44,7 +83,7 @@ func main() {
 	ipcHub := NewIPCHub(outWriter)
 
 	// Instantiate connection manager for traffic controllers
-	mgr := manager.NewHardwareManager(*trapPort, func(event interface{}) {
+	mgr := manager.NewHardwareManager(resolvedTrapPort, func(event interface{}) {
 		ipcHub.Broadcast(event)
 	})
 
@@ -52,10 +91,17 @@ func main() {
 		log.Printf("[Gateway Start Error] %v", err)
 	}
 
-	// Instantiate and start Web Gateway on port 2201 for CCO and EVP
-	webGateway := web_gateway.NewWebGatewayServer(*webPort, func(event interface{}) {
+	// Instantiate and start Web Gateway on resolved port for CCO and EVP
+	webGateway := web_gateway.NewWebGatewayServer(resolvedWebPort, func(event interface{}) {
 		ipcHub.Broadcast(event)
 	})
+	webGateway.SetAuthTokens(resolvedEVPToken, resolvedCCOToken)
+	if resolvedOrigin != "" {
+		webGateway.SetAllowedOrigin(resolvedOrigin)
+	}
+	if resolvedCert != "" && resolvedKey != "" {
+		webGateway.SetTLSConfig(resolvedCert, resolvedKey)
+	}
 	if *webEnabled {
 		webGateway.SetEnabled(true)
 	}
@@ -64,7 +110,7 @@ func main() {
 	}
 
 	// Instantiate and start EVP ingestion server on port 8085 for vehicle GPS antennas
-	evpServer := evp_go.NewEVPServer(*evpPort, "", func(payload evp_go.TelemetryPayload) {
+	evpServer := evp_go.NewEVPServer(*evpPort, resolvedEVPToken, func(payload evp_go.TelemetryPayload) {
 		eventMsg := map[string]interface{}{
 			"type":       "event",
 			"event_type": "evp_telemetry",
@@ -76,6 +122,9 @@ func main() {
 			"vehicle": payload,
 		})
 	})
+	if resolvedCert != "" && resolvedKey != "" {
+		evpServer.SetTLSConfig(resolvedCert, resolvedKey)
+	}
 	if err := evpServer.Start(); err != nil {
 		log.Printf("[EVPServer Start Error] %v", err)
 	}
@@ -86,8 +135,8 @@ func main() {
 
 	go func() {
 		sig := <-sigChan
-		log.Printf("[Gateway OS Signal] Signal received: %v. Executing emergency failsafe...", sig)
-		mgr.EmergencyReleaseControlAll()
+		log.Printf("[Gateway OS Signal] Signal received: %v. Executing shutdown failsafe...", sig)
+		mgr.ShutdownAll()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		_ = webGateway.Stop(shutCtx)
 		_ = evpServer.Stop(shutCtx)
@@ -95,10 +144,11 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// Main stdin reading loop
+	// Main stdin reading loop with bounded command concurrency
 	scanner := bufio.NewScanner(os.Stdin)
 	buf := make([]byte, 1024*1024)
 	scanner.Buffer(buf, len(buf))
+	cmdSem := make(chan struct{}, 64)
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -118,8 +168,12 @@ func main() {
 			continue
 		}
 
-		// Dispatch concurrently in goroutine to keep stdin reader unblocked
-		go handleCommand(req, mgr, webGateway, outWriter)
+		// Dispatch concurrently within bounded semaphore to keep stdin reader responsive without unbounded goroutines
+		cmdSem <- struct{}{}
+		go func(r RequestEnvelope) {
+			defer func() { <-cmdSem }()
+			handleCommandWithEVP(r, mgr, webGateway, evpServer, outWriter)
+		}(req)
 	}
 
 	if err := scanner.Err(); err != nil && err != io.EOF {
@@ -127,8 +181,8 @@ func main() {
 	}
 
 	// EOF detected: parent Python process terminated or closed pipe
-	log.Println("[Gateway Stdin] EOF detected on pipe. Parent process exited. Executing global failsafe...")
-	mgr.EmergencyReleaseControlAll()
+	log.Println("[Gateway Stdin] EOF detected on pipe. Parent process exited. Executing global shutdown...")
+	mgr.ShutdownAll()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	_ = webGateway.Stop(shutCtx)
 	_ = evpServer.Stop(shutCtx)

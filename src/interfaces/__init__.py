@@ -8,33 +8,43 @@ Centralizes abstract protocols and ABCs across all subsystems (SOLID: ISP + DIP)
 """
 
 from src.interfaces.controller import (
+    IAdminGatewayCommands,
+    IAIHardwareCommandDispatcher,
+    IFailsafeHardwareHook,
     IFailsafeManager,
+    IFenixReconciliationDispatcher,
+    IGatewaySettingsPersister,
+    IHardwareGatewayCoordinator,
+    IHardwareSnapshotProvider,
     IHealthMonitor,
     IOverrideManager,
+    IRemoteGatewayBackend,
     IRequestProcessor,
+    ITailscaleGatewayAdapter,
     ITelemetryAggregator,
     ITopologyCoordinator,
     ITrafficFrameProcessor,
     IYellowScheduleManager,
 )
-from src.interfaces.drivers import BaseActiveEventListener, BaseTrafficDriver
+from src.interfaces.drivers import BaseActiveEventListener, BaseTrafficDriver, ITrafficDriverFactory
 from src.interfaces.engine import (
     IActionAuthorizer,
     IActionSupervisor,
     IAgentEvaluator,
+    IBatchedPAEEncoder,
+    IHardwareTelemetrySynchronizer,
+    IPhysicalActionMasker,
     IRewardComputer,
     IStateExtractor,
     IStepProcessor,
+    IStrategicCoordinator,
 )
-from src.interfaces.fenix import (
-    IProcessRunner,
-    IProcessSupervisor,
-    IRecoveryPolicy,
-    IStateReconciler,
-)
+from src.interfaces.fenix import IProcessRunner, IProcessSupervisor, IRecoveryPolicy, IStateReconciler
 from src.interfaces.repositories import (
     IAgentCheckpointRepository,
     ICloudVaultRepository,
+    IConnectionConfigCSVStorage,
+    IConnectionConfigRepository,
     IFluidDynamicsMaintenance,
     IFluidDynamicsReader,
     IFluidDynamicsRepository,
@@ -54,12 +64,7 @@ from src.interfaces.security import (
     IUserManagement,
     IUserRepository,
 )
-from src.interfaces.settings import (
-    IEnvironmentProvider,
-    ISettingsReader,
-    ISettingsStorage,
-    ISettingsWriter,
-)
+from src.interfaces.settings import IEnvironmentProvider, ISettingsReader, ISettingsStorage, ISettingsWriter
 from src.interfaces.transports import BaseMonitorTransport
 
 __all__ = [
@@ -71,20 +76,36 @@ __all__ = [
     "ITopologyCoordinator",
     "ITrafficFrameProcessor",
     "IYellowScheduleManager",
+    "IHardwareSnapshotProvider",
+    "IFailsafeHardwareHook",
+    "IAIHardwareCommandDispatcher",
+    "IFenixReconciliationDispatcher",
+    "IAdminGatewayCommands",
+    "ITailscaleGatewayAdapter",
+    "IRemoteGatewayBackend",
+    "IGatewaySettingsPersister",
+    "IHardwareGatewayCoordinator",
     "BaseActiveEventListener",
     "BaseTrafficDriver",
+    "ITrafficDriverFactory",
     "IActionAuthorizer",
     "IActionSupervisor",
     "IAgentEvaluator",
     "IRewardComputer",
     "IStateExtractor",
     "IStepProcessor",
+    "IHardwareTelemetrySynchronizer",
+    "IStrategicCoordinator",
+    "IPhysicalActionMasker",
+    "IBatchedPAEEncoder",
     "IProcessRunner",
     "IProcessSupervisor",
     "IRecoveryPolicy",
     "IStateReconciler",
     "IAgentCheckpointRepository",
     "ICloudVaultRepository",
+    "IConnectionConfigCSVStorage",
+    "IConnectionConfigRepository",
     "IFluidDynamicsMaintenance",
     "IFluidDynamicsReader",
     "IFluidDynamicsRepository",

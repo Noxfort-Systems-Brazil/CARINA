@@ -34,11 +34,17 @@ class DatabaseManager:
         locale_manager: Optional["LocaleManagerBackend"] = None,
         db_name: str = "carina_data.db",
         run_migrations: bool = False,
+        enable_step_worker: bool = True,
     ) -> "DatabaseManager":
         """Returns the shared process-level DatabaseManager instance."""
         with cls._lock:
             if cls._instance is None:
-                cls._instance = cls(locale_manager=locale_manager, db_name=db_name, run_migrations=run_migrations)
+                cls._instance = cls(
+                    locale_manager=locale_manager,
+                    db_name=db_name,
+                    run_migrations=run_migrations,
+                    enable_step_worker=enable_step_worker,
+                )
             elif locale_manager is not None and cls._instance.locale_manager is None:
                 cls._instance.locale_manager = locale_manager
             return cls._instance
@@ -48,6 +54,7 @@ class DatabaseManager:
         locale_manager: "LocaleManagerBackend",
         db_name: str = "carina_data.db",
         run_migrations: bool = False,
+        enable_step_worker: bool = True,
     ):
         self.locale_manager = locale_manager
 
@@ -60,9 +67,11 @@ class DatabaseManager:
         self.cloud_vault_repo = CloudVaultRepository(self.engine, locale_manager)
         self.step_decision_repo = StepDecisionRepository(self.engine, locale_manager)
 
-        # Async telemetry worker thread
-        self.step_decision_worker = StepDecisionWorker(self.step_decision_repo)
-        self.step_decision_worker.start()
+        # Async telemetry worker thread (optional for read-only / report workers)
+        self.step_decision_worker: Optional[StepDecisionWorker] = None
+        if enable_step_worker:
+            self.step_decision_worker = StepDecisionWorker(self.step_decision_repo)
+            self.step_decision_worker.start()
         self.current_session_id: Optional[int] = None
 
         with self.__class__._lock:
@@ -70,10 +79,15 @@ class DatabaseManager:
                 self.__class__._instance = self
 
     def close(self):
-        """Stops the async telemetry worker and cleans up connections."""
+        """Stops the async telemetry worker and cleans up pooled database connections."""
         if hasattr(self, "step_decision_worker") and self.step_decision_worker:
             try:
                 self.step_decision_worker.stop()
+            except Exception:
+                pass
+        if hasattr(self, "engine") and self.engine and hasattr(self.engine, "close"):
+            try:
+                self.engine.close()
             except Exception:
                 pass
 

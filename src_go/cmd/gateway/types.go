@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+
+	"carina/src_go/pkg/snmp"
 )
 
 // RequestEnvelope represents an incoming NDJSON command payload from stdin.
@@ -19,6 +21,7 @@ type RequestEnvelope struct {
 	IP              string                 `json:"ip"`
 	Port            int                    `json:"port"`
 	Community       string                 `json:"community"`
+	SNMPConfig      *snmp.SNMPConfig       `json:"snmp_config,omitempty"`
 	Protocol        string                 `json:"protocol"`
 	GreenStages     []int                  `json:"green_stages"`
 	ActionData      map[string]interface{} `json:"action_data"`
@@ -29,6 +32,9 @@ type RequestEnvelope struct {
 	StageCodes      map[int]string         `json:"stage_codes"`
 	Domain          string                 `json:"domain,omitempty"`
 	Token           string                 `json:"token,omitempty"`
+	EVPAuthToken    string                 `json:"evp_auth_token,omitempty"`
+	CCOAuthToken    string                 `json:"cco_auth_token,omitempty"`
+	AllowedOrigin   string                 `json:"allowed_origin,omitempty"`
 	Enabled         *bool                  `json:"enabled,omitempty"`
 	Data            interface{}            `json:"data,omitempty"`
 }
@@ -106,4 +112,3 @@ func (h *IPCHub) Broadcast(payload interface{}) {
 		s.Send(payload)
 	}
 }
-

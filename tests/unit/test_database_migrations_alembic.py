@@ -88,7 +88,7 @@ def test_database_engine_apply_migrations_method():
     """Tests the DatabaseEngine.apply_migrations() integration."""
     lm = MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
-        test_db_name = "test_engine_migration.db"
+        test_db_name = os.path.join(tmpdir, "test_engine_migration.db")
         db_engine = DatabaseEngine(locale_manager=lm, db_name=test_db_name)
         assert hasattr(db_engine, "apply_migrations")
         success = db_engine.apply_migrations()

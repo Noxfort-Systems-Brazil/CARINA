@@ -35,6 +35,7 @@ class WebSocketServer:
         self.locale_manager = locale_manager
 
         self.cached_initial_geometry_packet: str | None = None
+        self._broadcast_future: Optional[Any] = None
 
     async def _register(self, websocket: websockets.WebSocketServerProtocol) -> None:
         """Registers a newly connected client and sends the initialization packet if available."""
@@ -59,8 +60,9 @@ class WebSocketServer:
                         "sds_websocket.register.error_cache",
                         default="[WS_SERVER] Error sending cache to new client: {error}",
                         error=e,
-                    )
-                , exc_info=True)
+                    ),
+                    exc_info=True,
+                )
 
     async def _unregister(self, websocket: websockets.WebSocketServerProtocol) -> None:
         """Removes a disconnected client."""
@@ -82,7 +84,7 @@ class WebSocketServer:
                     try:
                         command = json.loads(message)
                         logging.info(lm.get_string("sds_websocket.handler.command_received", command=command))
-                        self.ui_command_queue.put(command)
+                        self.ui_command_queue.put(command, block=False)
                     except json.JSONDecodeError:
                         logging.warning(
                             lm.get_string("sds_websocket.handler.invalid_json", address=websocket.remote_address)
@@ -113,9 +115,12 @@ class WebSocketServer:
         if not self.clients:
             return
 
-        message_json = json.dumps(message)
+        fut = self._broadcast_future
+        if fut is not None and callable(getattr(fut, "done", None)) and not fut.done():
+            return
 
-        asyncio.run_coroutine_threadsafe(self._broadcast_async(message_json), self.loop)
+        message_json = json.dumps(message)
+        self._broadcast_future = asyncio.run_coroutine_threadsafe(self._broadcast_async(message_json), self.loop)
 
     async def _broadcast_async(self, message_json: str) -> None:
         """The coroutine that effectively sends the message."""
@@ -123,12 +128,12 @@ class WebSocketServer:
             return
 
         clients_to_send = list(self.clients)
-        tasks = [client.send(message_json) for client in clients_to_send]
+        tasks = [asyncio.wait_for(client.send(message_json), timeout=2.0) for client in clients_to_send]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for i, result in enumerate(results):
-            if isinstance(result, (websockets.exceptions.ConnectionClosed, ConnectionResetError)):
+            if isinstance(result, (websockets.exceptions.ConnectionClosed, ConnectionResetError, asyncio.TimeoutError)):
                 await self._unregister(clients_to_send[i])
 
     async def _main_loop(self) -> None:
@@ -201,8 +206,9 @@ class WebSocketServer:
                     "sds_websocket.main_loop.async_error",
                     default="[WS_SERVER] Critical error in Asyncio loop: {error}",
                     error=e,
-                )
-            , exc_info=True)
+                ),
+                exc_info=True,
+            )
         finally:
             try:
                 pending = [t for t in asyncio.all_tasks(self.loop) if not t.done()]

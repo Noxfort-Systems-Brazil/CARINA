@@ -44,7 +44,36 @@ class FluidDynamicsWriter:
             self._edge_dict_cache[edge_str_id] = int_id
             return int_id
         except Exception:
+            if hasattr(conn, "rollback"):
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             return 0
+
+    def _prefetch_missing_edge_ids(self, conn, edge_ids: List[str]) -> None:
+        """Resolves uncached edge IDs in batch before inserting samples."""
+        missing = [eid for eid in dict.fromkeys(edge_ids) if eid and eid not in self._edge_dict_cache]
+        if not missing:
+            return
+        try:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(missing))
+            cursor.execute(
+                f"SELECT edge_str_id, edge_int_id FROM edge_dictionary WHERE edge_str_id IN ({placeholders});",
+                tuple(missing),
+            )
+            for row in cursor.fetchall() or ():
+                self._edge_dict_cache[row[0]] = row[1]
+            still_missing = [eid for eid in missing if eid not in self._edge_dict_cache]
+            for eid in still_missing:
+                self._get_or_create_edge_id(conn, eid)
+        except Exception:
+            if hasattr(conn, "rollback"):
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
 
     def _apply_delta_compression(self, samples: List[Dict]) -> List[Dict]:
         """
@@ -105,6 +134,7 @@ class FluidDynamicsWriter:
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 
+            self._prefetch_missing_edge_ids(conn, [s["edge_id"] for s in compressed_samples if "edge_id" in s])
             rows = []
             for s in compressed_samples:
                 edge_str = s["edge_id"]

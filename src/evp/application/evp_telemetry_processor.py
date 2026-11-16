@@ -31,21 +31,13 @@ class EVPTelemetryProcessor:
         self.offline_timeout_seconds = offline_timeout_seconds
         self.auto_register_fleet = auto_register_fleet
 
-    def process(
+    def ingest_telemetry(
         self,
         telemetry: TelemetryData,
         vehicles: Dict[str, EmergencyVehicle],
         fleet_manager: Any,
-        topology_service: Any,
-        kinematics: Any,
-        preemption_engine: Any,
-        on_notify_ui: Optional[Callable[[Any], None]] = None,
-        on_persist_telemetry: Optional[Callable[[EmergencyVehicle, bool], None]] = None,
     ) -> Optional[EmergencyVehicle]:
-        """
-        Processes an incoming telemetry frame for an emergency vehicle.
-        Returns the updated/created EmergencyVehicle entity or None if ignored.
-        """
+        """Validates authorization and updates in-memory vehicle telemetry state."""
         v_id = telemetry.vehicle_id
 
         if fleet_manager.is_vehicle_unregistered(v_id):
@@ -58,7 +50,9 @@ class EVPTelemetryProcessor:
                     RegisteredVehicle(vehicle_id=v_id, corporation=telemetry.corporation, created_at=time.time())
                 )
             else:
-                logger.debug(f"[EVPTelemetryProcessor] Telemetria de {v_id} ignorada (viatura não cadastrada na frota).")
+                logger.debug(
+                    f"[EVPTelemetryProcessor] Telemetria de {v_id} ignorada (viatura não cadastrada na frota)."
+                )
                 return None
 
         vehicle = vehicles.get(v_id)
@@ -82,6 +76,26 @@ class EVPTelemetryProcessor:
                 telemetry.heading_deg,
                 telemetry.siren_active,
             )
+        return vehicle
+
+    def process(
+        self,
+        telemetry: TelemetryData,
+        vehicles: Dict[str, EmergencyVehicle],
+        fleet_manager: Any,
+        topology_service: Any,
+        kinematics: Any,
+        preemption_engine: Any,
+        on_notify_ui: Optional[Callable[[Any], None]] = None,
+        on_persist_telemetry: Optional[Callable[[EmergencyVehicle, bool], None]] = None,
+    ) -> Optional[EmergencyVehicle]:
+        """
+        Processes an incoming telemetry frame for an emergency vehicle.
+        Returns the updated/created EmergencyVehicle entity or None if ignored.
+        """
+        vehicle = self.ingest_telemetry(telemetry=telemetry, vehicles=vehicles, fleet_manager=fleet_manager)
+        if vehicle is None:
+            return None
 
         evp_triggered = preemption_engine.evaluate_vehicle_lifecycle(
             vehicle=vehicle,

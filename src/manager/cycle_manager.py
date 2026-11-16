@@ -11,9 +11,10 @@ import numpy as np
 import torch
 
 from core.enums import Maturity
-from utils.paths import get_base_output_dir
-
+from maturity.maturity_manager import resolve_agent_phase, resolve_maturity_map
 from optimizer.ppo_optimizer import PPOOptimizer
+from safety.guardian_checkpoint_service import GuardianCheckpointService
+from utils.paths import get_base_output_dir
 
 
 class CycleManager:
@@ -29,6 +30,8 @@ class CycleManager:
         pipe_conn: Connection,
         settings: Optional[Any] = None,
         ppo_optimizer: Optional[Any] = None,
+        guardian_trainer: Optional[Any] = None,
+        guardians: Optional[Dict[str, Any]] = None,
     ):
         """
         Args:
@@ -36,10 +39,14 @@ class CycleManager:
             pipe_conn: Connection (Pipe) to send updates to the UI.
             settings: Optional system settings (ConfigParser or dict) for PPO hyperparams.
             ppo_optimizer: Optional pre-configured PPOOptimizer instance.
+            guardian_trainer: Optional shadow trainer/calibrator for CHILD-only Guardian learning.
+            guardians: Optional dictionary mapping tl_id -> GuardianAgent.
         """
         self.maturity_manager = maturity_manager
         self.pipe_conn = pipe_conn
         self.settings = settings
+        self.guardian_trainer = guardian_trainer
+        self.guardians: Dict[str, Any] = guardians or {}
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.scaler = torch.amp.GradScaler(enabled=(self.device.type == "cuda"))
 
@@ -106,12 +113,40 @@ class CycleManager:
 
                 memory_batch = (old_states, old_actions, old_log_probs, rewards, dones, old_state_values)
 
-                total_loss = self.ppo_optimizer.step(
-                    policy_net=agent.policy_net,
-                    optimizer=agent.optimizer,
-                    memory_batch=memory_batch,
-                    evaluate_fn=agent.evaluate,
-                )
+                # Precompute PAE latents once per rollout instead of re-encoding inside every k_epoch/minibatch
+                pre_latents = None
+                shared_pae = getattr(agent, "shared_pae", None)
+                if (
+                    shared_pae is not None
+                    and isinstance(old_states, torch.Tensor)
+                    and type(old_states).__name__ != "DummyTensor"
+                    and callable(getattr(shared_pae, "encode", None))
+                    and callable(getattr(agent, "evaluate", None))
+                    and not hasattr(agent.evaluate, "assert_called")
+                ):
+                    try:
+                        with torch.no_grad():
+                            agent_dev = getattr(agent, "device", self.ppo_optimizer.device)
+                            seq_dev = old_states.to(agent_dev) if hasattr(old_states, "to") else old_states
+                            pre_latents = shared_pae.encode(seq_dev).detach()
+                    except Exception:
+                        pre_latents = None
+
+                if pre_latents is not None:
+                    total_loss = self.ppo_optimizer.step(
+                        policy_net=agent.policy_net,
+                        optimizer=agent.optimizer,
+                        memory_batch=memory_batch,
+                        evaluate_fn=agent.evaluate,
+                        precomputed_latents=pre_latents,
+                    )
+                else:
+                    total_loss = self.ppo_optimizer.step(
+                        policy_net=agent.policy_net,
+                        optimizer=agent.optimizer,
+                        memory_batch=memory_batch,
+                        evaluate_fn=agent.evaluate,
+                    )
                 losses[tl_id] = total_loss
                 if hasattr(agent, "steps_done"):
                     agent.steps_done += len(rewards)
@@ -122,26 +157,33 @@ class CycleManager:
                 logging.error(f"[CycleManager] Error updating agent {tl_id} with PPO: {e}", exc_info=True)
         return losses
 
-    def evaluate_cycle(self, step_counter: int, agents: Dict, accumulated_metrics: Dict, mfd_efficiency: float = 0.0):
+    def set_guardians(self, guardians: Optional[Dict[str, Any]]) -> None:
+        """Registers GuardianAgent instances managed for cycle training and persistence."""
+        self.guardians = guardians or {}
+
+    def evaluate_cycle(
+        self,
+        step_counter: int,
+        agents: Dict,
+        accumulated_metrics: Dict,
+        mfd_efficiency: float = 0.0,
+        guardians: Optional[Dict[str, Any]] = None,
+    ):
         """
         Executes end-of-cycle routine:
-        1. Online PPO Optimization (Trains policies with collected on-policy transitions).
+        1. Online PPO Optimization & CHILD-only Guardian QR-D3QN updates.
         2. Computes performance averages.
-        3. Checks tier promotions (IMPORTANT: Before saving).
-        4. Saves checkpoints (Now with updated state).
+        3. Checks tier promotions and freezes newly graduated Guardians.
+        4. Saves checkpoints (now with updated phase and calibrated Guardians).
         5. Notifies the UI.
-
-        Args:
-            step_counter (int): Current simulation step.
-            agents (Dict): Dictionary of active agents.
-            accumulated_metrics (Dict): Raw metrics collected during the episode.
-            mfd_efficiency (float): Recent MFD efficiency score.
         """
         logging.info(f"--- FIM DO CICLO (Passo {step_counter}) | AVALIAÇÃO DE MATURIDADE ---")
+        active_guardians = guardians if guardians is not None else self.guardians
 
-        # 1. Online PPO Optimization
-        # Commands all agents to learn from their on-policy memory buffers before clearing
+        # 1. Online PPO Optimization & CHILD-only off-policy Guardian learning
         self._train_agents(agents)
+        if self.guardian_trainer is not None and active_guardians:
+            self.guardian_trainer.train_active_child_guardians(active_guardians, self.maturity_manager)
 
         # 2. Metrics Aggregation
         agent_metrics_summary = self._aggregate_metrics(accumulated_metrics)
@@ -149,13 +191,13 @@ class CycleManager:
         # Clear metrics for the next cycle
         accumulated_metrics.clear()
 
-        # 3. Promotion Check (Updates status in MaturityManager)
-        # We run this BEFORE saving the checkpoint to ensure the promotion
-        # be persisted to disk immediately.
+        # 3. Promotion Check & Guardian Calibration/Freeze on graduation
         promotion_occurred = self.maturity_manager.check_and_promote_agents(agent_metrics_summary, mfd_efficiency)
+        if self.guardian_trainer is not None and active_guardians:
+            self.guardian_trainer.sync_maturation_and_freeze(active_guardians, self.maturity_manager)
 
         # 4. Physical Checkpoints (Now it will save with the ALREADY updated phase)
-        self._save_checkpoints(agents)
+        self._save_checkpoints(agents, guardians=active_guardians)
 
         # Clear agent memory buffers to prevent RAM leak in HFT mode
         for agent in agents.values():
@@ -170,22 +212,22 @@ class CycleManager:
         if promotion_occurred:
             self._sync_maturity_state(step_counter)
 
-    def _save_checkpoints(self, agents: Dict):
-        """Saves the current state of neural networks and their maturity phase to disk."""
+    def _save_checkpoints(self, agents: Dict, guardians: Optional[Dict[str, Any]] = None):
+        """Saves the current state of neural networks, guardians, and maturity phase to disk."""
         try:
             results_base = get_base_output_dir()
             checkpoints_dir = os.path.join(results_base, "results", "hft_live_session", "checkpoints")
             os.makedirs(checkpoints_dir, exist_ok=True)
 
+            maturity_map = resolve_maturity_map(self.maturity_manager)
             for tl_id, agent in agents.items():
-                # Retrieves the agent's current phase (ex: Maturity.CHILD)
-                # As 'check_and_promote_agents' has already run, this value will be updated.
-                current_maturity = self.maturity_manager.agent_maturity.get(tl_id, Maturity.CHILD)
-                maturity_str = current_maturity.name  # "CHILD", "TEEN", "ADULT"
-
+                current_maturity = (
+                    maturity_map.get(tl_id, Maturity.CHILD)
+                    if maturity_map
+                    else resolve_agent_phase(self.maturity_manager, tl_id, Maturity.CHILD)
+                )
+                maturity_str = current_maturity.name
                 ckpt_path = os.path.join(checkpoints_dir, f"agent_{tl_id}.pth")
-
-                # Explicitly passes the phase to the agent to save it within the .pth file
                 agent.save_checkpoint(ckpt_path, maturity_stage=maturity_str)
 
             # Save PAE Universal checkpoint if present
@@ -198,6 +240,12 @@ class CycleManager:
                     logging.info(f"[CHECKPOINT] PAE Universal salvo em {pae_path}")
                 except Exception as e_pae:
                     logging.error(f"[CHECKPOINT] Falha ao salvar PAE Universal: {e_pae}", exc_info=True)
+
+            active_guardians = guardians if guardians is not None else self.guardians
+            if active_guardians:
+                GuardianCheckpointService.save_all(
+                    active_guardians, checkpoints_dir=checkpoints_dir, maturity_manager=self.maturity_manager
+                )
 
             logging.info(f"[CHECKPOINT] Estados dos agentes atualizados no disco.")
         except Exception as e:
@@ -223,7 +271,7 @@ class CycleManager:
 
     def _sync_maturity_state(self, step_counter: int):
         """Sends the new maturity map to the graphical interface."""
-        maturity_map = {aid: phase.name for aid, phase in self.maturity_manager.agent_maturity.items()}
+        maturity_map = {aid: phase.name for aid, phase in resolve_maturity_map(self.maturity_manager).items()}
 
         payload = {"run_id": step_counter, "agent_maturity": maturity_map}
 

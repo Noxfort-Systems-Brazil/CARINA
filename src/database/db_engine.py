@@ -6,6 +6,7 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any, Optional
 
+from src.database.connection_pool import PostgresConnectionPool, configure_sqlite_connection, db_transaction
 from src.database.db_config import DatabaseConfig
 from src.database.schema_initializer import DatabaseSchemaInitializer
 from src.database.sqlite_wrappers import SQLiteConnectionWrapper, SQLiteCursorWrapper
@@ -39,17 +40,30 @@ class DatabaseEngine:
         self.db_name_pg = cfg.db_name_pg
         self.db_schema = cfg.db_schema
         self.db_path = cfg.db_path
+        self._pg_pool = PostgresConnectionPool(
+            lambda: {
+                "host": self.db_host,
+                "port": self.db_port,
+                "user": self.db_user,
+                "password": self.db_password,
+                "dbname": self.db_name_pg,
+                "options": f"-c search_path={self.db_schema},public",
+            }
+        )
 
         self._initialize_db()
         logging.info(f"[DB_ENGINE] Central Engine Initialized. DB: {self.db_type}")
 
     def get_connection(self) -> Any:
-        """Returns a connection (psycopg2 or sqlite3) depending on the configuration."""
+        """Returns a pooled PostgreSQL connection or WAL/busy-timeout SQLite connection."""
         if getattr(self, "_fatal_db_error", False):
             return None
 
         try:
             if self.db_type == "postgres":
+                pool = getattr(self, "_pg_pool", None)
+                if pool is not None:
+                    return pool.acquire()
                 import psycopg2
 
                 return psycopg2.connect(
@@ -60,8 +74,9 @@ class DatabaseEngine:
                     dbname=self.db_name_pg,
                     options=f"-c search_path={self.db_schema},public",
                 )
-            else:
-                return sqlite3.connect(self.db_path, factory=SQLiteConnectionWrapper)
+            conn = sqlite3.connect(self.db_path, timeout=30.0, factory=SQLiteConnectionWrapper)
+            configure_sqlite_connection(conn, self.db_path)
+            return conn
         except Exception as e:
             error_msg = str(e).lower()
             if "password authentication failed" in error_msg or "fatal:" in error_msg or "fe_sendauth" in error_msg:
@@ -76,6 +91,16 @@ class DatabaseEngine:
             else:
                 logging.error(f"[DB_ENGINE] Failed to connect to the database ({self.db_type}): {e}", exc_info=True)
             return None
+
+    def transaction(self, commit: bool = False):
+        """Returns a context manager yielding `(conn, cursor)` with guaranteed cleanup."""
+        return db_transaction(self, commit=commit)
+
+    def close(self) -> None:
+        """Releases all pooled PostgreSQL connections held by this engine."""
+        pool = getattr(self, "_pg_pool", None)
+        if pool is not None:
+            pool.close_all()
 
     def _load_schema_config(self) -> dict:
         return DatabaseSchemaInitializer.load_schema_config()

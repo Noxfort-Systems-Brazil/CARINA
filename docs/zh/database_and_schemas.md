@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS step_decisions (
     maturity_stage SMALLINT NOT NULL DEFAULT 2,     -- 0=CHILD 幼年, 1=TEEN 青年, 2=ADULT 成年
     suggested_action SMALLINT NOT NULL DEFAULT 0,   -- 0=KEEP 维持, 1=CHANGE 切换, 2=OVERRIDE 覆盖
     final_decision SMALLINT NOT NULL DEFAULT 0,     -- 0=APPROVED 批准, 1=DENIED 否决
-    veto_reason_code SMALLINT NOT NULL DEFAULT 0,   -- 0=NONE 无, 1=MIN_GREEN 最短绿灯, 2=YELLOW 黄灯, 3=SPILLBACK 溢流, 4=GRIDLOCK 锁死
+    veto_reason_code SMALLINT NOT NULL DEFAULT 0,   -- 0=NONE 无, 1=MIN_GREEN 最短绿灯, 2=YELLOW 黄灯, 3=ALL_RED 全红, 4=MIN_RED 最短红灯, 5=SPILLBACK 溢流, 6=EVP_PREEMPTION 应急优先
     step_count INTEGER NOT NULL DEFAULT 1,          -- 增量差分压缩连续命中步数
     total_step_time_ms REAL,
     guardian_time_ms REAL,
@@ -115,7 +115,7 @@ CREATE INDEX idx_sfd_scen_stage_time ON synapse_fluid_dynamics (scenario_name, m
 ```
 
 ### 3.4 数据表：`hardware_controller_connections`
-存储现场 NTCIP/UDP/SNMP 物理信号机硬件通信连接端点，由 [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py) 统一管理，并定义于 [`config/database/schema_queries.json`](../../config/database/schema_queries.json)：
+存储现场 NTCIP/UDP/SNMP 物理信号机硬件通信连接端点及可选的 SNMPv2c/v3 / OID 覆盖 JSON（`snmp_config`），由 [`HardwareConnectionRepository`](../../src/repositories/hardware_connection_repo.py)（及向后兼容门面 [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py)）管理，并定义于 [`config/database/schema_queries.json`](../../config/database/schema_queries.json)：
 
 ```sql
 -- PostgreSQL 方言
@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT TRUE,
-    last_connected TIMESTAMP DEFAULT NOW()
+    last_connected TIMESTAMP DEFAULT NOW(),
+    snmp_config TEXT
 );
 
 -- SQLite 方言 (嵌入式本地备用)
@@ -131,11 +132,14 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT 1,
-    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    snmp_config TEXT
 );
 ```
 
-### 3.5 用户安全凭据隔离与混合持久化架构
+*(注：小时级汇总表 `synapse_edge_phase_hourly_summary` 与 `synapse_intersection_phase_hourly_summary` 亦将 `(..., scenario_name)` 纳入复合主键以实现多场景隔离，同时 `config/database/fluid_dynamics_queries.json` 中的 PostgreSQL 清理与时间区间查询均采用参数化 `make_interval(...)` 调用。)*
+
+### 3.5 用户安全凭据与混合持久化 (`security.json` & SQL)
 CARINA 采用由 [`src/security/`](../../src/security) 统一管理的离线优先混合用户管理架构：
 - **本地解耦存储 (`security.json`)：** 在无关系型数据库连接的边缘计算节点环境下，通过 [`JsonUserRepository`](../../src/security/json_user_repo.py) 运行。
 - **关系型持久化 (`system_users` 与 `system_security_state`)：** 由 [`SqlUserRepository`](../../src/security/sql_user_repo.py) 与 [`SqlSecurityStateRepository`](../../src/security/sql_security_state_repo.py) 在 PostgreSQL 和 SQLite 中维护，并通过 [`HybridUserRepository`](../../src/security/hybrid_user_repo.py) 保持双向同步：
@@ -277,13 +281,16 @@ CREATE INDEX idx_topodict_raw ON topology_dictionary (raw_net_id);
 
 ---
 
-## 5. 连接池管理、生命周期与迁移幂等性保障 (`src/database/`)
+## 5. 连接池管理、SQLite WAL、生命周期与保留策略 (`src/database/`)
 
-- **`DatabaseEngineFactory` (`src/database/engine_factory.py`)：** 依据运行环境自动按需实例化连接池（PostgreSQL 启用高并发 `QueuePool`，SQLite 启用线程安全隔离的 `NullPool`）。
+- **`PostgresConnectionPool` 与 `db_transaction` ([`src/database/connection_pool.py`](../../src/database/connection_pool.py))：** 基于 `psycopg2.pool.ThreadedConnectionPool`（`minconn=1, maxconn=16`）构建的线程安全 PostgreSQL 连接池，配合 `PooledPostgresConnectionProxy` 与确定性的 `db_transaction` 提交/回滚/归还上下文管理器。
+- **`configure_sqlite_connection` ([`connection_pool.py`](../../src/database/connection_pool.py))：** 自动配置 `PRAGMA busy_timeout = 30000`、`PRAGMA foreign_keys = ON`、`PRAGMA synchronous = NORMAL`、`PRAGMA temp_store = MEMORY` 以及一次性 `PRAGMA journal_mode = WAL`，彻底消除子进程间的写锁竞争。
+- **只读工作进程模式 (`enable_step_worker=False`)：** 分析与报告生成工作进程（`XaiWorker`、`ReportDataCollector`、`XaiAgentRepository`）通过 `DatabaseManager.get_instance(..., enable_step_worker=False)` 获取实例，避免派生冗余的 `StepDecisionWorker` 线程。
+- **`DatabaseEngineFactory` (`src/database/engine_factory.py`)：** 实例化用于 Alembic 迁移的 SQLAlchemy 引擎（PostgreSQL 启用 `QueuePool`，SQLite 启用 `NullPool`）。
 - **`DatabaseSchemaInitializer` (`src/database/schema_initializer.py`)：** 统筹数据模型初始化并调用 **Alembic** 执行版本迁移链 (`migrations/versions/`)。
-- **迁移 DDL 严格幂等性：** 为彻底根除既有生产数据库启动时遭遇的 `table already exists` 致命异常，所有版本迁移脚本（`001_initial_schema.py` 与 `002_consolidate_missing_tables.py`）在执行前均通过 `sa.inspect(op.get_bind()).get_table_names()` 动态反射路况表，严格遵循“仅增补缺失实体与索引”的幂等策略。
-- **自动版本盖戳容灾恢复：** 当系统接入已预先建表但缺失 `alembic_version` 版本戳记录的既有数据库时，`DatabaseSchemaInitializer.apply_migrations` 自动捕获运行时表冲突，并平滑触发 `command.stamp(alembic_cfg, "head")` 完成版本校准，确保 `DatabaseWorker` 零中断纯净启动。
-- **优雅停机排空 (Graceful Shutdown)：** 收到终止信号（`SIGINT`/`SIGTERM`）时，`DatabaseWorker` 优先将内存写入队列安全持久化至磁盘后再切断物理连接，实现全生命周期零数据丢失。
+- **迁移 DDL 严格幂等性与自动盖戳：** 迁移脚本（`001_initial_schema.py` 与 `002_consolidate_missing_tables.py`）在运行时通过 `sa.inspect(op.get_bind()).get_table_names()` 检查现有数据表，并针对未盖戳的遗留表结构通过 `command.stamp(alembic_cfg, "head")` 自动恢复版本指针。
+- **自动数据保留清理 (`database_worker.py`)：** 每小时定时汇总任务自动清理超过 48 小时的原始 `synapse_fluid_dynamics` 明细，并清除超过 **168 小时（7 天）** 的 `evp_telemetry_records` 历史记录。
+- **优雅停机排空 (Graceful Shutdown)：** 收到终止信号（`SIGINT`/`SIGTERM`）时，`DatabaseWorker` 优先排空内存写入队列后再关闭连接池（`engine.close()`），实现全生命周期零数据丢失。
 
 ---
 

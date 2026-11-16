@@ -21,8 +21,13 @@ CARINA управляет критически важной муниципаль
    - `OPERATOR`: Рутинный мониторинг перекрестков, ручной вызов фаз, просмотр телеметрии и диагностика в режиме только чтения.
    - `SUPERUSER`: Полный административный доступ, создание/удаление пользователей, изменение политик безопасности и снятие блокировок (`lockdown`).
 4. **Гибридное хранилище учетных данных (Offline-First и SQL):** Поддерживает автономное локальное хранилище (`security.json` через [`JsonUserRepository`](../../src/security/json_user_repo.py)), реляционную персистентность в PostgreSQL и SQLite (`system_users` и `system_security_state` через [`SqlUserRepository`](../../src/security/sql_user_repo.py)) и отказоустойчивую синхронизацию через [`HybridUserRepository`](../../src/security/hybrid_user_repo.py).
-5. **Шифрование полей и аудит безопасности:** Конфиденциальные параметры шифруются в покое с помощью [`FieldEncryptor`](../../src/security/field_encryptor.py), а ключевые события фиксируются в [`AuditLogger`](../../src/security/audit_logger.py).
-6. **Изоляция секретов по методологии 12-Factor:** Полное исключение конфиденциальных параметров из исходного кода через переменные файла `.env`.
+5. **Шифрование полей и аудит безопасности:** Конфиденциальные параметры шифруются в покое с помощью [`FieldEncryptor`](../../src/security/field_encryptor.py), а ключевые события фиксируются в [`AuditLogger`](../../src/security/audit_logger.py) (с транзакционной записью через пул `db_transaction`).
+6. **Защита транспорта, эндпоинтов и SQL:**
+   - **Безопасность Synapse gRPC (`:50051`) ([`grpc_security.py`](../../src/communication/grpc_security.py)):** Поддерживает TLS/mTLS (`grpc.ssl_server_credentials`) и проверку токенов Bearer / `x-carina-token` за постоянное время (`BearerTokenServerInterceptor`).
+   - **Fail-Closed веб-шлюз и аутентификация EVP ([`auth.go`](../../src_go/web_gateway/auth.go), [`evp_http_server.go`](../../src_go/evp_go/evp_http_server.go)):** `gateway_enabled` по умолчанию равен `False` (возвращает `503 Service Unavailable` при неактивности), обеспечивает постоянное по времени сравнение токенов (`subtle.ConstantTimeCompare`), явный CORS (`CARINA_CCO_ALLOWED_ORIGIN`) и терминацию HTTPS/TLS.
+   - **Пиннинг сертификатов SHA-256 ([`cco_tls_transport.py`](../../src/sds/cco_tls_transport.py)):** `PinnedHTTPSConnection` проверяет доверие ЦС и опционально фиксирует SHA-256 дайджест листового сертификата при отправке SDS на `/cco/broadcast`.
+   - **Параметризованные SQL-интервалы:** Запросы PostgreSQL используют `make_interval(...)` вместо строковой интерполяции.
+7. **Изоляция секретов по методологии 12-Factor:** Полное исключение конфиденциальных параметров из исходного кода через переменные файла `.env`.
 
 ```text
  Клиент (Desktop UI / CCO / CLI)
@@ -102,15 +107,33 @@ CARINA_MQTT_HOST=127.0.0.1                     # Локальный брокер
 CARINA_MQTT_PORT=1883
 CARINA_MQTT_USER=
 CARINA_MQTT_PASSWORD=
+
+# --- Защита удаленного шлюза и транспорта CCO/EVP ---
+CARINA_GATEWAY_ENABLED=False                   # Fail-closed до настройки токенов
+CARINA_EVP_AUTH_TOKEN=
+CARINA_CCO_AUTH_TOKEN=
+CARINA_CCO_ALLOWED_ORIGIN=                     # Явный источник CORS для эндпоинтов CCO
+CARINA_GATEWAY_TLS_CERT=
+CARINA_GATEWAY_TLS_KEY=
+CARINA_GATEWAY_TLS_CA=
+CARINA_GATEWAY_TLS_SERVER_NAME=
+
+# --- Защита Synapse gRPC (:50051) ---
+CARINA_GRPC_AUTH_TOKEN=
+CARINA_GRPC_TLS_ENABLED=False
+CARINA_GRPC_TLS_CERT=
+CARINA_GRPC_TLS_KEY=
+CARINA_GRPC_TLS_CA=
+CARINA_GRPC_REQUIRE_CLIENT_CERT=False
 ```
 
 ---
 
 ## 4. Рекомендации по усилению безопасности в промышленной среде
 
-1. **Регулярная смена строки сообщества SNMP:** Никогда не используйте значение по умолчанию `"public"` на реальных дорожных сетях.
-2. **Ограничение сетевых интерфейсов IPC и gRPC:** В промышленной эксплуатации привязывайте порты gRPC (`50051`) и WebSocket (`8080`) к изолированным VLAN или локальному интерфейсу `127.0.0.1`, если они не защищены обратным прокси-сервером с TLS.
-3. **Принцип минимальных привилегий для БД:** Пользователю базы данных приложения должны быть предоставлены только права `SELECT`, `INSERT` и `UPDATE` в рабочей схеме.
+1. **Ротация строк сообщества SNMP и переход на SNMPv3:** Избегайте стандартных строк `"public"` в продакшене; используйте **SNMPv3 `AuthPriv`** (`SHA256` + `AES`), настраиваемый через `snmp_config` в таблице `hardware_controller_connections`.
+2. **Включение TLS и токенов для gRPC и веб-шлюза:** Никогда не переключайте `CARINA_GATEWAY_ENABLED=True` в продакшене без задания надежных `CARINA_EVP_AUTH_TOKEN`, `CARINA_CCO_AUTH_TOKEN`, `CARINA_CCO_ALLOWED_ORIGIN` и `CARINA_GRPC_AUTH_TOKEN` + сертификатов TLS.
+3. **Принцип минимальных привилегий для БД:** Пользователю базы данных приложения должны быть предоставлены только права `SELECT`, `INSERT`, `UPDATE` и `DELETE` (для очистки устаревших записей) в рабочей схеме.
 4. **Отказоустойчивость дорожных контроллеров:** Убедитесь, что все дорожные контроллеры настроены на автоматический переход в локальный план жесткого цикла или желтое мигание при потере связи.
 5. **Безопасные права доступа к JSON-хранилищу:** Файлы `security.json` и `lockdown.flag` должны иметь права доступа только для системного пользователя сервиса CARINA (`chmod 600`).
 

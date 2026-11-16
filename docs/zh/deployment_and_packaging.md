@@ -17,13 +17,13 @@ CARINA 统筹管理本地多进程通信、现场硬件控制器以及云端大�
 
 | 监听端口 | 传输层协议 | 对应子系统 / 进程 | 功能语义说明 |
 | :--- | :--- | :--- | :--- |
-| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | 外部高频 gRPC 服务，供微观交通仿真器 (SUMO/CityFlow) 或边缘感知设备接入。 |
-| **`8080`** | TCP (WS) | 智能仪表盘服务 (SDS) | 遥测 WebSocket 服务器，向 Web 客户端广播实时排队数据。 |
-| **`2201`** | TCP (HTTP/SSE) | Go Web 网关 (`src_go/web_gateway`) | 边缘综合接入服务：`POST /api/v1/evp/telemetry` (HTTP 204)、`GET /cco/stream` (SSE) 及 CCO 大屏。 |
-| **`8085`** | TCP (HTTP) | 独立 EVP 接收器 (`src/evp`) | Go 网关未启用时，用于应急特种车辆 GPS 遥测接入的备用监听器。 |
+| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | 外部高频 gRPC 服务，支持可选 TLS/mTLS 与 Bearer 令牌认证（`CARINA_GRPC_*`）。 |
+| **`8080`** | TCP (WS) | 智能仪表盘服务 (SDS) | 遥测 WebSocket 服务器，具备背压控制与 2.0s 超时保护。 |
+| **`2201`** | TCP (HTTP/HTTPS/SSE) | Go Web 网关 (`src_go/web_gateway`) | 可通过 `CARINA_GATEWAY_PORT` 配置；在 `CARINA_GATEWAY_ENABLED=True` 前默认故障安全关闭（`503`），提供令牌与可选 TLS 保护。 |
+| **`8085`** | TCP (HTTP/HTTPS) | 独立 EVP 接收器 (`src_go/evp_go`) | 应急特种车辆 GPS 遥测监听器，支持 Bearer/`X-EVP-Token` 认证与 TLS。 |
 | **`42123`** | TCP (Local) | 单实例互斥锁 (`single_instance.py`) | 本地操作系统互斥锁，防止应用多开；向下发 `RESTORE` 唤醒信号。 |
-| **`161`** | UDP (SNMP) | NTCIP 1202 / UTMC 现场交通机 | 向路口交通信号机发送轮询与相位锁定指令 (`ascPhaseHold`)。 |
-| **`162`** | UDP (Trap) | 硬件陷阱监听服务器 (`traplistener`) | 异步摄入现场交通机硬件故障告警陷阱与检测器触发报文。 |
+| **`161`** | UDP (SNMP) | NTCIP 1202 / UTMC2 交通机 | 仅由 `CARINA_GATEWAY_ROLE=owner`（`CentralController`）独占驱动 SNMPv2c/v3 轮询与相位保持。 |
+| **`162`** | UDP (Trap) | 硬件陷阱监听服务器 (`traplistener`) | 可通过 `CARINA_TRAP_PORT` 配置；解码二进制 SNMPv1/v2c/v3 Trap 与 Inform 报文。 |
 
 ---
 
@@ -108,17 +108,28 @@ sudo systemctl start carina
 
 ---
 
-## 5. 基于 Tailscale Funnel 的零信任安全网格部署
+## 5. 零信任默认关闭网关与 Tailscale Funnel 部署
 
 针对无静态公网 IP 的分布式都市交通边缘机房：
-1. 在 Tailscale 控制台生成具备 `funnel` 授权的 Auth Key。
-2. 配置 `.env` 环境变量：
+1. 在完成认证令牌与 TLS 证书配置之前，保持 `CARINA_GATEWAY_ENABLED=False`（`.env.example` 与 `config/settings.ini` 中的默认值）；禁用期间，Go Web 网关对 CCO/EVP 端点统一返回 `503 Service Unavailable`。
+2. 在 Tailscale 控制台生成具备 `funnel` 授权的 Auth Key，并为 EVP、CCO 与 Synapse gRPC 生成高强度 Bearer 令牌。
+3. 配置 `.env` 环境变量：
    ```bash
-   CARINA_GATEWAY_ENABLED=true
+   CARINA_GATEWAY_ENABLED=True
    CARINA_GATEWAY_PORT=2201
+   CARINA_TRAP_PORT=162
+   CARINA_EVP_AUTH_TOKEN=<strong-evp-token>
+   CARINA_CCO_AUTH_TOKEN=<strong-cco-token>
+   CARINA_CCO_ALLOWED_ORIGIN=https://<node-name>.<tailnet>.ts.net
+   CARINA_GATEWAY_TLS_CERT=/etc/carina/certs/gateway.crt
+   CARINA_GATEWAY_TLS_KEY=/etc/carina/certs/gateway.key
+   CARINA_GRPC_AUTH_TOKEN=<strong-grpc-token>
+   CARINA_GRPC_TLS_ENABLED=True
+   CARINA_OUTPUT_DIR=/var/lib/carina
+   CARINA_CONFIG_DIR=/etc/carina
    CARINA_TAILSCALE_AUTH_KEY=tskey-auth-kXXXXX-XXXXXXXX
    ```
-3. 当 Go 网关启动时，[`src_go/web_gateway/tailscale.go`](../../src_go/web_gateway/tailscale.go) 将自动完成节点注册并建立基于公网 TLS 的安全 HTTPS Funnel（例如 `https://<node-name>.<tailnet>.ts.net:2201`），在零路由器改动的前提下安全对外暴露 EVP 接入 API 与 CCO 指挥大屏。
+4. `CentralController` 以 `CARINA_GATEWAY_ROLE=owner` 启动（将令牌/TLS 配置转发给 `bin/carina-go`），而 UI/AI/SDS 工作进程以 `remote` 模式运行。[`src_go/web_gateway/tailscale.go`](../../src_go/web_gateway/tailscale.go) 自动完成节点注册并建立 `https://<node-name>.<tailnet>.ts.net:2201` HTTPS Funnel。
 
 ---
 

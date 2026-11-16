@@ -32,7 +32,11 @@ class MFDMapResolver:
                             try:
                                 import sumolib
 
-                                net = sumolib.net.readNet(net_file, withInternal=False)
+                                from utils.sumo_net_cache import read_sumo_net_cached
+
+                                net = read_sumo_net_cached(
+                                    net_file, reader_fn=sumolib.net.readNet, with_programs=False, with_internal=False
+                                )
                                 tls = [node.getID() for node in net.getNodes() if node.getType() == "traffic_light"]
                                 if tls:
                                     logging.info(

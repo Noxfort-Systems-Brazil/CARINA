@@ -13,23 +13,24 @@ aliases: [系统架构, 多进程蓝图, 系统全景概览]
 
 ## 1. 多进程微服务并发模型
 
-Python 的全局解释器锁（GIL）阻碍了计算密集型的 CPU/GPU 人工智能推理与高吞吐量 I/O 操作实现真正的多线程并行。为了实现严格的亚毫秒级控制响应，CARINA 采用了由 [`carina.py`](../../carina.py) 和 [`src/launcher/process_manager.py`](../../src/launcher/process_manager.py) 编排的**多进程微服务模型**，并与工业级 **Go 硬件与 Web 网关**（`bin/carina-go`）无缝集成：
+Python 的全局解释器锁（GIL）阻碍了计算密集型的 CPU/GPU 人工智能推理与高吞吐量 I/O 操作实现真正的多线程并行。为了实现严格的亚毫秒级控制响应，CARINA 采用了由 [`carina.py`](../../carina.py) 和 [`src/launcher/process_manager.py`](../../src/launcher/process_manager.py) 编排的**多进程微服务模型**（通过 [`backend_service_registry.py`](../../src/launcher/backend_service_registry.py)、[`fenix_supervision_loop.py`](../../src/launcher/fenix_supervision_loop.py) 与 [`worker_entrypoints.py`](../../src/launcher/worker_entrypoints.py) 实现模块化拆分），并与由 `CentralController`（`CARINA_GATEWAY_ROLE=owner`）独占拥有的工业级 **Go 硬件与 Web 网关**（`bin/carina-go`）无缝集成：
 
 ```mermaid
 graph TD
-    Launcher[carina.py 编排器 / UI 托盘] -->|派生与监控| PM[ProcessManager 进程管理器]
+    Launcher[carina.py 编排器 / UI 托盘 - remote] -->|派生与监控| PM[ProcessManager 进程管理器]
 
-    PM --> CC[1. CentralController 进程]
-    PM --> AI[2. AI_Process 推理引擎]
+    PM --> CC[1. CentralController 进程 - owner]
+    PM --> AI[2. AI_Process 推理引擎 - remote]
     PM --> WD[3. Watchdog 看门狗进程]
-    PM --> SDS[4. DashboardService SDS 仪表盘服务]
+    PM --> SDS[4. DashboardService SDS - remote]
     PM --> SAS[5. AnalysisService SAS 分析服务]
     PM --> DB[6. StepDecisionWorker 与 DatabaseWorker]
     PM --> XAI[7. XAI_Worker LLM 分析进程]
     PM --> MFD[8. MFD_Worker 宏观动力学引擎]
 
-    CC <-->|IPC 管道| AI
-    CC -->|wd 队列 (心跳)| WD
+    CC <-->|ThreadSafePipeConnection| AI
+    CC -->|wd 队列 心跳| WD
+    WD -->|fenix 队列| PM
     AI -->|db 队列| DB
     CC -->|sds 队列| SDS
     CC -->|sas 队列| SAS
@@ -39,11 +40,17 @@ graph TD
     XAI -->|磁盘 HFT 日志| AI
 
     CC <-->|NDJSON 管道输入输出| GW[Go 网关 carina-go]
-    GW --> NTCIP[NTCIP / UTMC 现场交通机 UDP 161]
-    GW --> WebGW[Go Web 网关 端口 2201 / Tailscale]
+    GW --> NTCIP[NTCIP 1202 / UTMC2 交通机 UDP 161]
+    GW --> WebGW[Go Web 网关 端口 2201 / TLS / Tailscale]
     WebGW --> CCO[CCO Web 大屏地图 React/TSX src_tsx]
-    WebGW <--|POST 204 遥测上报| EVP[EVP GPS 车载天线 端口 8085]
+    WebGW <--|POST 204 Auth Token| EVP[EVP GPS 车载天线 端口 8085 / 2201]
 ```
+
+### 1.1 单一网关所有权 (`CARINA_GATEWAY_ROLE`) 与闭环硬件同步
+为防止多个工作进程之间出现脑裂（Split-Brain）SNMP 轮询、`162` 端口 Trap 冲突以及重复派生 `carina-go` 子进程：
+- **所有者进程 (`CARINA_GATEWAY_ROLE=owner`)：** 严格限定于 `CentralController` 的 [`execute_controller_process`](../../src/launcher/worker_entrypoints.py) 内部设置。它负责启动 [`HardwareGatewayCoordinator`](../../src/controller/hardware_gateway_coordinator.py)（由 `GatewayRuntimeWorker`、`HardwareCommandService`、`FenixStageDispatcher` 与 `TailscaleGatewayAdapter` 组成），独占拥有 `bin/carina-go`、`HardwareConnectionManager` 本地 SNMP 连接以及 `EVPService` 遥测接入。
+- **远程镜像进程 (`CARINA_GATEWAY_ROLE=remote`)：** 设置于 [`carina.py`](../../carina.py)、[`src/main.py`](../../src/main.py)（`AI_Process`）与 [`dashboard_worker.py`](../../src/sds/dashboard_worker.py)。远程进程通过 IPC 同步镜像状态（借助 [`remote_proxy_synchronizer.py`](../../src/drivers/remote_proxy_synchronizer.py) 中的 `RemoteHardwareDriverProxy`），并经由 [`ThreadSafePipeConnection`](../../src/communication/pipe_utils.py) 转发动作与优先通行指令（`ai_hardware_cmd`、`ai_evp_preempt`、`set_hardware_connection`）。
+- **闭环硬件遥测 (`HardwareTelemetrySynchronizer`)：** 在 AI 推理循环内部，[`HardwareTelemetrySynchronizer`](../../src/engine/hardware_telemetry_synchronizer.py) 与 [`decode_stage_from_telemetry`](../../src/drivers/hardware_telemetry_decoder.py) 将实时的 NTCIP 1202 / UTMC2 信号灯掩码（`active_greens`、`active_yellows`、`active_reds`、`current_stage`）解码为基于 0 的 SUMO 相位索引，从而实现真正的闭环控制与 F.E.N.I.X. 交接状态对账。
 
 ---
 
@@ -76,32 +83,39 @@ graph TD
                           └─────────────────────────────┘
 ```
 
-### 2.1 ST-GATv2 Lite 模块 (`src/models/st_gatv2_lite.py`)
-- **设计目标：** 实现城市道路交通拓扑图上相邻路口之间干线“动态绿波带”的空间相位同步。
-- **动态权重机制：** 尽管物理道路拓扑是静态固定的，但动态空间注意力系数 $\alpha_{ij}(t)$ 会根据实时汇入车辆密度与速度梯度进行毫秒级在线重计算。
-- **去中心化协同：** 战略协调智能体（Strategist）周期性计算覆盖全路网的时空上下文张量，并注入给本地智能体（LocalAgent）与守卫智能体（GuardianAgent），从而在无需脆弱中心单点决策的前提下自发涌现干线绿波协同。
+### 2.1 ST-GATv2 Lite 模块 (`src/models/st_gatv2_lite.py` & `src/engine/strategic_coordinator.py`)
+- **设计目标：** 依托 `TemporalConvNetLite`（`GroupNorm(1, C)` + `SiLU` + `TemporalAttentionPool`）后接两层残差 `GATv2Conv`，实现城市道路交通拓扑图上相邻路口之间干线“动态绿波带”的空间相位同步。
+- **在线自监督与 CTDE 预测头：** 内置辅助单步前向预测头（`pred_head`）以及协同全局价值头（`global_critic_head`）。[`StrategicCoordinator`](../../src/engine/strategic_coordinator.py) 通过无副作用的 [`StateExtractor.peek_state()`](../../src/engine/state_extractor.py) 读取节点序列，确保辅助图采样绝不污染 `HistoricalAggregator` 的指数移动平均状态。
+- **去中心化协同：** 战略协调智能体（Strategist）周期性计算覆盖全路网的时空上下文张量，并通过残差 tanh 门控（`PAEStateAugmentor`）注入给本地智能体（LocalAgent），从而在无需脆弱中心单点决策的前提下自发涌现干线绿波协同。
 
-### 2.2 通用预测自编码器 Universal PAE (`src/models/pae.py`)
-- **设计目标：** 共享的高容量物理动态特征提取引擎，将多步序贯交通物理动态压缩映射至结构不变的潜在低维空间 ($Z \in \mathbb{R}^{16\dots 128}$)。
-- **精准赋能：** 为本地策略决策（LocalAgent）与溢流回堵审计（GuardianAgent）提供紧凑的时序物理预测表征。
+### 2.2 通用动作条件 iTransformer PAE (`src/models/pae.py`)
+- **设计目标：** 共享的高容量物理世界模型，用于跨异构路口拓扑推演未来时空动力学演化（$t + \Delta t$）。
+- **iTransformer 与不确定性架构：** 采用逐变量 RevIN + `[mean, std]` 尺度嵌入、面向传感器变量的倒置 Transformer 编码器层、带 `key_padding_mask`（`valid_dims`）的交叉注意力潜变量池化（确保零填充车道绝不污染潜在向量）、二元动作条件化（`0 = ADVANCE`、`1 = KEEP`）以及异方差不确定性估计（`decode_with_uncertainty -> (mean, log_var)`），并支持可选的 `torch.compile` 预热（`torch_compile_helper.py`）。
+- **单遍批量编码：** 每个仿真步长由 [`BatchedPAEEncoder`](../../src/engine/batched_pae_encoder.py) 一次性对所有路口执行批量编码，并在 [`PPOOptimizer`](../../src/optimizer/ppo_optimizer.py) 的多个经验回放轮次（epoch）中通过 `precomputed_latents` 直接复用。
 
-### 2.3 $O(1)$ 拓扑自适应缩放器 (`src/utils/topo_scaler.py`)
+### 2.3 战术向量化与分布式 Guardian 安全护盾 (`src/engine/`, `src/safety/`)
+- **统一因果 TCN 主干 (`src/models/tcn_backbone.py`)：** 以 `TemporalConv1d`、因果通道级 `GroupNorm(1, C)`、`SiLU`、正交初始化和 `TemporalAttentionPool` 替代已弃用的 `weight_norm`。`ActorCriticNet` 输出原始 FP32 对数几率（`forward_logits`），由 [`PhysicalActionMasker`](../../src/engine/physical_action_masker.py) 直接施加物理掩码（强制执行黄灯/全红清空、最小绿灯与最大绿灯约束）。
+- **同构 `torch.vmap` 批量推理 (`src/engine/fleet_batch_inferencer.py`)：** 按模型架构签名对 `LocalAgent` 进行分组，利用 `torch.func.stack_module_state` + `torch.vmap` 执行向量化前向推理，将标量打包进 CPU NumPy 缓冲区（`last_cpu_decisions`），并在 `PPOOptimizer` 中结合主机端 NumPy GAE 及驻留 CPU 的 `ReplayMemory` / `StateReplayMemory`（支持 `pin_memory`、$O(1)$ `_max_priority` 缓存与 `push_batch`）。
+- **校准后的 QR-D3QN 与 Noisy-OR Guardian (`src/safety/`)：** `D3QN_TCN` 为每个二元动作建模 `num_quantiles = 32` 个分位数，用于评估尾部风险 $\text{CVaR}_{0.20}$。[`GuardianPhysicsEstimator`](../../src/safety/guardian_physics_estimator.py) 根据真实车道车辆容量对驶入路段饱和度进行归一化并推演清空视界 $H = \text{yellow} + \text{all\_red}$；[`GuardianRiskCalibrator`](../../src/safety/guardian_risk_calibrator.py) 执行基于 $F_2$ 调优的逻辑回归校准与非补偿性 **Noisy-OR 融合**。[`GuardianShadowTrainer`](../../src/safety/guardian_shadow_trainer.py) 仅在 `Maturity.CHILD` 阶段对 Guardian 进行安全离线训练，晋升毕业时调用 `freeze_for_deployment()` 冻结部署并通过 [`GuardianCheckpointService`](../../src/safety/guardian_checkpoint_service.py) 持久化保存 `guardian_{tl_id}.pth`。
+
+### 2.4 $O(1)$ 拓扑自适应缩放器 (`src/utils/topo_scaler.py`)
 - **算法级自适应：** 自动探测路网交叉口规模（$N$ 个节点），自主调整以 2 的幂次对齐 NVIDIA TensorCore 计算架构的最佳神经网络超参数：
   - $N \le 20 \implies \text{dim} = 32, \text{heads} = 2$
   - $20 < N \le 80 \implies \text{dim} = 64, \text{heads} = 4$
   - $80 < N \le 250 \implies \text{dim} = 128, \text{heads} = 8$（如巴西隆德里纳Londrina大都市路网）
   - $N > 250 \implies \text{dim} = 256, \text{heads} = 16$（超大城市级路网拓扑）
 
-### 2.4 通用 AMP 与 TensorCore 硬件加速
+### 2.5 通用 AMP 与 TensorCore 硬件加速
 - 核心模型的前向推理计算全部被封装在 `torch.amp.autocast` 混合精度上下文中，原生启用 NVIDIA TensorCore 的 FP16/TF32 硬件算力加速，将核心模型全生命周期的显存（VRAM）占用严格限制在 **约 20 MB**。
 
 ---
 
 ## 3. 持久化数据层与增量压缩存储引擎
 
-CARINA 实现了基于 PostgreSQL **游程增量差分压缩编码（Run-Length Delta Compression）** 的异步数据持久化引擎：
+CARINA 实现了基于 PostgreSQL 与 SQLite **游程增量差分压缩编码（Run-Length Delta Compression）** 及线程安全连接池的异步数据持久化引擎：
 - **`step_decisions`**：通过非阻塞 RAM 环形队列将配时建议、Guardian 符号否决记录与步进计时器异步派发至 [`StepDecisionWorker`](../../src/database/step_decision_worker.py)，调度开销 $< 0.001\text{ ms}$。
 - **`edge_dictionary`**：将长字符串路段名称哈希映射为 4 字节紧凑整数进行全局索引。
+- **连接池与编译指示调优 (`src/database/connection_pool.py`)：** 提供 `PostgresConnectionPool`（`psycopg2.pool.ThreadedConnectionPool`，`minconn=1, maxconn=16`）、确定性的 `db_transaction` 上下文管理器、SQLite WAL 调优（`busy_timeout=30000`、`synchronous=NORMAL`、`temp_store=MEMORY`、`journal_mode=WAL`）、面向只读工作进程（`XaiWorker`）的可选 `enable_step_worker=False` 模式、参数化 `make_interval(...)` 查询以及 168 小时 EVP 遥测自动清理。
 - **存储优化效果：** 实现了高达 **97.9% 的磁盘存储占用缩减**（对于拥有 200 个路口的都市级路网，全量时序记录仅占用约 380 MB/天）。
 
 有关数据库模式与详细 SQL 查询定义，请参阅 [数据库架构与模式](database_and_schemas.md)。
@@ -131,11 +145,12 @@ CARINA 实现了基于 PostgreSQL **游程增量差分压缩编码（Run-Length 
         └─────────────────────┘
 ```
 
-- **`SettingsSchema` (`src/settings/schema.py`):** 权威注册表，定义配置键与配置段的映射关系、默认回退值以及强类型校验规则。
+- **`SettingsSchema` (`src/settings/schema.py`):** 权威注册表，定义配置键与配置段的映射关系（涵盖 `[SYNAPSE]` gRPC TLS/令牌键以及 `[REMOTE_GATEWAY]` TLS/CORS/端口键）、默认回退值以及强类型校验规则。
 - **`IniFileStorage` (`src/settings/ini_storage.py`):** 处理对 `config/settings.ini` 文件的物理读取与持久化回写。
-- **`DotenvSecretProvider` (`src/settings/env_provider.py`):** 基于 12-Factor 原则，通过 `python-dotenv` 解析 `.env` 中的敏感基础设施凭据，支持自动文件解析回退。
+- **`DotenvSecretProvider` (`src/settings/env_provider.py`):** 基于 12-Factor 原则，通过 `python-dotenv` 解析 `.env` 中的敏感基础设施凭据（包含 `CARINA_EVP_AUTH_TOKEN`、`CARINA_CCO_AUTH_TOKEN`、`CARINA_CCO_ALLOWED_ORIGIN`、`CARINA_GATEWAY_TLS_*`、`CARINA_GATEWAY_PORT`、`CARINA_TRAP_PORT`），支持自动文件解析回退。
 - **`SettingsService` (`src/settings/service.py`):** 核心配置服务，统筹配置检索、验证与序列化全流程。
 - **`SettingsManager` (`src/utils/settings_manager.py`):** 即插即用的向后兼容适配门面，确保遗留调用代码零改动、零回归。
+- **SOLID 协议接口 (`src/interfaces/`)：** 分布在 `controller.py`、`drivers.py`、`engine.py` 与 `repositories.py` 中的隔离接口契约，彻底解耦协调器、网关、驱动、PAE、动作掩码与持久化层。
 
 ---
 
@@ -223,10 +238,11 @@ IncidentReporter 异常上报 / TelemetryLoop 遥测循环
 ```
 
 ### 6.1 核心架构特性
-- **主机零网络端口开放：** Python 与 Go 之间的控制链路完全通过标准匿名管道（基于 Linux 内核环形缓冲区 `pipe(2)`）运行，杜绝在本地主机暴露任何 TCP/HTTP 监听端口。
-- **原子级安全故障回退：** 一旦 Python 人工智能主进程发生崩溃或异常关闭，内核会即刻关闭管道。Go 二进制文件在微秒级内捕捉到 `os.Stdin` 的 `EOF` 信号，立即向所有受控路口广播 `EmergencyReleaseControlAll()` SNMP 指令，安全释放远程锁定，促使信号机瞬间回退至本地固化自主配时方案。
-- **彻底消除 GIL 争用：** 由 Goroutine 完全独立于 Python PyTorch 张量运算，高并发执行周期轮询、2.0秒保活心跳与 UDP 162 Trap 陷阱监听。
-- **无缝透明适配器 (`GoTrafficDriverProxy`)：** 严格遵循里氏替换原则（LSP）实现 `BaseTrafficDriver` 抽象接口，对 CARINA 现有业务逻辑层 100% 透明无感。
+- **单进程所有权与本地零控制端口：** 仅 `CentralController`（`CARINA_GATEWAY_ROLE=owner`）会派生 `bin/carina-go`。Python 与 Go 之间的控制链路严格通过标准匿名操作系统管道（`pipe(2)` NDJSON `stdin`/`stdout`）运行，而 `AI_Process` 与 `UI` 则通过 [`RemoteHardwareDriverProxy`](../../src/drivers/remote_hardware_driver.py) 同步镜像状态。
+- **NTCIP 1202、UTMC2 与 SNMPv3 USM：** 实现标准 NTCIP 1202 OID（`.4.1.*` 状态 / `.5.1.*` 控制）、UTMC2 需求与相位 OID、基于 `GetBitmask` 的整型与字节串解码（`src_go/pkg/snmp/codec.go`）、完整 SNMPv3 USM（`NoAuthNoPriv`、`AuthNoPriv`、`AuthPriv`），以及持久化于 `hardware_controller_connections.snmp_config` 和 CSV 表格中的单路口 `config_path` OID 覆盖配置。
+- **二进制 SNMP Trap 解码器与绿间隔保护：** [`snmp_decoder.go`](../../src_go/pkg/traplistener/snmp_decoder.go) 负责解码二进制 SNMPv1/v2c/v3 Trap 与 Inform 报文，而 [`HardwareStageActuator`](../../src/drivers/hardware_stage_actuator.py) 会在黄灯/全红绿间隔清空时段跳过存在冲突的相位保持指令。
+- **原子级安全故障回退与自动恢复：** 当检测到 `EOF`/`SIGPIPE` 时，Go 网关通过 SNMP 调用 `ShutdownAll()`；在运行时看门狗超时场景下，`EmergencyReleaseControlAll()` 会暂停心跳并释放相位保持，同时保留驱动实例与 Trap 监听器，以便 `resume_control`（`ResumeControlAll()`）在无需重连套接字的情况下平滑恢复控制。
+- **无缝透明适配器 (`GoTrafficDriverProxy` 与 `RemoteHardwareDriverProxy`)：** 本地代理与远程代理均严格遵循 `BaseTrafficDriver` 接口规范（LSP），使硬件编排过程对 `ActionSupervisor` 与 `StepProcessor` 保持完全透明。
 
 ---
 
@@ -255,15 +271,15 @@ CARINA 深度集成了 **F.E.N.I.X.**（Fault-tolerant Engine for Networked Inte
                                       ┌─────────────────────────┐
                                       │     StateReconciler     │
                                       │- FROZEN_SYNC 冻结遥测   │
-                                      │- 周期边界安全握手       │
+                                      │- FenixStageDispatcher   │
                                       │- 零冲突控制权交接       │
                                       └─────────────────────────┘
 ```
 
-- **`FenixSupervisor` (`src/fenix/fenix_supervisor.py`):** 统一调度子进程终止、恢复退避、子进程拉起与系统状态对齐。
+- **`FenixSupervisor` (`src/fenix/fenix_supervisor.py`) 与 `fenix_supervision_loop.py`:** 统一调度子进程终止、恢复退避、子进程拉起与 `HANDOVER_COMPLETE` 交接确认。
 - **`WindowedCrashRecoveryPolicy` (`src/fenix/recovery_policy.py`):** 计算指数退避惩罚并强制执行重启配额，坚决防范级联崩溃雪崩风暴。
 - **`SubprocessRunner` (`src/fenix/process_runner.py`):** 底层子进程管理模块，确保严格的进程隔离与确定性的 SIGTERM/SIGKILL 优雅终止。
-- **`StateReconciler` (`src/fenix/state_reconciler.py`):** 确保重生后的 AI 引擎首先以 `FROZEN_SYNC`（冻结同步）模式平稳运行，仅当现场物理控制器自然过渡至绿灯周期边界时，才接管实际控制权。
+- **`StateReconciler` (`src/fenix/state_reconciler.py`) 与 `FenixStageDispatcher` (`src/controller/fenix_stage_dispatcher.py`):** 使重生后的 AI 引擎保持在 `FROZEN_SYNC`（冻结同步）模式，借助 `HardwareTelemetryDecoder` 查询现场控制器真实相位，仅当物理信号机处于零冲突相位边界时才依次触发 `fenix_post_resurrection` -> `fenix_handover_complete`。
 
 ---
 
@@ -343,11 +359,13 @@ $$w_{\text{wait}} = -1.0, \quad w_{\text{flow}} = \text{clamp}(2.0, 25.0, \text{
 
 ---
 
-## 12. 中央控制调度中心 (CCO) Web 架构 (`src_go/web_gateway/`, `src_tsx/src_cco/`)
+## 12. 中央控制调度中心 (CCO) Web 架构与传输安全 (`src_go/web_gateway/`, `src_tsx/src_cco/`)
 
-CARINA 为市政交通指挥大屏与远程调度提供现代化 Web 运维中心：
-- **`WebGatewayServer` (`src_go/web_gateway/server.go`):** 运行于 2201 端口的内嵌高性能 Go HTTP 服务器，提供 SSE 实时事件流（`/cco/stream`）、路网拓扑端点（`/cco/topology`）以及 Tailscale Funnel 安全远程穿透支持。
-- **`CCO Web Application` (`src_tsx/src_cco/`):** 基于 React 18、TypeScript、Tailwind CSS、SVG 矢量地图渲染器与 Apache ECharts 的现代仪表盘，实时呈现车辆微观位置轨迹、信号灯相位倒计时以及 EVP 优先警报浮窗。
+CARINA 为市政交通指挥大屏与远程调度提供安全加固的现代化 Web 运维中心：
+- **`WebGatewayServer` (`src_go/web_gateway/server.go`, `auth.go`):** 运行于 2201 端口（`CARINA_GATEWAY_PORT`）的内嵌 Go HTTP/HTTPS 服务器。默认处于关闭状态（`gateway_enabled=False`，启用前返回 `503 Service Unavailable`），强制执行恒定时间 Bearer/Header 令牌认证（`CARINA_CCO_AUTH_TOKEN`、`CARINA_EVP_AUTH_TOKEN`）、显式 CORS 来源校验（`CARINA_CCO_ALLOWED_ORIGIN`）以及 TLS 终止（`CARINA_GATEWAY_TLS_CERT`/`KEY`），提供 SSE 事件流（`/cco/stream`）、路网拓扑端点（`/cco/topology`）与 Tailscale Funnel 安全穿透。
+- **`CCOBroadcastClient` (`src/sds/cco_broadcast_client.py`, `cco_tls_transport.py`):** 采用最新覆盖（latest-wins）非阻塞机制的发布客户端，携带 `X-CCO-Token` 认证将 SDS 更新推送至 `/cco/broadcast`，支持 TLS CA 校验及可选的叶证书 SHA-256 指纹固定（`PinnedHTTPSConnection`）。
+- **`Synapse gRPC 安全机制` (`src/communication/grpc_security.py`):** 在 `:50051` 端口提供 TLS/mTLS（`CARINA_GRPC_TLS_ENABLED`、`CARINA_GRPC_REQUIRE_CLIENT_CERT`）与 `BearerTokenServerInterceptor`（`CARINA_GRPC_AUTH_TOKEN`）。
+- **`CCO Web Application` (`src_tsx/src_cco/`):** 基于 React 18、TypeScript、Tailwind CSS、SVG 矢量地图渲染器与 Apache ECharts 的现代仪表盘，采用纯合成器 CSS 动画（`transform`/`opacity`）、`requestAnimationFrame` 视口拖拽引用、浅比较视图模型差分更新，并在 `document.hidden` 时自动暂停定时器。
 
 ---
 

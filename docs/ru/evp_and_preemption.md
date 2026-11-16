@@ -113,9 +113,9 @@ $$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \quad d = R \cdot
 
 ### 4.1 Условие входа в зону перекрёстка (`is_at_block_entrance`)
 - Оценивает, удовлетворяет ли расстояние до перекрёстка критерию:
-  
+
   $$d_{\text{min}} \le d_{\text{vehicle}} \le d_{\text{max}}$$
-  
+
   Где $d_{\text{min}} = 60.0\text{ м}$ и $d_{\text{max}} = 160.0\text{ м}$ (или реальная длина дорожного сегмента $L_{\text{quadra}}$, полученная из [`EVPTopologyService`](../../src/evp/evp_topology_service.py)).
 
 ### 4.2 Фиксация проезда перекрёстка (`has_checked_out`)
@@ -131,16 +131,16 @@ $$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \quad d = R \cdot
 stateDiagram-v2
     [*] --> Idle: Штатное светофорное регулирование
     Idle --> Approaching: Машина в зоне приближения и включена сирена
-    
+
     state Approaching {
         [*] --> CheckCurrentStage
         CheckCurrentStage --> StageDivergent: Текущая фаза != Требуемая фаза
         CheckCurrentStage --> StageAligned: Текущая фаза == Требуемая фаза
-        
+
         StageDivergent --> Advancing: ACTION_ADVANCE (0)
         Advancing --> EnforceClearance: Желтый (3с) + Кругом красный (2с)
         EnforceClearance --> StageAligned: Включена целевая зеленая фаза
-        
+
         StageAligned --> HoldGreen: ACTION_HOLD (1)
     }
 
@@ -191,10 +191,11 @@ except Exception:
 
 Скомпилированный бинарный файл на Go (`bin/carina-go`) обеспечивает микросекундную передачу команд удержания контроллерам по протоколам NTCIP 1202 и UTMC2:
 
-### 7.1 Маршрутизация команд диспетчера (`dispatcher.go`)
-- Принимает пакеты команд `PreemptionCommand` от системного маршрутизатора.
-- `activate_preempt`: Записывает битовые маски OID `ascPhaseHold` по протоколу SNMP через UDP-порт 161.
+### 7.1 Маршрутизация команд диспетчера (`dispatcher.go`) и межпроцессная синхронизация
+- Принимает конверты команд `PreemptionCommand` (`stage_idx`, `stage_codes`, `target_stage`, `vehicle_id`) от маршрутизатора шлюза.
+- `activate_preempt`: Записывает битовые маски `phase_control.hold` (`1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1`) или битовые маски удержания стадий UTMC по протоколу SNMP через UDP-порт 161.
 - `release_preempt`: Сбрасывает битовые маски удержания фаз, возвращая управление адаптивному алгоритму или локальным суточным планам контроллера.
+- **Межпроцессная синхронизация (`EVPSnapshotSynchronizer` и `ai_evp_preempt`):** При модели единого владельца шлюза (`CARINA_GATEWAY_ROLE=owner` в `CentralController`, `remote` в `AI_Process`) компонент [`EVPSnapshotSynchronizer`](../../src/evp/application/evp_snapshot_synchronizer.py) зеркалирует активные машины экстренных служб и преемпции в `AI_Process`, тогда как [`EVPBridge`](../../src/evp/evp_bridge.py) пересылает удаленные триггеры преемпции через IPC-команды `ai_evp_preempt`.
 
 ---
 
@@ -214,9 +215,10 @@ except Exception:
    - HTTP 204 No Content              - Живые кадры JSON-телеметрии
 ```
 
-### 8.1 Однонаправленный прием координат GPS (`handlers_evp.go`)
-- **Маршрут:** `POST /api/v1/evp/telemetry` (и `/amb`)
-- **Код ответа:** `204 No Content`
+### 8.1 Однонаправленный прием координат GPS (`handlers_evp.go` и `evp_http_server.go`)
+- **Маршрут:** `POST /api/v1/evp/telemetry` (а также `/amb`, `/amb/`)
+- **Код ответа:** `204 No Content` (либо `503 Service Unavailable` при `CARINA_GATEWAY_ENABLED=False`, `401 Unauthorized` при провале проверки `CARINA_EVP_AUTH_TOKEN` за постоянное время через Bearer/`X-EVP-Token`)
+- **Шифрование TLS:** Поддерживает HTTPS через `CARINA_GATEWAY_TLS_CERT` и `CARINA_GATEWAY_TLS_KEY`.
 - **Задержка обработки:** $< 0.5\text{ мс}$
 - **Схема полезной нагрузки:**
   ```json
@@ -294,6 +296,7 @@ CREATE TABLE IF NOT EXISTS evp_registered_fleet (
 ```
 
 ### 11.2 Таблица: `evp_telemetry_records`
+*(Автоматически очищается свыше 168 часов / 7 дней процессом `database_worker.py` через `EVPTelemetryRepository.purge_old_telemetry`.)*
 ```sql
 CREATE TABLE IF NOT EXISTS evp_telemetry_records (
     id BIGSERIAL PRIMARY KEY,

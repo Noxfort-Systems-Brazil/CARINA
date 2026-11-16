@@ -126,9 +126,8 @@ func (l *Listener) listenLoop() {
 			}
 
 			if n > 0 {
-				raw := string(buf[:n])
 				srcIP := remoteAddr.IP.String()
-				event := l.parsePayload(raw, srcIP)
+				event := l.parseRawPayload(buf[:n], srcIP)
 
 				log.Printf("[TrapListener] Alert received from %s (%s) [%s]: %s",
 					srcIP, event.IntersectionID, event.Level, event.Details)

@@ -13,13 +13,20 @@ Este documento especifica la interfaz de usuario de escritorio nativa de CARINA 
 
 ## 1. Arquitectura de Escritorio Desacoplada (`ui/` y `src/sds/`)
 
-Para evitar que el renderizado de la interfaz gráfica o las latencias de sockets de clientes degraden las tramas de control de tráfico en tiempo real, CARINA desacopla completamente su frontend en el proceso **`DashboardService` (SDS)** ([`run_sds_worker`](../../src/sds/dashboard_worker.py)).
+Para evitar que el renderizado de la interfaz gráfica o las latencias de sockets de clientes degraden las tramas de control de tráfico en tiempo real, CARINA desacopla completamente su frontend en el proceso **`DashboardService` (SDS)** ([`run_sds_worker`](../../src/sds/dashboard_worker.py), ejecutándose con `CARINA_GATEWAY_ROLE=remote`):
 
 ```text
-CentralController (gRPC) ──> [Cola sds] ──> DashboardService (SDS) ──> [Cola ui] ──> Flet UI (Hilo Principal)
-                                                  │
-                                                  └──> Servidor de Telemetría WebSocket (puerto 8080)
+CentralController (owner) ──> [Cola sds] ──> DashboardService (SDS) ──> [Cola ui_telemetry] ──> Flet UI (Hilo Principal)
+                                                    ├──> Servidor WebSocket (puerto 8080, timeout 2.0s y backpressure)
+                                                    └──> CCOBroadcastClient (HTTPS Fijado -> Go Web Gateway :2201)
 ```
+
+- **Guardas de Rendimiento y Memoria (`ui/` y `src/sds/`):**
+  - [`MapAnimator`](../../ui/animators/map_animator.py) y [`WindowManager`](../../ui/managers/window_manager.py): Pausan los bucles de redibujo del mapa cuando la ventana de escritorio está minimizada u oculta (`_carina_window_hidden`) y controlan los renderizados mediante banderas `_data_dirty`.
+  - [`AuditLogWidget`](../../ui/widgets/audit_log_widget.py): Pagina los registros de auditoría del Guardian ($\le 100$ filas por página) para mantener instantáneas las actualizaciones de tablas en Flet.
+  - [`RemoteGatewaySettingsPersister`](../../ui/controllers/remote_gateway_settings_persister.py): Sincroniza `gateway_enabled` entre `settings.ini`, `SettingsManager`, `.env` y el backend en tiempo de ejecución.
+  - [`EVPFleetConnectionCard`](../../ui/cards/evp_fleet_connection_card.py): Da de baja los escuchas de `EVPNotifier` de forma determinista en `will_unmount()`.
+  - [`DashboardDataCoordinator`](../../ui/controllers/dashboard_data_coordinator.py): Actualiza los espejos pasivos locales de `HardwareConnectionManager` (`remote_hardware_status`) a partir de las tramas de telemetría IPC.
 
 ---
 
@@ -252,12 +259,13 @@ El frontend del CCO está diseñado para brindar una experiencia operacional óp
 
 ---
 
-## 9. Entrega del Gateway Web en Go y Conectividad Remota
+## 9. Entrega del Gateway Web en Go, Optimizaciones CCO y Conectividad Remota
 
-El CCO web es servido por el **Gateway Web en Go** ([`src_go/web_gateway/`](../../src_go/web_gateway)) de alto rendimiento ejecutándose en el puerto `2201`:
+El CCO web es servido por el **Gateway Web en Go** ([`src_go/web_gateway/`](../../src_go/web_gateway)) de alto rendimiento ejecutándose en el puerto `2201` (`CARINA_GATEWAY_PORT`):
 
-- **Servicio de Archivos Estáticos:** Sirve el bundle compilado de producción de React en `/cco/` con compresión gzip y cabeceras de caché.
-- **Stream de Telemetría SSE Sub-50ms:** Expone `/cco/stream`, transmitiendo transiciones de fase en tiempo real, mapas de calor de congestión y cinemática vehicular sin sobrecarga de sondeo.
+- **Entrega *Fail-Closed* y Protegida por Token:** Responde `503 Service Unavailable` cuando está deshabilitado (`gateway_enabled=False`), sirve activos estáticos comprimidos de React en `/cco/` y protege `/cco/stream`, `/cco/topology` y `/cco/broadcast` con `CARINA_CCO_AUTH_TOKEN` en tiempo constante, CORS `CARINA_CCO_ALLOWED_ORIGIN` y HTTPS/TLS opcional.
+- **Optimizaciones de Hilo de Compositor y Viewport (`src_tsx/src_cco/`):** Utiliza animaciones CSS por keyframes exclusivas del compositor GPU (`transform` + `opacity`), paneo/zoom guiado por referencias `requestAnimationFrame` en `useMapViewport.ts`, diferenciación de estado por igualdad superficial (*shallow equality*) en `useCcoViewModel.ts` y pausa de temporizadores de limpieza vehicular cuando `document.hidden` es verdadero.
+- **Stream de Telemetría SSE Sub-50ms e Ingestión Fijada (*Pinned*):** Expone `/cco/stream` alimentado por [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) de SDS (publicador no bloqueante *latest-wins* con fijación SHA-256 de certificado hoja mediante `PinnedHTTPSConnection`).
 - **Malla Tailscale e Ingestión Remota:** Se integra con Tailscale Funnel para acceso remoto cifrado de unidades de campo e ingestión vía webhooks desde despachos CAD de emergencias.
 
 ---

@@ -29,6 +29,7 @@ class FailsafeManager:
         locale_manager: Optional[Any] = None,
         on_failsafe_triggered: Optional[Callable[[], None]] = None,
         on_failsafe_recovered: Optional[Callable[[], None]] = None,
+        hardware_gateway_coordinator: Optional[Any] = None,
     ):
         self.current_operation_mode = "AUTOMATIC"
         self.failsafe_active = False
@@ -38,6 +39,7 @@ class FailsafeManager:
         self.locale_manager = monitor_client.locale_manager if monitor_client else locale_manager
         self.on_failsafe_triggered = on_failsafe_triggered
         self.on_failsafe_recovered = on_failsafe_recovered
+        self.hardware_gateway_coordinator = hardware_gateway_coordinator
 
         # --- Frame Timing Monitor ---
         # Tracks the last time a TrafficFrame was received.
@@ -134,8 +136,9 @@ class FailsafeManager:
                             "failsafe_manager.mqtt_incident_error",
                             default="Error reporting failsafe incident via MQTT: {error}",
                             error=e,
-                        )
-                    , exc_info=True)
+                        ),
+                        exc_info=True,
+                    )
 
     def attempt_recovery(self) -> bool:
         """
@@ -191,8 +194,9 @@ class FailsafeManager:
                             "failsafe_manager.mqtt_recovery_error",
                             default="Error reporting recovery incident via MQTT: {error}",
                             error=e,
-                        )
-                    , exc_info=True)
+                        ),
+                        exc_info=True,
+                    )
 
             # Wake up AI process
             try:
@@ -225,39 +229,72 @@ class FailsafeManager:
         }
 
     def _notify_hardware_failsafe(self):
-        """Dispatches emergency release commands to Go Hardware Gateway and active drivers."""
-        try:
-            from drivers.go_gateway_client import GoGatewayClient
+        """Dispatches emergency release commands to Go Hardware Gateway, active drivers, and AI process."""
+        coord = getattr(self, "hardware_gateway_coordinator", None)
+        if coord is not None:
+            try:
+                coord.on_failsafe_triggered()
+            except Exception as e:
+                logger.warning(f"[FailsafeManager] HardwareGatewayCoordinator failsafe error: {e}", exc_info=True)
+        else:
+            try:
+                from drivers.go_gateway_client import GoGatewayClient
 
-            go_client = GoGatewayClient.get_instance()
-            if go_client.is_running():
-                go_client.send_command("emergency_release")
-        except Exception as e:
-            logger.warning(f"[FailsafeManager] Go Gateway emergency release notification error: {e}", exc_info=True)
+                go_client = GoGatewayClient.get_instance()
+                if go_client.is_running():
+                    go_client.send_command("emergency_release")
+            except Exception as e:
+                logger.warning(f"[FailsafeManager] Go Gateway emergency release notification error: {e}", exc_info=True)
 
-        try:
-            from controller.connection_manager import HardwareConnectionManager
+            try:
+                from controller.connection_manager import HardwareConnectionManager
 
-            hw_mgr = HardwareConnectionManager.get_instance(locale_manager=self.locale_manager)
-            if hw_mgr and getattr(hw_mgr, "active_connections", None):
-                for pid, driver in hw_mgr.active_connections.items():
-                    try:
-                        if hasattr(driver, "release_control"):
-                            driver.release_control()
-                    except Exception as driver_err:
-                        logger.error(
-                            f"[FailsafeManager] Failed to release hardware control for intersection {pid}: {driver_err}"
-                        , exc_info=True)
-        except Exception as e:
-            logger.warning(f"[FailsafeManager] Hardware connection manager release error: {e}", exc_info=True)
+                hw_mgr = HardwareConnectionManager.get_instance(locale_manager=self.locale_manager)
+                if hw_mgr and getattr(hw_mgr, "active_connections", None):
+                    for pid, driver in hw_mgr.active_connections.items():
+                        try:
+                            if hasattr(driver, "apply_action"):
+                                driver.apply_action({"action_type": "release_hold"})
+                            elif hasattr(driver, "release_control"):
+                                driver.release_control()
+                            elif getattr(driver, "hardware_driver", None) is not None and hasattr(
+                                driver.hardware_driver, "release_control"
+                            ):
+                                driver.hardware_driver.release_control()
+                        except Exception as driver_err:
+                            logger.error(
+                                f"[FailsafeManager] Failed to release hardware control for intersection {pid}: {driver_err}",
+                                exc_info=True,
+                            )
+            except Exception as e:
+                logger.warning(f"[FailsafeManager] Hardware connection manager release error: {e}", exc_info=True)
+
+        if self.ai_pipe_conn is not None and getattr(self.ai_pipe_conn, "closed", False) is not True:
+            try:
+                self.ai_pipe_conn.send(("hardware", "failsafe_state", (True,), {}))
+            except Exception as e:
+                logger.debug(f"[FailsafeManager] AI failsafe notification skipped: {e}")
 
     def _notify_hardware_recovery(self):
-        """Verifies hardware connectivity upon recovering from Watchdog failsafe."""
-        try:
-            from drivers.go_gateway_client import GoGatewayClient
+        """Verifies hardware connectivity and notifies AI process upon recovering from Watchdog failsafe."""
+        coord = getattr(self, "hardware_gateway_coordinator", None)
+        if coord is not None:
+            try:
+                coord.on_failsafe_recovered()
+            except Exception as e:
+                logger.warning(f"[FailsafeManager] HardwareGatewayCoordinator recovery error: {e}", exc_info=True)
+        else:
+            try:
+                from drivers.go_gateway_client import GoGatewayClient
 
-            go_client = GoGatewayClient.get_instance()
-            if go_client.is_running():
-                go_client.ping(timeout=1.0)
-        except Exception as e:
-            logger.warning(f"[FailsafeManager] Go Gateway resume notification error: {e}", exc_info=True)
+                go_client = GoGatewayClient.get_instance()
+                if go_client.is_running():
+                    go_client.ping(timeout=1.0)
+            except Exception as e:
+                logger.warning(f"[FailsafeManager] Go Gateway resume notification error: {e}", exc_info=True)
+
+        if self.ai_pipe_conn is not None and getattr(self.ai_pipe_conn, "closed", False) is not True:
+            try:
+                self.ai_pipe_conn.send(("hardware", "failsafe_state", (False,), {}))
+            except Exception as e:
+                logger.debug(f"[FailsafeManager] AI recovery failsafe clear skipped: {e}")

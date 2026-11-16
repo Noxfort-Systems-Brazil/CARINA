@@ -11,33 +11,33 @@ This document details the mathematical framework, neural network architectures, 
 
 ---
 
-## 1. PPO-TCN: Temporal Convolutional Networks over LSTMs
+## 1. PPO-TCN: Unified Causal Temporal Convolutional Networks & Vectorized Inference
 
-Standard Recurrent Neural Networks (LSTMs/GRUs) suffer from vanishing gradients and vanishing temporal context during long episode Backpropagation Through Time (BPTT). CARINA replaces LSTMs with a **Temporal Convolutional Network (TCN)** backbone in the PPO Tactical Agent.
+Standard Recurrent Neural Networks (LSTMs/GRUs) suffer from vanishing gradients and sequential Backpropagation Through Time (BPTT) bottlenecks. CARINA replaces LSTMs with a **unified causal TCN backbone** ([`src/models/tcn_backbone.py`](../../src/models/tcn_backbone.py)) shared across tactical, safety, and strategic agents:
 
 ```text
-Input Tensor History: X ∈ ℝ^(B × C × T)
-  B: Batch size
-  C: Features per timestep (occupancy, speed, queue, phase)
-  T: Temporal context window (e.g., T = 8 seconds at 10Hz = 80 frames)
+Input Tensor History: X ∈ ℝ^(B × T × C) -> transposed to (B × C × T)
+  B: Batch size (or fleet size under torch.vmap)
+  C: Features per timestep (occupancy, speed, queue, phase, ped_calls + PAE latent)
+  T: Temporal context window (default sequence_length = 12 frames)
 ```
 
-### 1.1 Dilated Causal Convolutions
+### 1.1 Dilated Causal Convolutions, `GroupNorm`, and Attention Pooling
 
-To ensure zero temporal leakage (the prediction at time $t$ depends only on timestamps $\le t$), TCN uses 1D dilated causal convolutions:
+To ensure zero temporal leakage (prediction at time $t$ depends strictly on timestamps $\le t$) while remaining fully compatible with `torch.vmap` and `torch.compile`, `TemporalBlock` replaces deprecated `weight_norm` with `TemporalConv1d`, causal channel-wise `GroupNorm(1, C)`, `SiLU`, orthogonal initialization, and [`TemporalAttentionPool`](../../src/models/tcn_backbone.py):
 
 $$y(t) = (x \star_d f)(t) = \sum_{i=0}^{k-1} f(i) \cdot x(t - d \cdot i)$$
 
 Where:
 - $k$: Kernel size ($k = 3$)
-- $d$: Dilation factor ($d = 2^l$ at layer index $l \in \{0, 1, 2, 3\}$)
+- $d$: Dilation factor ($d = 2^l$ at level index $l \in \{0, 1, 2\}$ across `num_levels = 3`)
 - Receptive Field size: $RF = 1 + \sum_{l=0}^{L-1} (k - 1) \cdot d_l$
 
-The TCN outputs a dense temporal representation tensor $H_{tcn}$, which feeds into the PPO Actor and Critic heads.
+`ActorCriticNet` ([`src/models/actor_critic_tcn.py`](../../src/models/actor_critic_tcn.py)) uses decoupled Actor and Critic trunks over `TemporalAttentionPool`, emitting raw FP32 logits (`n_actions = 2`: `0 = ADVANCE`, `1 = KEEP`) masked directly via [`PhysicalActionMasker`](../../src/engine/physical_action_masker.py) (`apply_action_mask`) for AMP-safe `Categorical(logits=...)`. Across homogeneous intersections, [`FleetBatchInferencer`](../../src/engine/fleet_batch_inferencer.py) executes batched policy evaluation via `torch.func.stack_module_state` + `torch.vmap`.
 
-### 1.2 PPO Clipped Surrogate Objective
+### 1.2 PPO Clipped Surrogate Objective & Host NumPy GAE
 
-The PPO policy network is optimized using the clipped surrogate objective with Generalized Advantage Estimation (GAE):
+The PPO policy network is optimized using the clipped surrogate objective with Generalized Advantage Estimation (GAE) computed in host NumPy in [`PPOOptimizer`](../../src/optimizer/ppo_optimizer.py) and reusing `precomputed_latents` across `k_epochs` minibatches:
 
 $$L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min \left( r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t \right) \right]$$
 
@@ -48,44 +48,44 @@ Where:
 
 ---
 
-## 2. Predictive Autoencoder (PAE) & Latent Space $Z$
+## 2. Universal Action-Conditioned iTransformer World Model (PAE)
 
-The **Predictive Autoencoder (PAE)** predicts future traffic queue spillbacks from past spatio-temporal trends.
+The **Predictive Autoencoder (PAE)** ([`src/models/pae.py`](../../src/models/pae.py)) is a shared **Action-Conditioned iTransformer World Model** projecting future lane dynamics and epistemic uncertainty from historical state sequences:
 
 ```text
-        ┌──────────────┐          ┌───────────────────────┐          ┌──────────────┐
-X_hist  │  PAE Encoder │ ───────> │  Latent Bottleneck Z  │ ───────> │  PAE Decoder │ ───> X_pred
-(t-8s..t)└──────────────┘          │  Z ∈ ℝ^16             │          └──────────────┘      (t+1s..t+30s)
-                                   └───────────────────────┘
+X_hist [B, T, D_in] ──> Per-Variable RevIN + [mean, std] Stats Embedding
+                                 │
+                                 ▼ (Inverted Attention over D_in Variables + key_padding_mask)
+                         iTransformer Encoder + Cross-Attention Latent Queries (Z ∈ ℝ^latent_dim)
+                                 │
+                                 ├──> Concatenated to LocalAgent & GuardianAgent states
+                                 └──> + Action Embedding (0=ADVANCE, 1=KEEP) ──> (mean, log_var)
 ```
 
-### 2.1 PAE Loss Function
-
-The PAE is trained offline and online using a joint Mean Squared Error (MSE) and Kullback-Leibler (KL) divergence regularization:
-
-$$\mathcal{L}_{PAE} = \underbrace{\| X_{pred} - X_{future} \|_2^2}_{\text{Reconstruction & Prediction Loss}} + \beta \cdot D_{KL}\Big( q_\phi(Z|X) \,\parallel\, \mathcal{N}(0, I) \Big)$$
-
-The 16-dimensional latent vector $Z \in \mathbb{R}^{16}$ captures the physical momentum of traffic queues and is concatenated into the PPO input vector.
+### 2.1 Key Architectural Mechanics
+- **Per-Variable RevIN & Key Padding Mask (`pae_preprocessing.py`):** Decouples temporal dynamics from static link saturation scales via Reversible Instance Normalization and masks zero-padded dimensions (`valid_dims`) during cross-attention pooling so intersections with fewer incoming roads never corrupt latent tokens.
+- **Counterfactual Action Conditioning & Heteroscedastic Uncertainty:** `decode_with_uncertainty(z, action)` predicts both expected next state $\hat{\mu}(z, a)$ and log-variance $\log \hat{\sigma}^2(z, a)$ for `0 = ADVANCE` vs `1 = KEEP`.
+- **Single-Pass Fleet Encoding (`BatchedPAEEncoder`):** Encodes all active intersections once per step and optionally compiles submodules with `torch.compile` (`torch_compile_helper.py`).
 
 ---
 
-## 3. Dueling DQN-TCN Guardian Agent
+## 3. Distributional QR-D3QN Guardian Agent & Noisy-OR Calibration
 
-The **Guardian Agent** continuously estimates **Spillback Risk** for every intersection lane using a Dueling Deep Q-Network over TCN feature representations:
+The **Guardian Agent** ([`src/agents/guardian_agent.py`](../../src/agents/guardian_agent.py), [`src/models/d3qn_tcn.py`](../../src/models/d3qn_tcn.py)) combines a **Distributional Quantile-Regression Dueling Double DQN (`QR-D3QN`, `num_quantiles = 32`)** with capacity-aware kinematic projection and calibrated non-compensatory sensor fusion (`src/safety/`):
 
-$$Q(s, a; \theta, \alpha, \beta) = V(s; \theta, \beta) + \left( A(s, a; \theta, \alpha) - \frac{1}{|\mathcal{A}|} \sum_{a' \in \mathcal{A}} A(s, a'; \theta, \alpha) \right)$$
+$$Z_\tau(s, a) = V_\tau(s) + \left( A_\tau(s, a) - \frac{1}{|\mathcal{A}|} \sum_{a' \in \mathcal{A}} A_\tau(s, a') \right), \quad \tau_k = \frac{k + 0.5}{N}, \; N=32$$
 
-Where:
-- $V(s)$: Scalar baseline value of state $s$.
-- $A(s, a)$: Advantage of taking phase action $a$.
-
-If $\max_a Q(s, a_{spillback}) > \tau_{risk}$ (where $\tau_{risk} = 0.8$), the Guardian overrides the Tactical Agent's proposed phase and forces an emergency clearing phase.
+- **Tail-Risk ($\text{CVaR}_{\alpha}$):** Evaluates lower-tail Conditional Value-at-Risk ($\alpha = 0.20$) on `forward_quantiles` rather than expectation alone.
+- **Capacity-Normalized Kinematics (`GuardianPhysicsEstimator`):** Strictly slices incoming-edge triplets (`edge_feature_dim`), normalizes queues by physical road vehicle capacity (`edge_capacities`), projects over clearance horizon $H = \text{yellow} + \text{all\_red}$, and scores counterfactual PAE UCB spillback risk weighted by dynamic PAE reliability ($\exp(-\text{MSE}/0.10)\exp(-\overline{\log \sigma^2}/2)$).
+- **Scale-Invariant Calibration & Noisy-OR Fusion (`GuardianRiskCalibrator`):** Fits regularized logistic calibration and $F_2$-score decision thresholds upon `CHILD` graduation, combining kinematic ($r_{\text{kin}}$), PAE ($r_{\text{pae}}$), and neural ($r_{\text{d3qn}}$) detectors via non-compensatory Noisy-OR:
+  $$P_{\text{spillback}} = 1 - (1 - r_{\text{kin}})(1 - c_{\text{pae}} r_{\text{pae}})(1 - c_{\text{d3qn}} r_{\text{d3qn}})$$
+- **`CHILD`-Only Shadow Training & Deployment Freeze (`GuardianShadowTrainer`):** Learns off-policy in `Maturity.CHILD` while fixed-time plans control hardware, then executes `freeze_for_deployment()` on promotion (freeing `target_net`, `optimizer`, and PER buffers) and saves `guardian_{tl_id}.pth`.
 
 ---
 
-## 4. Strategic Layer: Graph Attention Networks (GATv2 Lite)
+## 4. Strategic Layer: ST-GATv2 Lite with Online Prediction & CTDE (`src/models/st_gatv2_lite.py`)
 
-To coordinate multi-intersection "Green Waves" across arterial avenues, CARINA models the road network as a directed graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$.
+To coordinate multi-intersection "Green Waves" across arterial avenues, CARINA models the road network as a directed graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ using `TemporalConvNetLite` + `TemporalAttentionPool` followed by two residual `GATv2Conv` layers, an auxiliary next-step forecasting head (`pred_head`), and a cooperative CTDE critic head (`global_critic_head`). [`StrategicCoordinator`](../../src/engine/strategic_coordinator.py) samples sequences using non-mutating [`StateExtractor.peek_state()`](../../src/engine/state_extractor.py).
 
 ### 4.1 GATv2 Attention Weights
 
@@ -108,13 +108,13 @@ $$\mathcal{H}(\pi_\theta(\cdot | s_t)) = -\sum_{a \in \mathcal{A}} \pi_\theta(a 
 
 ### 5.1 Progression Criteria and Dynamic Entropy Decay Curve
 
-To ensure that random policies are never promoted prematurely, policy maturity uses an action-bounded entropy ceiling $E_{max} = \ln(|\mathcal{A}|)$ (where $E_{max} = \ln(3) \approx 1.0986$ for 3 actions) or normalized entropy $\mathcal{H}_{norm} = \mathcal{H} / \ln(|\mathcal{A}|) \in [0, 1]$. The admission threshold decays dynamically with user-configured duration ($t$ episodes) via `DynamicEntropyCalculator`:
+To ensure that random policies are never promoted prematurely, policy maturity uses an action-bounded entropy ceiling $E_{max} = \ln(|\mathcal{A}|)$ (defaulting to $E_{max} = \ln(2) \approx 0.6931$ for CARINA's binary `ADVANCE`/`KEEP` action space in `DynamicEntropyCalculator`) or normalized entropy $\mathcal{H}_{norm} = \mathcal{H} / \ln(|\mathcal{A}|) \in [0, 1]$. The admission threshold decays dynamically with user-configured duration ($t$ episodes) via `DynamicEntropyCalculator`:
 
 $$E(t) = E_{ideal} + (E_{max} - E_{ideal}) \cdot e^{-k \cdot t}$$
 
 Where $E_{ideal} = 0.10$, $k = 0.05$ for the Child $\to$ Teen transition, and $k = 0.15$ for the Teen $\to$ Adult transition. The nominal asymptotic progression targets are:
 
-1. **CHILD Stage (Shadow Mode):** $\mathcal{H} > E_{child}(t)$ (nominal asymptotic target $\mathcal{H} > 0.40$). Actions run strictly in shadow mode (passive telemetry only); legacy baseline controller operates hardware signal plans. Because $E(t) < \ln(3)$ for all $t \ge 1$, a random policy ($\mathcal{H} = \ln 3$) is strictly prohibited from graduating. Inviolable minimum duration: 1 full week ($E_{\text{week}}$ episodes computed by [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py)) to cover all 168 real calendar hourly slots.
+1. **CHILD Stage (Shadow Mode):** $\mathcal{H} > E_{child}(t)$ (nominal asymptotic target $\mathcal{H} > 0.40$). Actions run strictly in shadow mode (passive telemetry only); legacy baseline controller operates hardware signal plans while `GuardianShadowTrainer` trains QR-D3QN safely off-policy. Because $E(t) < \ln(2)$ for all $t \ge 1$, a uniform random policy ($\mathcal{H} = \ln 2$) is strictly prohibited from graduating. Inviolable minimum duration: 1 full week ($E_{\text{week}}$ episodes computed by [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py)) to cover all 168 real calendar hourly slots.
 2. **TEEN Stage (Restricted Autonomy):** $E_{adult}(t) < \mathcal{H} \le E_{child}(t)$ (nominal range $0.15 < \mathcal{H} \le 0.40$). Agent operates physical hardware exclusively during off-peak hours (defined by Synapse dynamic schedule or classical urban defaults); during peak traffic periods, agent reverts to shadow mode for public safety. Inviolable minimum duration: 1 full week ($E_{\text{week}}$ episodes).
 3. **ADULT Stage (Full Autonomy):** $\mathcal{H} \le E_{adult}(t)$ (nominal asymptotic target $\mathcal{H} \le 0.15$, reached at $t \ge 20$ episodes with $k=0.15$) and Mean Reward $\mu_{reward} > \mu_{baseline} + \delta^*$. Full 24/7 autonomous actuation granted across all traffic conditions.
 

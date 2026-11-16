@@ -66,6 +66,10 @@ def main(page: ft.Page):
 
         locale_manager = LocaleManager()
 
+        current_module = sys.modules[__name__]
+        if getattr(current_module, "ui_command_queue", ui_command_queue) is not None:
+            os.environ.setdefault("CARINA_GATEWAY_ROLE", "remote")
+
         # 2. Background Hardware Initialization
         hw_manager = None
         try:
@@ -73,7 +77,9 @@ def main(page: ft.Page):
 
             hw_manager = HardwareConnectionManager.get_instance(locale_manager=locale_manager)
         except Exception as err:
-            logging.warning(f"[main_ui] Non-critical warning initializing HardwareConnectionManager: {err}", exc_info=True)
+            logging.warning(
+                f"[main_ui] Non-critical warning initializing HardwareConnectionManager: {err}", exc_info=True
+            )
 
         # 2.1 Background EVP Emergency Fleet Initialization & DB Restoration
         try:
@@ -127,13 +133,23 @@ def main(page: ft.Page):
         def _auto_start_go_gateway():
             try:
                 from src.drivers.go_gateway_client import GoGatewayClient
+
+                if GoGatewayClient.is_remote_gateway_role():
+                    logging.info(
+                        "[main_ui] Go Gateway gerenciado pelo CentralController (papel remote). Ignorando auto-início na UI."
+                    )
+                    return
+
                 client = GoGatewayClient.get_instance()
                 client.start()
 
                 try:
+                    from src.drivers.go_process_manager import sync_gateway_security_tokens
                     from src.utils.settings_manager import SettingsManager
+
                     settings_mgr = SettingsManager()
                     is_enabled_bool = settings_mgr.get_bool("gateway_enabled", default=False)
+                    sync_gateway_security_tokens(client)
 
                     if is_enabled_bool:
                         client.send_command("tailscale_enable", timeout=10.0, port=2201)
@@ -143,7 +159,9 @@ def main(page: ft.Page):
                         timeout=8.0,
                         enabled=is_enabled_bool,
                     )
-                    logging.info(f"[main_ui] Go Web Gateway estado inicial configurado: enabled={is_enabled_bool} (resp: {res.get('success')})")
+                    logging.info(
+                        f"[main_ui] Go Web Gateway estado inicial configurado: enabled={is_enabled_bool} (resp: {res.get('success')})"
+                    )
                 except Exception as sync_ex:
                     logging.warning(f"[main_ui] Tailscale/Gateway auto-sync ignorado/falhou: {sync_ex}", exc_info=True)
             except Exception as ex:
@@ -155,9 +173,12 @@ def main(page: ft.Page):
         def _auto_start_sds_cco():
             try:
                 if ui_command_queue is not None:
-                    logging.info("[main_ui] SDS/CCO já orquestrado pelo ProcessManager. Ignorando auto-início standalone.")
+                    logging.info(
+                        "[main_ui] SDS/CCO já orquestrado pelo ProcessManager. Ignorando auto-início standalone."
+                    )
                     return
                 from src.sds.sds_process_starter import SDSProcessStarter
+
                 SDSProcessStarter.get_instance().start_if_not_running()
             except Exception as ex:
                 logging.warning(f"[main_ui] Não foi possível auto-iniciar SDS/CCO: {ex}", exc_info=True)

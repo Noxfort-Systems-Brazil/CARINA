@@ -15,14 +15,14 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* GPU-accelerated EVP animations (compositor thread) */
+/* GPU-accelerated EVP animations (compositor thread only: transform + opacity) */
 @keyframes evp-aura-pulse {
   0% {
-    r: 8px;
+    transform: scale(0.8);
     opacity: 0.85;
   }
   100% {
-    r: 24px;
+    transform: scale(2.4);
     opacity: 0;
   }
 }
@@ -37,8 +37,10 @@ html, body, #root {
 }
 
 .animate-evp-aura {
+  transform-box: fill-box;
+  transform-origin: center;
   animation: evp-aura-pulse 1.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
-  will-change: r, opacity;
+  will-change: transform, opacity;
 }
 
 .animate-evp-blink {
@@ -58,4 +60,3 @@ body.tab-hidden .animate-evp-aura,
 body.tab-hidden .animate-evp-blink {
   animation-play-state: paused !important;
 }
-

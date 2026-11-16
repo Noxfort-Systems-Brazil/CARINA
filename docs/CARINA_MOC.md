@@ -39,8 +39,9 @@ CARINA_CORE/
 │   ├── Dockerfile.build        # Multi-stage hermetic builder (Node, Go, Python, dpkg-deb)
 │   └── deb/                    # Debian control files, systemd units & post-install scripts
 │
-├── scripts/                    # Build, Automation & Migration Scripts
-│   └── build_deb.sh            # Containerized Debian package generator
+├── scripts/                    # Build, Automation & Memory-Limited Test Scripts
+│   ├── build_deb.sh            # Containerized Debian package generator
+│   └── pytest_limited.sh       # cgroup v2 / ulimit RAM-capped Pytest runner (2 GB max)
 │
 ├── proto/                      # gRPC Protocol Specifications
 │   └── synapse_hft.proto       # High-Frequency Telemetry & Actuation Protobuf Definitions
@@ -77,49 +78,51 @@ CARINA_CORE/
 ├── src_tsx/                    # Central Control Operator (CCO) Web Application
 │   └── src_cco/                # React 18, TypeScript, Tailwind CSS, SVG Map Layers, ECharts
 ├── src/                        # Primary Source Code
-│   ├── agents/                 # PPO LocalAgent, GuardianAgent & StrategistAgent
+│   ├── agents/                 # PPO LocalAgent, GuardianAgent, PAEStateAugmentor & Checkpoints
 │   ├── analysis/               # MUTCD WarrantEvaluator, WarrantMath & Traffic Analysis
-│   ├── blocks/                 # Modular .docx builder, OMML math converters & text cleaners
-│   ├── central_controller.py   # High-Frequency gRPC Telemetry Server
-│   ├── communication/          # MonitorClient, HFT server & external telemetry bridging
-│   ├── controller/             # ConnectionManager, FailSafeManager, StageValidator & Overrides
+│   ├── blocks/                 # Modular .docx builder, OMML math converters & cached formatters
+│   ├── central_controller.py   # High-Frequency gRPC Telemetry Server & Gateway Owner
+│   ├── communication/          # MonitorClient, HFT gRPC Security (TLS/mTLS/Bearer) & ThreadSafePipe
+│   ├── controller/             # HardwareGatewayCoordinator, ConnectionManager, FenixStageDispatcher & Overrides
 │   ├── core/                   # DecisionCoordinator, SafetyAuditor, ActionAuthorizer & PopulationManager
-│   ├── database/               # DatabaseEngine, DatabaseWorker & StepDecisionWorker
-│   ├── drivers/                # Go Gateway Python Proxy, DriverFactory, IncidentReporter & IncidentFilter
-│   ├── engine/                 # EpisodeRunner, StepProcessor, PPO/DQN Optimizers & Trainers
-│   ├── evp/                    # Emergency Vehicle Preemption (EVPService, Kinematics, PreemptionEngine)
+│   ├── database/               # DatabaseEngine, PostgresConnectionPool, SQLite WAL & StepDecisionWorker
+│   ├── drivers/                # Go Gateway Proxy, RemoteHardwareDriverProxy, HardwareTelemetryDecoder & Trap Bridge
+│   ├── engine/                 # StepProcessor, BatchedPAEEncoder, FleetBatchInferencer (vmap) & PhysicalActionMasker
+│   ├── evp/                    # Emergency Vehicle Preemption (EVPService, EVPSnapshotSynchronizer, Kinematics)
 │   ├── fenix/                  # F.E.N.I.X. Self-Healing & Process Supervisor (Supervisor, Runner, Reconciler)
 │   ├── handlers/               # AI requests, UI commands & watchdog command handlers
-│   ├── launcher/               # ProcessManager, SingleInstanceLock & UITrayManager
-│   ├── manager/                # CycleManager, StageTransitionManager, TopologyManager & ServiceManager
+│   ├── interfaces/             # Segregated SOLID Protocols (Controller, Drivers, Engine, Repositories)
+│   ├── launcher/               # ProcessManager, BackendServiceRegistry, FenixSupervisionLoop & WorkerEntrypoints
+│   ├── manager/                # CycleManager, StageTransitionManager, AgentPopulationLoader & ServiceManager
 │   ├── maturity/               # MaturityManager, AgentMaturity, PromotionService, Config & Port
 │   ├── mfd/                    # Macroscopic Fundamental Diagram (MFD) Analyzer & Worker
-│   ├── models/                 # Neural Architectures (PAE, TCN, ST-GATv2 Lite)
-│   ├── optimizer/              # Population-Based Training (PBT) & Hyperparameter Tuning
+│   ├── models/                 # Unified TCN Backbone, ActorCriticNet, iTransformer PAE, QR-D3QN & ST-GATv2 Lite
+│   ├── optimizer/              # Population-Based Training (PBT), Host NumPy PPO & DQN Optimizers
 │   ├── promotion/              # MaturityPacingCalculator, PerformanceMarginCalculator & PromotionEvaluator
-│   ├── rendering/              # StaticMapRenderer & AsyncHeatmapRenderer
-│   ├── repositories/           # StepDecisionRepo, FluidDynamicsRepo & CloudVaultRepo
-│   ├── safety/                 # GuardianWorker process & IPC signal routing
+│   ├── rendering/              # StaticMapRenderer, AsyncHeatmapRenderer & Offscreen mpl_utils
+│   ├── repositories/           # StepDecisionRepo, FluidDynamicsRepo, HardwareConnectionRepo & ConnectionCSVStore
+│   ├── safety/                 # GuardianPhysicsEstimator, GuardianRiskCalibrator (Noisy-OR), GuardianShadowTrainer & Checkpoints
 │   ├── sas/                    # Smart Analysis System (Offline Infrastructure Warrants)
-│   ├── sds/                    # Smart Dashboard Service (Flet UI bridge & WebSockets)
+│   ├── sds/                    # Smart Dashboard Service (Flet UI bridge, WebSockets & Pinned CCOBroadcastClient)
 │   ├── security/               # Decoupled Security Subsystem (Auth, PBKDF2, Lockdown, Repositories)
 │   ├── settings/               # Modular Settings (SOLID interfaces, schemas, INI & .env)
-│   ├── slm/                    # Small Language Model (Qwen3.5 2B / llama.cpp offline inference)
+│   ├── slm/                    # Small Language Model (Qwen3.5 2B, pynvml VRAM probe & slm_process_lock)
 │   ├── transports/             # Polymorphic transports (Base, HTTP, MQTT, EndpointResolver)
-│   ├── utils/                  # SettingsManager, MetricsManager, Paths & Episode Calculation
+│   ├── utils/                  # SettingsManager, MetricsManager, Paths, SumoNetCache & Episode Calculation
 │   ├── watchdog/               # Real-time process heartbeat monitor & fail-safe fallback
-│   └── xai/                    # Integrated Gradients attribution, report builder & worker
+│   └── xai/                    # Integrated Gradients attribution, cached multi-agent report builder & worker
 │
 ├── ui/                         # Native Flet Desktop Application
-│   ├── cards/                  # Modular settings & telemetry cards (MonitorSettingsCard)
+│   ├── cards/                  # Modular settings & telemetry cards (RemoteGateway, Hardware, EVP)
+│   ├── controllers/            # DashboardDataCoordinator & RemoteGatewaySettingsPersister
 │   ├── handlers/               # Event handlers, SettingsHandler & native SystemTrayHandler
 │   ├── views/                  # DashboardView, PlanningView, DiagnosticsView, SettingsView
-│   ├── widgets/                # LiveCanvasMapWidget, PlanningControlPanel, MFDViewer, XAIViewer
+│   ├── widgets/                # LiveCanvasMapWidget, PlanningControlPanel, MFDViewer, Paginated AuditLogWidget
 │   ├── renderers/              # PlanningMapRenderer, MapVisualSyncer, MapDrawer
-│   ├── animators/              # MapAnimator & transition controllers
+│   ├── animators/              # MapAnimator (hidden-window pause & dirty-flag gating)
 │   └── locales/                # Multi-language JSON dictionaries (pt_br, en_us, es_es, etc.)
 │
-└── tests/                      # Pytest Test Suite (Unit, Integration & Hardware Mocks)
+└── tests/                      # Pytest Suite (967 Collected Tests, memory_guard.py) + 46 Go Tests in src_go/
 ```
 
 ---
@@ -150,7 +153,7 @@ CARINA_CORE/
 ### 4. Desktop Frontend & Operations
 - **[UI & Smart Dashboard Service](UI_AND_DASHBOARD.md)**: Architectural breakdown of the native Flet desktop UI, Planning View, single-instance socket locking (port 42123), and WebSocket telemetry streaming.
 - **[Developer & Integration Guides](DEVELOPER_GUIDES.md)**: Guide for setting up environments, modifying configurations, extending agents, and building packages.
-- **[Testing & Validation](TESTING.md)**: Guidelines for running `pytest` (861 automated tests), generating coverage reports (`--cov=src`), mocking controllers, and validating Guardian safety vetoes.
+- **[Testing & Validation](TESTING.md)**: Guidelines for running `pytest` (967 automated tests across 192 unit, 8 integration, and 4 root modules + 46 Go tests), `scripts/pytest_limited.sh` RAM capping, driver mocks, and validating Guardian safety vetoes.
 - **[Deployment, Packaging & Containerization](DEPLOYMENT_AND_PACKAGING.md)**: Guide for Docker containerization (`Dockerfile`) and Systemd service daemons.
 
 ### 5. Emergency Preemption & Remote Operations (EVP / CCO)

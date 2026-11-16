@@ -45,10 +45,11 @@ Situé dans [`src/blocks/markdown_to_docx.py`](../../src/blocks/markdown_to_docx
 - Analyse les titres hiérarchiques (`#`, `##`, `###`), les listes ordonnées/non ordonnées, les citations et les encarts d'avertissement.
 - Applique les styles typographiques standard (police de caractères : *Arial*, tailles de police, interligne : 1,5, espacement des paragraphes).
 
-### 2.3 Nettoyeurs & Assainisseurs Sémantiques (`report_semantic_cleaner.py`)
-Situé dans [`src/blocks/report_semantic_cleaner.py`](../../src/blocks/report_semantic_cleaner.py) :
+### 2.3 Nettoyeurs, Assainisseurs Sémantiques & Formatage Mis en Cache (`report_semantic_cleaner.py` & `report_number_formatter.py`)
+Situé dans [`src/blocks/report_semantic_cleaner.py`](../../src/blocks/report_semantic_cleaner.py) et [`src/blocks/report_number_formatter.py`](../../src/blocks/report_number_formatter.py) :
 - Supprime les artefacts de LLM, les jetons hallucinés ou les balises de code brut avant l'assemblage du document.
-- Garantit la cohérence numérique et formate les séparateurs décimaux localisés (ex. `,` pour `fr_FR` ou `pt_BR`, `.` pour `en_US`).
+- Utilise une mise en cache de configuration validée par `stat` dans `ReportNumberFormatter` pour formater les unités (`metros`, `segundos`) et les séparateurs décimaux/de milliers localisés (ex. `,` pour `pt_BR`, `.` pour `en_US`) sans réanalyser `settings.ini` à chaque cellule.
+- Coordonne la synthèse narrative LLM hors ligne entre `XAI_Worker`, `MFD_Worker` et `AnalysisService` sous [`slm_process_lock()`](../../src/slm/slm_lock.py) (`slm_gguf.lock`) avec déchargement déterministe du modèle via `ReportTransducerFactory.release_transducer()`.
 
 ---
 

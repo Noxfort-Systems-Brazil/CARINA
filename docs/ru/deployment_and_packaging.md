@@ -17,13 +17,13 @@ CARINA координирует локальные конвейеры проце
 
 | Порт | Протокол | Подсистема / Процесс | Описание |
 | :--- | :--- | :--- | :--- |
-| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | Внешний высокочастотный gRPC-сервер для микросимуляторов (SUMO/CityFlow) или периферийного видеоанализа. |
-| **`8080`** | TCP (WS) | Smart Dashboard Service (SDS) | Сервер WebSocket телеметрии, передающий данные очередей веб-клиентам. |
-| **`2201`** | TCP (HTTP/SSE) | Веб-шлюз Go (`src_go/web_gateway`) | Основной входной шлюз: `POST /api/v1/evp/telemetry` (HTTP 204), `GET /cco/stream` (SSE) и веб-интерфейс CCO. |
-| **`8085`** | TCP (HTTP) | Автономный приемник EVP (`src/evp`) | Резервный слушатель GPS-телеметрии спецтранспорта при неактивном шлюзе Go. |
+| **`50051`** | TCP (gRPC) | CentralController (Synapse HFTLink) | Внешний высокочастотный gRPC-сервер с опциональным TLS/mTLS и Bearer-аутентификацией (`CARINA_GRPC_*`). |
+| **`8080`** | TCP (WS) | Smart Dashboard Service (SDS) | Сервер WebSocket телеметрии, передающий данные очередей с противодавлением (backpressure) и таймаутами 2.0 с. |
+| **`2201`** | TCP (HTTP/HTTPS/SSE) | Веб-шлюз Go (`src_go/web_gateway`) | Настраивается через `CARINA_GATEWAY_PORT`; работает по принципу fail-closed (`503`) до включения `CARINA_GATEWAY_ENABLED=True`; защищает эндпоинты токенами и опциональным TLS. |
+| **`8085`** | TCP (HTTP/HTTPS) | Автономный приемник EVP (`src_go/evp_go`) | Слушатель GPS-телеметрии спецтранспорта с поддержкой аутентификации Bearer/`X-EVP-Token` и TLS. |
 | **`42123`** | TCP (Local) | SingleInstanceLock (`single_instance.py`) | Сокетный мьютекс ОС для предотвращения дублирования экземпляров приложения; принимает сигнал `RESTORE`. |
-| **`161`** | UDP (SNMP) | Дорожные контроллеры NTCIP 1202 / UTMC | Опрос и отправка команд удержания фаз (`ascPhaseHold`) светофорным колонкам. |
-| **`162`** | UDP (Trap) | Слушатель аппаратных прерываний (`traplistener`) | Прием асинхронных SNMP-трапов аппаратных неисправностей и сработок детекторов. |
+| **`161`** | UDP (SNMP) | Контроллеры NTCIP 1202 / UTMC2 | Опрос по SNMPv2c/v3 и удержание фаз, управляемые исключительно процессом `CARINA_GATEWAY_ROLE=owner` (`CentralController`). |
+| **`162`** | UDP (Trap) | Слушатель аппаратных прерываний (`traplistener`) | Настраивается через `CARINA_TRAP_PORT`; декодирует бинарные пакеты SNMPv1/v2c/v3 Trap и Inform. |
 
 ---
 
@@ -108,17 +108,28 @@ sudo systemctl start carina
 
 ---
 
-## 5. Развертывание в сети Zero-Trust Mesh через Tailscale Funnel
+## 5. Развертывание Zero-Trust fail-closed шлюза и Tailscale Funnel
 
 Для распределенных агломерационных сетей без публичных белых статических IP:
-1. Создайте ключ Tailscale Auth Key с правами `funnel` в панели администрирования Tailscale.
-2. Укажите параметры в файле `.env`:
+1. Сохраняйте `CARINA_GATEWAY_ENABLED=False` (значение по умолчанию в `.env.example` и `config/settings.ini`) до тех пор, пока не будут подготовлены токены авторизации и сертификаты TLS; пока шлюз выключен, веб-шлюз Go отдает `503 Service Unavailable` на эндпоинтах CCO/EVP.
+2. Создайте ключ Tailscale Auth Key с правами `funnel` в панели администрирования Tailscale и надежные Bearer-токены для EVP, CCO и Synapse gRPC.
+3. Укажите параметры в файле `.env`:
    ```bash
-   CARINA_GATEWAY_ENABLED=true
+   CARINA_GATEWAY_ENABLED=True
    CARINA_GATEWAY_PORT=2201
+   CARINA_TRAP_PORT=162
+   CARINA_EVP_AUTH_TOKEN=<strong-evp-token>
+   CARINA_CCO_AUTH_TOKEN=<strong-cco-token>
+   CARINA_CCO_ALLOWED_ORIGIN=https://<node-name>.<tailnet>.ts.net
+   CARINA_GATEWAY_TLS_CERT=/etc/carina/certs/gateway.crt
+   CARINA_GATEWAY_TLS_KEY=/etc/carina/certs/gateway.key
+   CARINA_GRPC_AUTH_TOKEN=<strong-grpc-token>
+   CARINA_GRPC_TLS_ENABLED=True
+   CARINA_OUTPUT_DIR=/var/lib/carina
+   CARINA_CONFIG_DIR=/etc/carina
    CARINA_TAILSCALE_AUTH_KEY=tskey-auth-kXXXXX-XXXXXXXX
    ```
-3. При старте шлюза Go модуль [`src_go/web_gateway/tailscale.go`](../../src_go/web_gateway/tailscale.go) автоматически зарегистрирует узел и поднимет туннель HTTPS Funnel по адресу `https://<node-name>.<tailnet>.ts.net:2201`, безопасно открывая API EVP и видеостену CCO по протоколу TLS без изменения правил межсетевых экранов.
+4. `CentralController` запускается в роли `CARINA_GATEWAY_ROLE=owner` (передавая токены и настройки TLS бинарнику `bin/carina-go`), тогда как воркеры UI/AI/SDS работают в роли `remote`. Модуль [`src_go/web_gateway/tailscale.go`](../../src_go/web_gateway/tailscale.go) регистрирует узел и поднимает HTTPS Funnel по адресу `https://<node-name>.<tailnet>.ts.net:2201`.
 
 ---
 

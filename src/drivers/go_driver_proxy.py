@@ -47,6 +47,7 @@ class GoTrafficDriverProxy(BaseTrafficDriver):
         self.brand = brand
         self.model = model
         self.client = client or GoGatewayClient.get_instance()
+        self._disconnected = False
 
         # Stop Python-side heartbeat since Go handles it natively with zero GIL
         if hasattr(self, "heartbeat_manager"):
@@ -107,7 +108,10 @@ class GoTrafficDriverProxy(BaseTrafficDriver):
         return self.client.apply_action(self.intersection_id, {"action_type": "release_hold"})
 
     def shutdown(self) -> None:
-        """Disconnects intersection from the Go gateway."""
+        """Disconnects intersection from the Go gateway (idempotent)."""
+        if self._disconnected:
+            return
+        self._disconnected = True
         try:
             self.client.disconnect_intersection(self.intersection_id)
         except Exception as e:

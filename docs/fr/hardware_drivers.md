@@ -13,20 +13,27 @@ Ce document spécifie la couche d'intégration matérielle physique de CARINA si
 
 ## 1. Vue d'Ensemble de l'Architecture
 
-CARINA s'interface avec les contrôleurs de feux réels (ex. Econolite, Siemens, Peek, SWARCO, Yunex) au moyen d'une **Passerelle Matérielle Go** haute performance (`bin/carina-go` compilée à partir de [`src_go/`](../../src_go)). La communication entre le cœur Python de CARINA et la passerelle Go s'effectue strictement via les **tubes standards du système d'exploitation (`stdin`/`stdout`)** au format JSON délimité par des retours à la ligne (NDJSON). Cela garantit **zéro port réseau ouvert sur la machine hôte** pour l'IPC local, une exécution sous la milliseconde et une libération totale des contraintes du GIL Python.
+CARINA s'interface avec les contrôleurs de feux réels (ex. Econolite, Siemens, Peek, SWARCO, Yunex) au moyen d'une **Passerelle Matérielle Go** haute performance (`bin/carina-go` compilée à partir de [`src_go/`](../../src_go)). La communication entre le cœur Python de CARINA et la passerelle Go s'effectue strictement via les **tubes standards du système d'exploitation (`stdin`/`stdout`)** au format JSON délimité par des retours à la ligne (NDJSON). Cela garantit **zéro port IPC local ouvert sur la machine hôte**, une exécution sous la milliseconde et une libération totale des contraintes du GIL Python.
 
-En plus du contrôle NTCIP/UTMC standard, la passerelle Go inclut un **Répartiteur de Préemption EVP** (`src_go/evp_go/dispatcher.go`) pour les maintiens de phase à la microseconde et une **Passerelle Web Distante** autonome (`src_go/web_gateway/server.go`) offrant une connectivité réseau maillé Tailscale, l'ingestion de télémétrie HTTP (port `2201`) et la diffusion par Server-Sent Events (SSE) pour les murs d'écrans CCO.
+### 1.1 Propriétaire Unique de la Passerelle (`CARINA_GATEWAY_ROLE`) & Architecture en Boucle Fermée
+Pour éviter les processus `bin/carina-go` en double, les collisions d'écoute de trappes sur le port UDP `162` et la désynchronisation d'état SNMP (*split-brain*) :
+- **`CentralController` (`CARINA_GATEWAY_ROLE=owner`) :** Lance exclusivement `bin/carina-go`, héberge [`HardwareGatewayCoordinator`](../../src/controller/hardware_gateway_coordinator.py) (composé de `GatewayRuntimeWorker`, `HardwareCommandService`, `FenixStageDispatcher` et `TailscaleGatewayAdapter`), détient les connexions SNMP locales de `HardwareConnectionManager` et diffuse les instantanés vers les workers en aval.
+- **`AI_Process`, `SDS` et `UI` (`CARINA_GATEWAY_ROLE=remote`) :** Opèrent comme miroirs distants sans lancer de binaire Go local ni lier le port UDP `162`. [`RemoteHardwareDriverProxy`](../../src/drivers/remote_hardware_driver.py) (matérialisé par [`sync_remote_driver_proxies`](../../src/drivers/remote_proxy_synchronizer.py)) transmet les actions (`ai_hardware_cmd`) et préemptions EVP (`ai_evp_preempt`) à `CentralController` à travers [`ThreadSafePipeConnection`](../../src/communication/pipe_utils.py).
+- **Décodage de Télémétrie en Boucle Fermée :** [`HardwareTelemetrySynchronizer`](../../src/engine/hardware_telemetry_synchronizer.py) et [`decode_stage_from_telemetry`](../../src/drivers/hardware_telemetry_decoder.py) traduisent les masques de bits des contrôleurs réels (`active_greens`, `active_yellows`, `active_reds`, `current_stage`) en indices d'étape SUMO à base 0 pour l'extraction d'état de l'IA et la réconciliation de bascule F.E.N.I.X.
+
+En plus du contrôle NTCIP/UTMC standard, la passerelle Go inclut un **Répartiteur de Préemption EVP** (`src_go/evp_go/dispatcher.go`) pour les maintiens de phase à la microseconde et une **Passerelle Web Distante** (`src_go/web_gateway/server.go`) offrant une connectivité réseau maillé Tailscale authentifiée par jeton, la terminaison TLS, l'ingestion de télémétrie HTTP (port `2201`) et la diffusion par Server-Sent Events (SSE) pour les murs d'écrans CCO.
 
 ```text
        ┌────────────────────────────────────────────────────────┐
-       │                   CentralController                    │
+       │      CentralController (CARINA_GATEWAY_ROLE=owner)     │
+       │            [HardwareGatewayCoordinator]                │
        └──────────────────────────┬─────────────────────────────┘
                                   │
                   ┌───────────────┼───────────────┐
                   ▼               ▼               ▼
        ┌──────────────────────┐   │   ┌──────────────────────┐
        │  ConnectionManager   │   │   │ FailsafeManager      │
-       │  (État & Pooling)    │   │   │ (Watchdog Pulsation) │
+       │  (État & SNMPv2/v3)  │   │   │ (Watchdog Pulsation) │
        └──────────┬───────────┘   │   └──────────┬───────────┘
                   │               │              │
                   │   ┌───────────┴──────────┐   │
@@ -39,7 +46,7 @@ En plus du contrôle NTCIP/UTMC standard, la passerelle Go inclut un **Répartit
                      │     GoGatewayClient     │ (src/drivers/go_gateway_client.py)
                      │(Sous-proc Tube Python)  │
                      └────────────┬────────────┘
-                                  │ stdin / stdout (IPC NDJSON - Zéro Port Hôte)
+                                  │ stdin / stdout (IPC NDJSON - Zéro Port de Contrôle Local)
                                   ▼
       ┌───────────────────────────────────────────────────────────┐
       │          PASSERELLE MATÉRIELLE CARINA (Binaire Go)        │
@@ -55,17 +62,18 @@ En plus du contrôle NTCIP/UTMC standard, la passerelle Go inclut un **Répartit
       │             ┌──────────────┼──────────────┐               │
       │             ▼              ▼              ▼               │
       │  ┌──────────────────┐ ┌──────────┐ ┌──────────────────┐   │
-      │  │ Dispatcher EVP   │ │  GoSNMP  │ │TrapListener UDP  │   │
-      │  │(Maintien Direct) │ │UDP Pt 161│ │    (Port 162)    │   │
+      │  │ Dispatcher EVP   │ │GoSNMPv2/3│ │Déc. Trappes Bin. │   │
+      │  │(Maintien Direct) │ │UDP Pt 161│ │ (SNMPv1/v2c/v3)  │   │
       │  └──────────────────┘ └──────────┘ └──────────────────┘   │
       └────────────────────────────┬──────────────────────────────┘
                                    │ Ingestion Web Distante & Mesh
                                    ▼
       ┌───────────────────────────────────────────────────────────┐
-      │         Passerelle Web & Réseau Tailscale (Port 2201)     │
-      │  - POST /api/v1/evp/telemetry (Ingestion GPS HTTP 204)    │
-      │  - GET /cco/stream (Hub SSE Temps Réel pour Mur d'Écrans) │
-      │  - Tailscale Funnel / Réseau Maillé Échiffré Poste à Poste│
+      │     Passerelle Web & Réseau Tailscale (Port 2201 / TLS)   │
+      │  - Fail-closed par défaut (HTTP 503 si désactivée)        │
+      │  - POST /api/v1/evp/telemetry (Auth Jeton, HTTP 204)      │
+      │  - GET /cco/stream (Auth Jeton, CORS, Mur d'Écrans SSE)   │
+      │  - Tailscale Funnel / Réseau Maillé Chiffré Poste à Poste │
       └───────────────────────────────────────────────────────────┘
 ```
 
@@ -88,30 +96,37 @@ La **norme NTCIP 1202** (*National Transportation Communications for ITS Protoco
 - [`src/drivers/go_driver_proxy.py`](../../src/drivers/go_driver_proxy.py) : Proxy compatible `BaseTrafficDriver` transmettant les commandes au démon Go.
 - [`src/drivers/driver_factory.py`](../../src/drivers/driver_factory.py) : Instancie les proxys de pilotes selon la détection automatique de marque/modèle.
 
-### 2.2 Table de Correspondance des OID Standards
+### 2.2 Table de Correspondance des OID Standards (`src_go/configs/ntcip_oids.json`)
 
-| Nom de l'Objet | OID ASN.1 | Type | Description |
+Tous les OID NTCIP 1202 de statut (`phaseStatusGroup`) et de contrôle (`phaseControlGroup`) prennent en charge les PDU entiers et `OCTET STRING`/`BitString` via [`DecodeBitmaskPDU`](../../src_go/pkg/snmp/codec.go), et peuvent être surchargés par carrefour via `config_path` :
+
+| Clé d'Objet | OID ASN.1 | Groupe / Type | Description |
 | :--- | :--- | :---: | :--- |
-| `ascPhaseStatusGroupReds` | `1.3.6.1.4.1.1206.4.2.1.1.1` | `OCTET STRING` | Masque binaire des phases actuellement au Rouge. |
-| `ascPhaseStatusGroupYellows` | `1.3.6.1.4.1.1206.4.2.1.1.2` | `OCTET STRING` | Masque binaire des phases actuellement au Jaune. |
-| `ascPhaseStatusGroupGreens` | `1.3.6.1.4.1.1206.4.2.1.1.3` | `OCTET STRING` | Masque binaire des phases actuellement au Vert. |
-| `ascPhaseHold` | `1.3.6.1.4.1.1206.4.2.1.1.5` | `OCTET STRING` | Maintient la phase active au vert (empêche le changement de phase). |
-| `ascPhaseForceOff` | `1.3.6.1.4.1.1206.4.2.1.1.6` | `OCTET STRING` | Force la fin de la phase verte en cours. |
-| `ascPhaseCall` | `1.3.6.1.4.1.1206.4.2.1.1.7` | `OCTET STRING` | Injecte un appel synthétique de détection véhiculaire pour demander la phase. |
+| `status_reds` | `1.3.6.1.4.1.1206.4.2.1.1.4.1.2.1` | Statut / Masque | Masque binaire des phases actuellement au Rouge. |
+| `status_yellows` | `1.3.6.1.4.1.1206.4.2.1.1.4.1.3.1` | Statut / Masque | Masque binaire des phases actuellement au Jaune. |
+| `status_greens` | `1.3.6.1.4.1.1206.4.2.1.1.4.1.4.1` | Statut / Masque | Masque binaire des phases actuellement au Vert. |
+| `status_veh_calls` | `1.3.6.1.4.1.1206.4.2.1.1.4.1.8.1` | Statut / Masque | Appels actifs de détection véhiculaire signalés par le contrôleur. |
+| `status_ped_calls` | `1.3.6.1.4.1.1206.4.2.1.1.4.1.9.1` | Statut / Masque | Appels actifs de boutons-poussoirs piétons signalés par le contrôleur. |
+| `omit` | `1.3.6.1.4.1.1206.4.2.1.1.5.1.2.1` | Contrôle / Masque | Omet certaines phases du service. |
+| `hold` | `1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1` | Contrôle / Masque | Maintient la phase active au vert (`ascPhaseControlHold`). |
+| `force_off` | `1.3.6.1.4.1.1206.4.2.1.1.5.1.5.1` | Contrôle / Masque | Force la fin de la phase verte en cours (`ascPhaseControlForceOff`). |
+| `veh_call` | `1.3.6.1.4.1.1206.4.2.1.1.5.1.6.1` | Contrôle / Masque | Injecte un appel synthétique de détection véhiculaire (`ascPhaseControlVehCall`). |
+| `ped_call` | `1.3.6.1.4.1.1206.4.2.1.1.5.1.7.1` | Contrôle / Masque | Injecte un appel synthétique piéton (`ascPhaseControlPedCall`). |
 
 ---
 
-## 3. Pilote UTMC / UTMC2 (Norme Britannique)
+## 3. Pilote UTMC / UTMC2 & Prise en Charge SNMPv3 USM
 
-Pour les carrefours utilisant le cadre britannique **Urban Traffic Management and Control (UTMC)** :
+Pour les carrefours utilisant le cadre britannique **Urban Traffic Management and Control (UTMC)** ou des armoires terrain authentifiées **SNMPv3** :
 
 ### 3.1 Architecture des Fichiers
 **Implémentation dans la Passerelle Go (`src_go/`) :**
-- [`src_go/pkg/utmc/driver.go`](../../src_go/pkg/utmc/driver.go) : Gestionnaire natif de communication UTMC en Go.
-- [`src_go/pkg/utmc/telemetry.go`](../../src_go/pkg/utmc/telemetry.go) : Analyseur de trames de confirmation d'étape et de réponses.
-- [`src_go/pkg/utmc/action_executor.go`](../../src_go/pkg/utmc/action_executor.go) : Exécution des demandes d'étape et des changements d'étape.
+- [`src_go/pkg/utmc/driver.go`](../../src_go/pkg/utmc/driver.go) : Gestionnaire natif de communication UTMC en Go avec `Probe()` et `CloseTransport()` thread-safe.
+- [`src_go/pkg/utmc/telemetry.go`](../../src_go/pkg/utmc/telemetry.go) : Analyseur de confirmation d'étape (`status_active`, `status_leaving`, `status_demand` -> `1.3.6.1.4.1.2825.4.2.1.1.4.1.5.1`, `status_ped_demand`).
+- [`src_go/pkg/utmc/action_executor.go`](../../src_go/pkg/utmc/action_executor.go) : Exécution de demande d'étape, maintien, coupure forcée (*force-off*) et actions logiques sûres vis-à-vis de l'inter-vert.
 - [`src_go/pkg/utmc/stage_mapper.go`](../../src_go/pkg/utmc/stage_mapper.go) : Associe les étapes UTMC (Étape 1..8) aux actions neuronales de CARINA.
 - [`src_go/pkg/utmc/config.go`](../../src_go/pkg/utmc/config.go) & [`src_go/configs/utmc_oids.json`](../../src_go/configs/utmc_oids.json) : Définitions des profils d'OID UTMC intégrés.
+- [`src_go/pkg/snmp/config.go`](../../src_go/pkg/snmp/config.go) : **Moteur SNMPv3 USM** prenant en charge `NoAuthNoPriv`, `AuthNoPriv` et `AuthPriv` avec protocoles d'authentification (`MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512`) et chiffrement de confidentialité (`DES`, `AES`, `AES192`, `AES256`, `AES192C`, `AES256C`). Les métadonnées JSON `snmp_config` par carrefour et les surcharges d'OID `config_path` se propagent depuis [`HardwareConnectionRepository`](../../src/repositories/hardware_connection_repo.py) et [`ConnectionCSVStore`](../../src/repositories/connection_csv_store.py) via [`DriverFactory`](../../src/drivers/driver_factory.py) jusqu'à `GoGatewayClient`.
 
 ---
 
@@ -120,7 +135,7 @@ Pour les carrefours utilisant le cadre britannique **Urban Traffic Management an
 Le **Répartiteur de Préemption EVP** ([`src_go/evp_go/dispatcher.go`](../../src_go/evp_go/dispatcher.go)) traite les demandes de couloirs verts d'urgence en temps réel avec un actionnement des contrôleurs physiques à la sous-milliseconde :
 
 - **Court-Circuite le Cycle d'Inférence :** Les déclencheurs de préemption contournent la sélection standard d'actions par réseau de neurones et les cycles de coordination entre carrefours, appliquant directement des maintiens verts sur les phases de signalisation cibles.
-- **Insertion de Maintien OID SNMP :** Traduit les indices d'étapes vertes en masques de bits NTCIP `ascPhaseHold` (`1.3.6.1.4.1.1206.4.2.1.1.5`), maintenant le trafic conflictuel au rouge tout en octroyant une priorité absolue et ininterrompue.
+- **Insertion de Maintien OID SNMP :** Traduit les indices d'étapes vertes (`stage_idx` et `stage_codes`) en masques de bits NTCIP `phase_control.hold` (`1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1`) ou en masques de maintien d'étape UTMC, maintenant le trafic conflictuel au rouge tout en octroyant une priorité absolue et ininterrompue.
 - **Protocole IPC à la Microseconde :** Activé via la commande NDJSON `evp_preempt` sur les tubes de l'OS :
   ```json
   {"cmd": "evp_preempt", "intersection_id": "cruzamento_av_jk_01", "action_type": "activate_preempt", "target_stage": 1, "vehicle_id": "SAMU-01"}
@@ -142,15 +157,16 @@ Pour les architectures distribuées de villes intelligentes où les véhicules d
 
 ## 6. Gestion du Matériel & Architecture Fail-Safe
 
-### 6.1 Cycle de Vie des Connexions & Pooling (`src/controller/`)
-- [`src/controller/connection_manager.py`](../../src/controller/connection_manager.py) : Gère les machines à états de connexion (`DISCONNECTED`, `CONNECTING`, `ONLINE`, `DEGRADED`, `FAILSAFE`).
-- [`src/controller/connection_config_repo.py`](../../src/controller/connection_config_repo.py) : Persiste les adresses IP, ports, protocoles et identifiants dans la table `hardware_controller_connections`.
-- [`src/controller/failsafe_manager.py`](../../src/controller/failsafe_manager.py) : Exécute le basculement d'urgence.
+### 6.1 Cycle de Vie des Connexions & Pooling (`src/controller/`, `src/repositories/`)
+- [`src/controller/connection_manager.py`](../../src/controller/connection_manager.py) & [`connection_operation_handler.py`](../../src/controller/connection_operation_handler.py) : Gèrent les machines à états de connexion (`DISCONNECTED`, `CONNECTING`, `ONLINE`, `DEGRADED`, `FAILSAFE`), les vues miroirs passives en mode `remote` (`update_remote_hardware_status`), l'autodétection des ports de simulateur ([`LocalSimulatorProber`](../../src/controller/local_simulator_prober.py)) et la restauration CSV en lot ([`ConnectionBatchImporter`](../../src/controller/connection_batch_importer.py)).
+- [`src/repositories/hardware_connection_repo.py`](../../src/repositories/hardware_connection_repo.py) & [`src/repositories/connection_csv_store.py`](../../src/repositories/connection_csv_store.py) : Persistent les points de terminaison IP et le JSON optionnel `snmp_config` (SNMPv3 USM / `config_path` d'OID personnalisé) dans `hardware_controller_connections` et les modèles CSV, tout en préservant [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py) comme façade rétrocompatible.
+- [`src/controller/failsafe_manager.py`](../../src/controller/failsafe_manager.py) : Exécute le basculement d'urgence via `HardwareGatewayCoordinator.on_failsafe_triggered()` et la reprise via `on_failsafe_recovered()`.
 
-### 6.2 Déterminisme du Fail-Safe
-1. **Perte de Pulsation (< 500 ms) :** Si la communication avec un contrôleur actif est interrompue pendant plus de 3 intervalles d'interrogation consécutifs, CARINA libère immédiatement tous les maintiens de phase (*Phase Holds*) et commandes de coupure forcée (*Force-Off*).
-2. **Réversion Locale du Contrôleur :** Le contrôleur physique bascule immédiatement sur son plan interne local coordonné à temps fixe (*Time-of-Day* ou mode Clignotant), assurant une sécurité absolue et ininterrompue du carrefour.
-3. **Interception des Conflits de Sécurité :** Toutes les actions sortantes passent par [`src/controller/stage_validator.py`](../../src/controller/stage_validator.py) avant expédition, vérifiant le temps de dégagement intermédiaire et les matrices de conflits.
+### 6.2 Déterminisme du Fail-Safe, Récupération & Trappes SNMP Binaires
+1. **Perte de Pulsation & Fail-Safe Réversible :** Si la communication avec un contrôleur actif est interrompue ou si le fail-safe Watchdog se déclenche, `EmergencyReleaseControlAll()` met en pause les pulsations et relâche les maintiens de phase tout en maintenant actifs les pilotes SNMP et l'écouteur de trappes afin que `resume_control` (`ResumeControlAll()`) puisse reprendre sans à-coup lors du rétablissement. À la sortie du processus ou sur `EOF`/`SIGPIPE`, `ShutdownAll()` relâche définitivement les maintiens et ferme les sockets.
+2. **Protection Inter-Vert (`HardwareStageActuator`) :** [`src/drivers/hardware_stage_actuator.py`](../../src/drivers/hardware_stage_actuator.py) ignore les appels `send_stage_hold` conflictuels durant les intervalles inter-vert jaune/tout-rouge (`_is_intergreen_stage`) et résout uniformément les identifiants préfixés par `tl_`.
+3. **Décodeur Binaire de Trappes SNMPv1/v2c/v3 (`src_go/pkg/traplistener/snmp_decoder.go`) :** Analyse les paquets binaires ASN.1 BER Trap/Inform sur le port UDP `162` (`CARINA_TRAP_PORT`), classant les alarmes `coldStart`, `warmStart`, `linkDown`, `linkUp`, `authenticationFailure`, NTCIP (`.1206.*`) et UTMC (`.13267.*`, `.2825.*`) par gravité (`CRITICAL`, `WARNING`, `INFO`).
+4. **Interception des Conflits de Sécurité :** Toutes les actions sortantes passent par [`src/controller/stage_validator.py`](../../src/controller/stage_validator.py) avant expédition, vérifiant le temps de dégagement intermédiaire et les matrices de conflits.
 
 ### 6.3 Signalement des Incidents Matériels & Déduplication (`src/drivers/`)
 - [`src/drivers/incident_reporter.py`](../../src/drivers/incident_reporter.py) : Intercepte les changements d'état matériel du contrôleur (`CONNECTING`, `ONLINE`, `DEGRADED`, `FAILSAFE`) et construit des messages d'incident JSON standardisés.

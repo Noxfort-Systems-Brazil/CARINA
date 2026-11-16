@@ -13,8 +13,8 @@ from typing import Any, Callable, Dict, Optional
 
 import flet as ft
 
-from ui.components.remote_gateway_form import RemoteGatewayFormControls
 from ui.components.remote_endpoints_banner import RemoteEndpointsBanner
+from ui.components.remote_gateway_form import RemoteGatewayFormControls
 from ui.controllers.remote_gateway_controller import RemoteGatewayController
 from ui.handlers.locale_manager import LocaleManager
 
@@ -78,6 +78,7 @@ class RemoteGatewayCard(ft.Card):
         """Opens URL directly in default system browser."""
         try:
             import webbrowser
+
             webbrowser.open(url)
             self._show_snackbar("Abrindo CCO no navegador...", ft.Colors.GREEN_700, ft.Icons.OPEN_IN_BROWSER_ROUNDED)
         except Exception as ex:
@@ -123,6 +124,7 @@ class RemoteGatewayCard(ft.Card):
 
     def _handle_test_connection(self, e):
         """Delegates Tailscale status check to the controller."""
+
         def _on_test_result(success: bool, msg: str):
             self._update_urls_display()
             color = ft.Colors.GREEN_700 if success else ft.Colors.RED_700
@@ -156,6 +158,12 @@ class RemoteGatewayCard(ft.Card):
             self.on_toggle_connection(False, self.get_values())
 
         self._show_snackbar("Gateway Remoto desativado.", ft.Colors.RED_700, ft.Icons.POWER_SETTINGS_NEW)
+
+    def handle_remote_response(self, payload: Dict[str, Any]) -> None:
+        """Handles asynchronous Tailscale gateway responses forwarded by CentralController."""
+        if hasattr(self.controller, "handle_remote_response"):
+            self.controller.handle_remote_response(payload)
+        self._update_urls_display()
 
     # Public API / Persistence
     def set_values(self, settings: Dict[str, Any]):

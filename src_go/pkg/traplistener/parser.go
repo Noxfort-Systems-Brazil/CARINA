@@ -17,6 +17,16 @@ var (
 	regex4Field = regexp.MustCompile(`(?i)TRAP\|([^|]+)\|([^|]+)\|\[([^\]]+)\]\s*(.*)`)
 )
 
+// parseRawPayload prioritizes real ASN.1/BER SNMP decoding before string TRAP| fallback.
+func (l *Listener) parseRawPayload(raw []byte, srcIP string) TrapEvent {
+	if len(raw) > 2 && raw[0] == 0x30 {
+		if event, ok := l.decodeBinarySNMPPacket(raw, srcIP); ok {
+			return event
+		}
+	}
+	return l.parsePayload(string(raw), srcIP)
+}
+
 func (l *Listener) parsePayload(rawText string, srcIP string) TrapEvent {
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	clean := strings.TrimSpace(rawText)

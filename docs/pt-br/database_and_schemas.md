@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS step_decisions (
     maturity_stage SMALLINT NOT NULL DEFAULT 2,     -- 0=CHILD, 1=TEEN, 2=ADULT
     suggested_action SMALLINT NOT NULL DEFAULT 0,   -- 0=KEEP, 1=CHANGE, 2=OVERRIDE
     final_decision SMALLINT NOT NULL DEFAULT 0,     -- 0=APPROVED, 1=DENIED (VETOED)
-    veto_reason_code SMALLINT NOT NULL DEFAULT 0,   -- 0=NONE, 1=MIN_GREEN, 2=YELLOW, 3=SPILLBACK, 4=GRIDLOCK
+    veto_reason_code SMALLINT NOT NULL DEFAULT 0,   -- 0=NONE, 1=MIN_GREEN, 2=YELLOW, 3=ALL_RED, 4=MIN_RED, 5=SPILLBACK, 6=EVP_PREEMPTION
     step_count INTEGER NOT NULL DEFAULT 1,          -- Contador de Compressão Delta RLE
     total_step_time_ms REAL,
     guardian_time_ms REAL,
@@ -100,7 +100,7 @@ CREATE INDEX idx_fluid_edge_time ON synapse_fluid_dynamics (edge_id, created_at 
 ```
 
 ### 3.3 Tabela: `hardware_controller_connections`
-Catálogo de conexões com controladores físicos de tráfego gerenciado por [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py) e definido em [`config/database/schema_queries.json`](../../config/database/schema_queries.json):
+Catálogo de conexões com controladores físicos de tráfego e JSON opcional de SNMPv2c/v3 / sobrescrita de OIDs (`snmp_config`) gerenciado por [`HardwareConnectionRepository`](../../src/repositories/hardware_connection_repo.py) (e fachada [`ConnectionConfigRepository`](../../src/controller/connection_config_repo.py)) conforme definido em [`config/database/schema_queries.json`](../../config/database/schema_queries.json):
 
 ```sql
 -- Dialeto PostgreSQL
@@ -108,7 +108,8 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT TRUE,
-    last_connected TIMESTAMP DEFAULT NOW()
+    last_connected TIMESTAMP DEFAULT NOW(),
+    snmp_config TEXT
 );
 
 -- Dialeto SQLite (contingência embarcada)
@@ -116,9 +117,12 @@ CREATE TABLE IF NOT EXISTS hardware_controller_connections (
     intersection_id TEXT PRIMARY KEY,
     ip_address TEXT NOT NULL,
     auto_connect BOOLEAN NOT NULL DEFAULT 1,
-    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    last_connected TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    snmp_config TEXT
 );
 ```
+
+*(Observação: As tabelas de resumo horário `synapse_edge_phase_hourly_summary` e `synapse_intersection_phase_hourly_summary` também incluem `scenario_name` em sua chave primária composta `(..., scenario_name)` para isolamento multi-cenário, e as queries de expurgo/intervalo PostgreSQL em `config/database/fluid_dynamics_queries.json` utilizam chamadas parametrizadas `make_interval(...)`.)*
 
 ### 3.4 Tabela: `edge_dictionary`
 Dicionário de mapeamento de vias urbanas para IDs numéricos compactos:
@@ -280,13 +284,16 @@ CARINA_DB_MAX_OVERFLOW=20
 
 ---
 
-## 5. Pooling de Conexões, Ciclo de Vida e Migrations (`src/database/`)
+## 5. Pooling de Conexões, SQLite WAL, Ciclo de Vida & Retenção (`src/database/`)
 
-- **`DatabaseEngineFactory` (`engine_factory.py`):** Instancia engines otimizadas com pooling `QueuePool` no PostgreSQL ou `NullPool` no SQLite com chaveamento thread-safe.
-- **`DatabaseSchemaInitializer` (`schema_initializer.py`):** Orquestra o bootstrap de tabelas e a execução das migrations gerenciadas pelo **Alembic** (`migrations/versions/`).
-- **Idempotência DDL e Inspeção em Tempo de Execução:** Para evitar falhas críticas de `table already exists` no boot de instâncias pré-existentes, as migrations (`001_initial_schema.py` e `002_consolidate_missing_tables.py`) utilizam `sa.inspect(op.get_bind()).get_table_names()`, criando apenas entidades e índices estritamente ausentes.
-- **Resiliência a Schemas Pré-Existentes (Auto-Stamping):** Caso uma base legada já contenha tabelas criadas por scripts SQL fallback sem registro de versão no Alembic, `DatabaseSchemaInitializer.apply_migrations` intercepta exceções operacionais (`already exists`) e sincroniza atomicamente o ponteiro de versão via `command.stamp(alembic_cfg, "head")`, garantindo inicialização limpa do `DatabaseWorker` sem interrupção de processos.
-- **Graceful Shutdown:** No encerramento do CARINA (`SIGINT`/`SIGTERM`), o `DatabaseWorker` drena todas as mensagens remanescentes nas filas de RAM antes de fechar o pool de conexões, assegurando zero perda de dados.
+- **`PostgresConnectionPool` & `db_transaction` ([`src/database/connection_pool.py`](../../src/database/connection_pool.py)):** Pool de conexões thread-safe para PostgreSQL construído sobre `psycopg2.pool.ThreadedConnectionPool` (`minconn=1, maxconn=16`) com `PooledPostgresConnectionProxy` e gerenciamento determinístico de commit/rollback/fechamento em `db_transaction`.
+- **`configure_sqlite_connection` ([`connection_pool.py`](../../src/database/connection_pool.py)):** Aplica `PRAGMA busy_timeout = 30000`, `PRAGMA foreign_keys = ON`, `PRAGMA synchronous = NORMAL`, `PRAGMA temp_store = MEMORY` e `PRAGMA journal_mode = WAL` único para eliminar contenção de escrita entre subprocessos.
+- **Modo de Worker Somente-Leitura (`enable_step_worker=False`):** Workers analíticos/de laudos (`XaiWorker`, `ReportDataCollector`, `XaiAgentRepository`) obtêm `DatabaseManager.get_instance(..., enable_step_worker=False)` sem instanciar threads `StepDecisionWorker` redundantes.
+- **`DatabaseEngineFactory` (`src/database/engine_factory.py`):** Instancia engines de migração SQLAlchemy com `QueuePool` no PostgreSQL ou `NullPool` no SQLite.
+- **`DatabaseSchemaInitializer` (`src/database/schema_initializer.py`):** Orquestra o bootstrap de tabelas e executa as migrations do **Alembic** (`migrations/versions/`).
+- **Idempotência DDL & Auto-Stamping:** As migrations (`001_initial_schema.py` e `002_consolidate_missing_tables.py`) inspecionam tabelas em tempo de execução via `sa.inspect(op.get_bind()).get_table_names()` e recuperam esquemas legados sem registro de versão com `command.stamp(alembic_cfg, "head")`.
+- **Expurgo Automático de Retenção (`database_worker.py`):** A consolidação horária remove registros brutos de `synapse_fluid_dynamics` com mais de 48 horas e apaga registros de `evp_telemetry_records` mais antigos que **168 horas (7 dias)**.
+- **Graceful Shutdown:** No encerramento do CARINA (`SIGINT`/`SIGTERM`), o `DatabaseWorker` drena todas as mensagens remanescentes nas filas de RAM antes de encerrar os pools de conexões (`engine.close()`).
 
 ---
 

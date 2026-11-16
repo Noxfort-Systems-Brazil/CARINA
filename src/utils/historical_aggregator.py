@@ -33,6 +33,16 @@ class SlidingWindowMax:
         self.index += 1
         return self.deque[0][1]
 
+    def peek(self, val: float) -> float:
+        """Returns window maximum including `val` without mutating deque or index."""
+        best = val
+        for idx, entry_val in self.deque:
+            if self.index - idx < self.window_size:
+                if entry_val > best:
+                    best = entry_val
+                break  # deque is monotonically non-increasing
+        return best
+
     def reset(self):
         self.deque.clear()
         self.index = 0
@@ -66,6 +76,20 @@ class HistoricalAggregator:
         self.peaks = [SlidingWindowMax(window_size) for _ in range(input_dim)]
         self.initialized = False
 
+    @staticmethod
+    def _format_augmented(
+        x: np.ndarray,
+        ema_long: np.ndarray,
+        ema_short: np.ndarray,
+        ema_sq_long: np.ndarray,
+        recent_peaks: np.ndarray,
+    ) -> np.ndarray:
+        """Builds the 5x augmented vector `[x, ema_long, trend, volatility, peaks]`."""
+        variance = ema_sq_long - (ema_long**2)
+        volatility = np.sqrt(np.clip(variance, 0.0, None))
+        trend = ema_short - ema_long
+        return np.concatenate([x, ema_long, trend, volatility, recent_peaks])
+
     def update(self, state_vector: np.ndarray) -> np.ndarray:
         """
         Updates the running metrics with a new state_vector and returns the augmented vector.
@@ -80,7 +104,6 @@ class HistoricalAggregator:
             len(state_vector) == self.input_dim
         ), f"Input size mismatch. Expected {self.input_dim}, got {len(state_vector)}"
 
-        # Convert state_vector to float32
         x = state_vector.astype(np.float32)
 
         if not self.initialized:
@@ -89,23 +112,35 @@ class HistoricalAggregator:
             self.ema_sq_long = (x**2).copy()
             self.initialized = True
         else:
-            # Update EMAs
             self.ema_long = self.alpha_long * x + (1.0 - self.alpha_long) * self.ema_long
             self.ema_short = self.alpha_short * x + (1.0 - self.alpha_short) * self.ema_short
             self.ema_sq_long = self.alpha_long * (x**2) + (1.0 - self.alpha_long) * self.ema_sq_long
 
-        # Volatility: Std = sqrt(max(0, E[X^2] - E[X]^2))
-        variance = self.ema_sq_long - (self.ema_long**2)
-        volatility = np.sqrt(np.clip(variance, 0.0, None))
-
-        # Trend: ema_short - ema_long
-        trend = self.ema_short - self.ema_long
-
-        # Recent Peaks
         recent_peaks = np.array([peak.update(val) for peak, val in zip(self.peaks, x)], dtype=np.float32)
+        return self._format_augmented(x, self.ema_long, self.ema_short, self.ema_sq_long, recent_peaks)
 
-        # Concat original features and all computed metrics
-        return np.concatenate([x, self.ema_long, trend, volatility, recent_peaks])
+    def peek(self, state_vector: np.ndarray) -> np.ndarray:
+        """
+        Computes the augmented state vector for `state_vector` without mutating running EMAs or peak windows.
+        Used by secondary readers in the same simulation step to avoid double-updating statistics.
+        """
+        assert (
+            len(state_vector) == self.input_dim
+        ), f"Input size mismatch. Expected {self.input_dim}, got {len(state_vector)}"
+
+        x = state_vector.astype(np.float32)
+        if not self.initialized:
+            ema_long = x
+            ema_short = x
+            ema_sq_long = x**2
+            recent_peaks = x
+        else:
+            ema_long = self.alpha_long * x + (1.0 - self.alpha_long) * self.ema_long
+            ema_short = self.alpha_short * x + (1.0 - self.alpha_short) * self.ema_short
+            ema_sq_long = self.alpha_long * (x**2) + (1.0 - self.alpha_long) * self.ema_sq_long
+            recent_peaks = np.array([peak.peek(val) for peak, val in zip(self.peaks, x)], dtype=np.float32)
+
+        return self._format_augmented(x, ema_long, ema_short, ema_sq_long, recent_peaks)
 
     def reset(self):
         self.ema_long.fill(0.0)

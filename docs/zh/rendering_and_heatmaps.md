@@ -46,19 +46,19 @@ CARINA 原生提供完全离线的高性能地理空间可视化能力，绝不�
 - 全面支持平滑视口平移（Pan）、双指手势缩放（Pinch-to-zoom），并支持基于全部活动交叉口的包围盒（Bounding Box）一键自动居中。
 - 在异构显示器分辨率和长宽比下，自动维持 1:1 的真实物理各向同性，杜绝地图畸变拉伸。
 
-### 2.2 静态矢量路网渲染器 (`static_map_renderer.py`)
-位于 [`src/rendering/static_map_renderer.py`](../../src/rendering/static_map_renderer.py)：
-- 高效解析 SUMO `.net.xml` 车道几何形状（Polylines）、交叉口拓扑边界以及路口内部导向车道连通关系。
+### 2.2 静态矢量路网渲染器 (`static_map_renderer.py`) 与 SUMO 路网 LRU 缓存 (`sumo_net_cache.py`)
+位于 [`src/rendering/static_map_renderer.py`](../../src/rendering/static_map_renderer.py) 与 [`src/utils/sumo_net_cache.py`](../../src/utils/sumo_net_cache.py)：
+- 通过 [`read_sumo_net_cached()`](../../src/utils/sumo_net_cache.py) 解析 SUMO `.net.xml` 车道几何形状、交叉口拓扑边界以及路口内部导向车道连通关系（线程安全 LRU 缓存，最多保留 8 个条目，按文件路径、`mtime_ns`、文件大小、`with_programs` 与 `with_internal` 索引）。
 - 矢量绘制多车道干线道路、车道分道虚线、行车导向箭头以及信号灯灯头状态图标。
 - 在内存中缓存光栅化矢量路径，在静态无几何变动场景下彻底消除 CPU 冗余重绘开销。
 
-### 2.3 异步空间热力图插值渲染器 (`async_heatmap_renderer.py`)
-位于 [`src/rendering/async_heatmap_renderer.py`](../../src/rendering/async_heatmap_renderer.py)：
+### 2.3 异步空间热力图插值渲染器 (`async_heatmap_renderer.py`) 与离屏 Matplotlib (`mpl_utils.py`)
+位于 [`src/rendering/async_heatmap_renderer.py`](../../src/rendering/async_heatmap_renderer.py) 与 [`src/rendering/mpl_utils.py`](../../src/rendering/mpl_utils.py)：
 - 运用 **核密度估计（Kernel Density Estimation, KDE）** 空间算法，将离散车道的点状与线状微观指标插值为全路网连续二维空间热力场：
   - **车流空间密度热力图：** 直观展现全城各片区每平方公里的车辆空间堆积度。
   - **排队等待时间延误热力图：** 精准高亮主干道通行瓶颈与常发性拥堵节点。
   - **溢流回堵风险热力图：** 动态可视化呈现 Guardian 智能体预测的拥堵冲击波扩散趋势。
-- 将高耗时的二维高斯核模糊（Gaussian Blur）与矩阵卷积运算卸载至后台独立工作线程执行，确保前端 60 FPS 的流畅交互帧率。
+- 将高耗时的二维高斯核模糊（Gaussian Blur）与矩阵卷积运算卸载至后台独立工作线程执行，并通过隔离的离屏 `Figure` + `FigureCanvasAgg` 实例（`create_offscreen_figure` / `close_offscreen_figure`）而非全局 `pyplot` 状态渲染图表，彻底杜绝内存泄漏与 GUI 主线程争用。
 
 ---
 

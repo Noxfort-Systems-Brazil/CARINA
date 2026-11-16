@@ -10,7 +10,7 @@ Delegates hardware communication directly to the ConnectionManager.
 
 import configparser
 import logging
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -63,7 +63,53 @@ class ActionSupervisor:
                 elif isinstance(veto_signal, (int, float)):
                     self.vetoed_actions[tl_id] = 0 if veto_signal > 0.8 else None
 
-    def apply_actions(self, actions: Dict[str, int], current_sim_time: float, current_stages: Dict[str, Any]) -> None:
+    @staticmethod
+    def _possible_ids(tl_id: str) -> List[str]:
+        s_id = str(tl_id)
+        if s_id.startswith("tl_"):
+            return [s_id, s_id[3:]]
+        return [s_id, f"tl_{s_id}"]
+
+    def _resolve_active_driver(self, tl_id: str) -> Optional[Any]:
+        active = getattr(self.connection_manager, "active_connections", None)
+        if not isinstance(active, dict):
+            return None
+        for pid in self._possible_ids(tl_id):
+            if pid in active:
+                return active[pid]
+        return None
+
+    def _get_override_state(self, tl_id: str) -> Optional[str]:
+        for pid in self._possible_ids(tl_id):
+            if pid in self.override_states:
+                return self.override_states[pid]
+        return None
+
+    def _get_stage_metadata(self, tl_id: str) -> Tuple[List[int], Dict[int, str]]:
+        green_stages: List[int] = []
+        stage_codes: Dict[int, str] = {}
+        green_map = getattr(self.state_extractor, "tl_green_stages", None)
+        if isinstance(green_map, dict):
+            for pid in self._possible_ids(tl_id):
+                val = green_map.get(pid)
+                if isinstance(val, (list, tuple)) and len(val) > 0:
+                    green_stages = [int(x) for x in val]
+                    break
+        codes_map = getattr(self.state_extractor, "tl_stage_codes", None)
+        if isinstance(codes_map, dict):
+            for pid in self._possible_ids(tl_id):
+                val = codes_map.get(pid)
+                if isinstance(val, dict) and len(val) > 0:
+                    stage_codes = dict(val)
+                    break
+        return green_stages, stage_codes
+
+    def apply_actions(
+        self,
+        actions: Dict[str, int],
+        current_sim_time: float = 0.0,
+        current_stages: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Executes AI-recommended actions on respective hardware drivers.
         """
@@ -79,49 +125,87 @@ class ActionSupervisor:
                 )
                 del self.vetoed_actions[tl_id]
                 actions[tl_id] = 1  # Force to HOLD
+                action = 1
 
-    def send_stage_hold(self, tl_id: str, stage_idx: int) -> None:
+            # 2. Dispatch non-vetoed NEXT_STAGE (0) commands to physical hardware
+            if action == 0:
+                if self._get_override_state(tl_id) in ("ALERT", "OFF"):
+                    continue
+                driver = self._resolve_active_driver(tl_id)
+                if driver and getattr(driver, "is_connected", True):
+                    green_stages, stage_codes = self._get_stage_metadata(tl_id)
+                    stage_idx = int((current_stages or {}).get(tl_id, 0) or 0)
+                    if (
+                        green_stages
+                        and hasattr(driver, "apply_logical_action")
+                        and callable(driver.apply_logical_action)
+                    ):
+                        driver.apply_logical_action(0, stage_idx, green_stages, stage_codes)
+                    elif hasattr(driver, "apply_decision") and callable(driver.apply_decision):
+                        driver.apply_decision("ADVANCE")
+
+    def send_stage_hold(
+        self,
+        tl_id: str,
+        stage_idx: int,
+        stage_codes: Optional[Dict[int, str]] = None,
+    ) -> None:
         """
-        Sends the hold command for the specified stage to the hardware driver.
+        Sends the hold command for the specified stage (with 0-based stage_idx and stage_codes)
+        to the hardware driver.
         """
-        if self.override_states.get(tl_id) in ("ALERT", "OFF"):
+        override_state = self._get_override_state(tl_id)
+        if override_state in ("ALERT", "OFF"):
             logging.debug(
                 self.lm.get_string(
                     "action_supervisor.override_active",
                     default="[{tl_id}] Skipping send_stage_hold because of active override: {state}",
                     tl_id=tl_id,
-                    state=self.override_states[tl_id],
+                    state=override_state,
                 )
             )
             return
 
-        driver = self.connection_manager.active_connections.get(tl_id)
+        driver = self._resolve_active_driver(tl_id)
         if driver:
-            if hasattr(driver, "apply_decision"):
+            if stage_codes is None:
+                _, stage_codes = self._get_stage_metadata(tl_id)
+
+            action_payload: Dict[str, Any] = {
+                "action_type": "hold",
+                "stage": int(stage_idx) + 1,
+                "stage_idx": int(stage_idx),
+            }
+            if stage_codes:
+                action_payload["stage_codes"] = dict(stage_codes)
+
+            if hasattr(driver, "apply_action") and callable(driver.apply_action):
+                driver.apply_action(action_payload)
+            elif hasattr(driver, "apply_decision") and callable(driver.apply_decision):
                 driver.apply_decision("HOLD")
-            else:
-                driver.apply_action({"action_type": "hold", "stage": stage_idx + 1})
 
     def send_decision(self, tl_id: str, decision: str) -> None:
         """Sends pure high-level AI decision ('HOLD' or 'ADVANCE') to the driver."""
-        if self.override_states.get(tl_id) in ("ALERT", "OFF"):
+        if self._get_override_state(tl_id) in ("ALERT", "OFF"):
             return
-        driver = self.connection_manager.active_connections.get(tl_id)
+        driver = self._resolve_active_driver(tl_id)
         if driver:
             if hasattr(driver, "apply_decision"):
                 driver.apply_decision(decision)
             elif decision.upper() == "HOLD":
                 driver.apply_action({"action_type": "hold"})
 
+    def record_stage_change(self, tl_id: str, sim_time: float) -> None:
+        """Records the simulation timestamp of a confirmed stage transition for tl_id."""
+        self._last_stage_change_time[tl_id] = sim_time
+
+    def get_last_stage_change_time(self, tl_id: str, default: float = 0.0) -> float:
+        """Returns the simulation timestamp of the last confirmed stage transition for tl_id."""
+        return float(self._last_stage_change_time.get(tl_id, default))
+
     def cleanup_intersection(self, tl_id: str) -> None:
         """Removes all cached states and override flags for a disconnected intersection."""
-        possible_ids = [str(tl_id)]
-        if str(tl_id).startswith("tl_"):
-            possible_ids.append(str(tl_id).replace("tl_", ""))
-        else:
-            possible_ids.append(f"tl_{tl_id}")
-
-        for pid in possible_ids:
+        for pid in self._possible_ids(tl_id):
             self._last_stage_change_time.pop(pid, None)
             self.vetoed_actions.pop(pid, None)
             self._last_sent_action.pop(pid, None)
@@ -150,8 +234,8 @@ class ActionSupervisor:
                 driver.shutdown()
             return
 
-        if tl_id in self.connection_manager.active_connections:
-            driver = self.connection_manager.active_connections[tl_id]
+        driver = self._resolve_active_driver(tl_id)
+        if driver is not None:
             if state == "ALERT":
                 self.override_states[tl_id] = "ALERT"
                 driver.apply_action({"action_type": "flash"})
@@ -175,7 +259,10 @@ class ActionSupervisor:
                     )
                 )
             elif state == "NORMAL":
-                prev_state = self.override_states.pop(tl_id, None)
+                prev_state = None
+                for pid in self._possible_ids(tl_id):
+                    if pid in self.override_states:
+                        prev_state = self.override_states.pop(pid, None)
                 if prev_state == "ALERT":
                     driver.apply_action({"action_type": "release_flash"})
                 elif prev_state == "OFF":

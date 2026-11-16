@@ -113,9 +113,9 @@ $$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \quad d = R \cdot
 
 ### 4.1 Block Entry Trigger (`is_at_block_entrance`)
 - Evaluates whether distance to intersection satisfies:
-  
+
   $$d_{\text{min}} \le d_{\text{vehicle}} \le d_{\text{max}}$$
-  
+
   Where $d_{\text{min}} = 60.0\text{ m}$ and $d_{\text{max}} = 160.0\text{ m}$ (or the actual topological road segment length $L_{\text{quadra}}$ derived from [`EVPTopologyService`](../src/evp/evp_topology_service.py)).
 
 ### 4.2 Checkout Detection (`has_checked_out`)
@@ -131,16 +131,16 @@ The preemption state machine coordinates signal stage transitions without violat
 stateDiagram-v2
     [*] --> Idle: Nominal Signal Operation
     Idle --> Approaching: Vehicle in Approach Zone & Siren Active
-    
+
     state Approaching {
         [*] --> CheckCurrentStage
         CheckCurrentStage --> StageDivergent: Current Stage != Target Stage
         CheckCurrentStage --> StageAligned: Current Stage == Target Stage
-        
+
         StageDivergent --> Advancing: ACTION_ADVANCE (0)
         Advancing --> EnforceClearance: Yellow (3s) + All-Red (2s)
         EnforceClearance --> StageAligned: Target Green Stage Reached
-        
+
         StageAligned --> HoldGreen: ACTION_HOLD (1)
     }
 
@@ -191,10 +191,11 @@ except Exception:
 
 The compiled Go binary (`bin/carina-go`) handles microsecond execution of preemption holds over NTCIP 1202 and UTMC2 controllers:
 
-### 7.1 Dispatcher Command Routing (`dispatcher.go`)
-- Receives `PreemptionCommand` envelopes from the gateway router.
-- `activate_preempt`: Injects physical `ascPhaseHold` OID bitmasks via SNMP on UDP port 161.
+### 7.1 Dispatcher Command Routing (`dispatcher.go`) & Cross-Process Sync
+- Receives `PreemptionCommand` envelopes (`stage_idx`, `stage_codes`, `target_stage`, `vehicle_id`) from the gateway router.
+- `activate_preempt`: Injects physical `phase_control.hold` (`1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1`) or UTMC stage hold bitmasks via SNMP on UDP port 161.
 - `release_preempt`: Clears phase hold bitmasks, returning control to local actuation or nominal cycle timers.
+- **Cross-Process Sync (`EVPSnapshotSynchronizer` & `ai_evp_preempt`):** Under single-gateway ownership (`CARINA_GATEWAY_ROLE=owner` in `CentralController`, `remote` in `AI_Process`), [`EVPSnapshotSynchronizer`](../src/evp/application/evp_snapshot_synchronizer.py) mirrors active emergency vehicles and preemptions to `AI_Process`, while [`EVPBridge`](../src/evp/evp_bridge.py) forwards remote preemption triggers via `ai_evp_preempt` IPC commands.
 
 ---
 
@@ -214,9 +215,10 @@ The Go Web Gateway hosts external endpoints for vehicle telematics and browser-b
    - HTTP 204 No Content              - Live JSON Telemetry Frames
 ```
 
-### 8.1 Unidirectional GPS Ingestion (`handlers_evp.go`)
-- **Route:** `POST /api/v1/evp/telemetry` (and `/amb`)
-- **Status Response:** `204 No Content`
+### 8.1 Unidirectional GPS Ingestion (`handlers_evp.go` & `evp_http_server.go`)
+- **Route:** `POST /api/v1/evp/telemetry` (and `/amb`, `/amb/`)
+- **Status Response:** `204 No Content` (or `503 Service Unavailable` when `CARINA_GATEWAY_ENABLED=False`, `401 Unauthorized` if `CARINA_EVP_AUTH_TOKEN` fails constant-time Bearer/`X-EVP-Token` validation)
+- **TLS Encryption:** Supports HTTPS via `CARINA_GATEWAY_TLS_CERT` and `CARINA_GATEWAY_TLS_KEY`.
 - **Ingestion Latency:** $< 0.5\text{ ms}$
 - **Payload Schema:**
   ```json
@@ -294,6 +296,7 @@ CREATE TABLE IF NOT EXISTS evp_registered_fleet (
 ```
 
 ### 11.2 Table: `evp_telemetry_records`
+*(Automatically pruned beyond 168 hours / 7 days by `database_worker.py` via `EVPTelemetryRepository.purge_old_telemetry`.)*
 ```sql
 CREATE TABLE IF NOT EXISTS evp_telemetry_records (
     id BIGSERIAL PRIMARY KEY,

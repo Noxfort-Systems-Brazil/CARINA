@@ -82,9 +82,38 @@ export function useCcoViewModel() {
         if (status === 'CONNECTED') setErrorMessage(null);
       },
       onCongestionUpdate: (update) => {
-        setCongestionMap((prev) => ({ ...prev, ...update.congestionMap }));
-        if (update.panelData) {
-          setSignals((prev) => ({ ...prev, ...update.panelData }));
+        const congEntries = update.congestionMap ? Object.entries(update.congestionMap) : [];
+        if (congEntries.length > 0) {
+          setCongestionMap((prev) => {
+            let changed = false;
+            for (const [k, v] of congEntries) {
+              if (prev[k] !== v) {
+                changed = true;
+                break;
+              }
+            }
+            return changed ? { ...prev, ...update.congestionMap } : prev;
+          });
+        }
+        const sigEntries = update.panelData ? Object.entries(update.panelData) : [];
+        if (sigEntries.length > 0) {
+          setSignals((prev) => {
+            let changed = false;
+            for (const [k, v] of sigEntries) {
+              const cur = prev[k];
+              if (
+                !cur ||
+                cur.displayState !== v.displayState ||
+                cur.phase !== v.phase ||
+                cur.brand !== v.brand ||
+                cur.model !== v.model
+              ) {
+                changed = true;
+                break;
+              }
+            }
+            return changed ? { ...prev, ...update.panelData } : prev;
+          });
         }
       },
       onEmergencyVehicleUpdate: (vehicle) => {
@@ -98,9 +127,10 @@ export function useCcoViewModel() {
       },
     });
 
-    // Timer to clean up stale/disconnected emergency vehicles every 5s
+    // Timer to clean up stale/disconnected emergency vehicles every 5s (paused when hidden)
     const cleanupInterval = setInterval(() => {
-      setFleet((prevFleet) => fleetUseCase.cleanupStaleVehicles(prevFleet));
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setFleet((prevFleet) => (prevFleet.size > 0 ? fleetUseCase.cleanupStaleVehicles(prevFleet) : prevFleet));
     }, 5000);
 
     return () => {

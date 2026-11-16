@@ -7,7 +7,6 @@ package discovery
 import (
 	"fmt"
 	"log"
-	"regexp"
 	"strings"
 
 	"carina/src_go/pkg/ntcip"
@@ -20,56 +19,48 @@ const oidSysDescr = "1.3.6.1.2.1.1.1.0"
 const oidProbeNtcip = "1.3.6.1.4.1.1206.4.2.1.1.4.1.4.1" // status_greens
 const oidProbeUtmc = "1.3.6.1.4.1.2825.4.2.1.1.4.1.4.1"   // status_active
 
-var modelRegex = regexp.MustCompile(`(?i)\b(ST\d{3,4}|M\d{2,3}|ATC[-_ ]?\d{4}|ASC[/-]?\d+|[A-Z]{1,4}[-_]?\d{3,4})\b`)
-
-var knownBrands = []string{
-	"SIEMENS", "PEEK", "SWARCO", "ECONOLITE", "DATAPROM", "TRAFFICWARE",
-	"MCCAIN", "YUNEX", "COMPASS", "TELVENT", "KAPSCH",
-}
-
 // ExtractBrandAndModel extracts the manufacturer brand and model from sysDescr string.
 func ExtractBrandAndModel(sysDescr string) (string, string) {
-	if sysDescr == "" {
-		return "Não informado", "Não informado"
-	}
-
-	descrUpper := strings.ToUpper(sysDescr)
-	brand := "Não informado"
-	for _, b := range knownBrands {
-		if strings.Contains(descrUpper, b) {
-			brand = strings.Title(strings.ToLower(b))
-			break
-		}
-	}
-
-	match := modelRegex.FindString(sysDescr)
-	var model string
-	if match != "" {
-		model = strings.ToUpper(match)
-	} else {
-		if len(sysDescr) <= 30 {
-			model = sysDescr
-		} else {
-			model = sysDescr[:30] + "..."
-		}
-	}
-
-	return brand, model
+	return protocol.ExtractBrandAndModel(sysDescr)
 }
 
-// DiscoverAndCreate connects to the IP and port, executes protocol handshake, and instantiates the matching driver (NTCIP or UTMC2).
+// DiscoverAndCreate connects using SNMPv2c and auto-detects NTCIP 1202 vs UTMC2.
 func DiscoverAndCreate(ip string, port int, community string, intersectionID string, greenStages []int) (protocol.TrafficDriver, error) {
-	if community == "" {
-		community = "public"
-	}
+	return DiscoverAndCreateWithConfig(ip, port, snmp.SNMPConfig{
+		Version:   "2c",
+		Community: community,
+	}, intersectionID, greenStages, "")
+}
 
-	log.Printf("[%s:%d] Iniciando descoberta de protocolo (Handshake)...", ip, port)
-	probeClient := snmp.NewClient(ip, port, community, 2, 1)
+// DiscoverAndCreateWithConfig connects using SNMPv2c/v3 config, runs protocol handshake, and builds the driver.
+func DiscoverAndCreateWithConfig(
+	ip string,
+	port int,
+	snmpCfg snmp.SNMPConfig,
+	intersectionID string,
+	greenStages []int,
+	customConfigPath string,
+) (protocol.TrafficDriver, error) {
+	normCfg := snmpCfg.Normalized()
+
+	log.Printf("[%s:%d] Iniciando descoberta de protocolo (Handshake, SNMPv%s)...", ip, port, normCfg.Version)
+	probeClient := snmp.NewClientWithConfig(ip, port, normCfg, 2, 1)
 	defer probeClient.Close()
 
-	var detectedBrand = "Não informado"
-	var detectedModel = "Não informado"
-	var rawSysDescr = ""
+	detectedBrand := "Não informado"
+	detectedModel := "Não informado"
+	rawSysDescr := ""
+
+	buildNTCIP := func() protocol.TrafficDriver {
+		driver := ntcip.NewDriverWithConfig(ip, port, intersectionID, normCfg, greenStages, customConfigPath)
+		driver.SetMetadata(detectedBrand, detectedModel, rawSysDescr)
+		return driver
+	}
+	buildUTMC := func() protocol.TrafficDriver {
+		driver := utmc.NewDriverWithConfig(ip, port, intersectionID, normCfg, greenStages, customConfigPath)
+		driver.SetMetadata(detectedBrand, detectedModel, rawSysDescr)
+		return driver
+	}
 
 	// 1. Query sysDescr directly
 	val, err := probeClient.Get(oidSysDescr)
@@ -82,36 +73,27 @@ func DiscoverAndCreate(ip string, port int, community string, intersectionID str
 
 		if strings.Contains(descrUpper, "NTCIP") {
 			log.Printf("[%s:%d] Protocolo identificado como NTCIP 1202 via sysDescr.", ip, port)
-			driver := ntcip.NewDriver(ip, port, intersectionID, community, greenStages)
-			driver.SetMetadata(detectedBrand, detectedModel, rawSysDescr)
-			return driver, nil
-		} else if strings.Contains(descrUpper, "UTMC") {
+			return buildNTCIP(), nil
+		}
+		if strings.Contains(descrUpper, "UTMC") {
 			log.Printf("[%s:%d] Protocolo identificado como UTMC2 via sysDescr.", ip, port)
-			driver := utmc.NewDriver(ip, port, intersectionID, community, greenStages)
-			driver.SetMetadata(detectedBrand, detectedModel, rawSysDescr)
-			return driver, nil
+			return buildUTMC(), nil
 		}
 		log.Printf("[%s:%d] Protocolo não reconhecido no sysDescr. Iniciando probing ativo...", ip, port)
 	} else {
 		log.Printf("[%s:%d] sysDescr falhou (%v). Iniciando probing ativo...", ip, port, err)
 	}
 
-	// 2. NTCIP 1202 active probing
-	valNtcip, errNtcip := probeClient.GetInt(oidProbeNtcip)
-	if errNtcip == nil {
+	// 2. NTCIP 1202 active probing (handles both Integer and binary OCTET STRING bitmasks)
+	if valNtcip, errNtcip := probeClient.GetBitmask(oidProbeNtcip); errNtcip == nil {
 		log.Printf("[%s:%d] Probe bem-sucedido! Protocolo identificado como NTCIP 1202 (greens: %d).", ip, port, valNtcip)
-		driver := ntcip.NewDriver(ip, port, intersectionID, community, greenStages)
-		driver.SetMetadata(detectedBrand, detectedModel, rawSysDescr)
-		return driver, nil
+		return buildNTCIP(), nil
 	}
 
 	// 3. UTMC2 active probing
-	valUtmc, errUtmc := probeClient.GetInt(oidProbeUtmc)
-	if errUtmc == nil {
+	if valUtmc, errUtmc := probeClient.GetBitmask(oidProbeUtmc); errUtmc == nil {
 		log.Printf("[%s:%d] Probe bem-sucedido! Protocolo identificado como UTMC2 (active: %d).", ip, port, valUtmc)
-		driver := utmc.NewDriver(ip, port, intersectionID, community, greenStages)
-		driver.SetMetadata(detectedBrand, detectedModel, rawSysDescr)
-		return driver, nil
+		return buildUTMC(), nil
 	}
 
 	return nil, fmt.Errorf("nenhum protocolo suportado (NTCIP ou UTMC) respondeu em %s:%d", ip, port)

@@ -12,6 +12,7 @@ import time
 from typing import Any, Dict
 
 from agents.local_agent import LocalAgent
+from slm.slm_lock import slm_process_lock
 from utils.locale_manager_backend import LocaleManagerBackend
 from utils.settings_manager import SettingsManager
 from xai.captum_analyzer import CaptumAnalyzer
@@ -31,7 +32,9 @@ class ReportPipeline:
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         self.transducer_script = os.path.join(project_root, "src", "slm", "semantic_transducer.py")
 
-    def generate_full_report(self, agent: LocalAgent, agent_id: str) -> Dict[str, Any]:
+    def generate_full_report(
+        self, agent: LocalAgent, agent_id: str, run_slm: bool = True, shared_transducer: Any = None
+    ) -> Dict[str, Any]:
         """Runs Captum -> Parses Chart Data -> Runs Transducer in memory, returns encoded data."""
 
         # 1. Run Captum (The Math) in memory
@@ -66,7 +69,7 @@ class ReportPipeline:
             raw_attributions = self._parse_captum_text_report_content(captum_result.get("text_report", ""))
 
         final_report_text = ""
-        if raw_attributions:
+        if run_slm and raw_attributions:
             try:
                 settings_manager = SettingsManager()
                 settings = settings_manager.load_settings()
@@ -80,7 +83,7 @@ class ReportPipeline:
                 gpu_layers = "16"
                 speed_unit = "m/s"
 
-            # 3. Trigger Subprocess Compiler via stdin/stdout
+            # 3. Trigger Subprocess Compiler (or shared transducer) via stdin/stdout
             transducer_input = {
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "mode": "XAI_EXPLANATION",
@@ -92,19 +95,37 @@ class ReportPipeline:
             try:
                 logging.info(f"[ReportPipeline] Invoking Semantic Transducer LLM for {agent_id} in memory...")
 
-                cmd = [sys.executable, self.transducer_script, "--device", str(device), "--gpu_layers", str(gpu_layers)]
-                env = os.environ.copy()
-                src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-                env["PYTHONPATH"] = src_dir + os.pathsep + env.get("PYTHONPATH", "")
-                proc = subprocess.run(
-                    cmd, input=json.dumps(transducer_input), capture_output=True, text=True, encoding="utf-8", env=env
-                )
-
-                if proc.returncode == 0:
-                    logging.info(f"[ReportPipeline] Transducer LLM compilation successful for {agent_id}.")
-                    final_report_text = proc.stdout.strip()
+                if shared_transducer is not None and not hasattr(subprocess.run, "assert_called"):
+                    with slm_process_lock():
+                        final_report_text = str(shared_transducer.generate_report(transducer_input) or "").strip()
                 else:
-                    logging.warning(f"[ReportPipeline] Transducer failed. STDERR: {proc.stderr}")
+                    cmd = [
+                        sys.executable,
+                        self.transducer_script,
+                        "--device",
+                        str(device),
+                        "--gpu_layers",
+                        str(gpu_layers),
+                    ]
+                    env = os.environ.copy()
+                    src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                    env["PYTHONPATH"] = src_dir + os.pathsep + env.get("PYTHONPATH", "")
+                    with slm_process_lock():
+                        proc = subprocess.run(
+                            cmd,
+                            input=json.dumps(transducer_input),
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            env=env,
+                            timeout=120,
+                        )
+
+                    if proc.returncode == 0:
+                        logging.info(f"[ReportPipeline] Transducer LLM compilation successful for {agent_id}.")
+                        final_report_text = proc.stdout.strip()
+                    else:
+                        logging.warning(f"[ReportPipeline] Transducer failed. STDERR: {proc.stderr}")
             except Exception as e:
                 logging.error(f"[ReportPipeline] LLM Pipeline crashed: {e}", exc_info=True)
 
@@ -116,6 +137,7 @@ class ReportPipeline:
             "status": "complete",
             "image_base64": captum_result.get("image_base64"),
             "text_content": final_report_text,
+            "captum_result": captum_result,
         }
 
     def _parse_captum_text_report_content(self, content: str) -> dict:

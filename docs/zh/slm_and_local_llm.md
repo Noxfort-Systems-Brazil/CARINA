@@ -65,9 +65,10 @@ CARINA 将所有报告自然语言文字论述的推理生成任务 **100% 约�
 - 自动化管理 GPU 算力层卸载（`n_gpu_layers = -1` 实现全量 CUDA 显存卸载）。
 - 执行贪婪解码策略（`temperature = 0.0`、`repeat_penalty = 1.05`），配合动态限制的最大 token 输出，有效防止大模型幻觉与车轱辘话重复死循环。
 
-### 2.3 设备与资源管理层 (`device_manager.py` 与 `resource_manager.py`)
-- [`src/slm/device_manager.py`](../../src/slm/device_manager.py)：智能探查现场可用异构计算设备（NVIDIA CUDA, ROCm, Apple Metal 或 CPU 多线程）。
-- [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py)：动态调度上下文缓存配额，在各生成任务之间自动重置释放 KV 缓存。
+### 2.3 设备、文件锁与资源管理层 (`device_manager.py`, `slm_lock.py`, `resource_manager.py`)
+- [`src/slm/device_manager.py`](../../src/slm/device_manager.py)：优先通过轻量级 `pynvml` 查询空闲/总计 GPU 显存，随后再回退至 `torch.cuda`，避免各工作进程（`XAI_Worker`、`MFD_Worker`、`AnalysisService`）仅为探测显存而额外分配约 ~400 MB 的 PyTorch CUDA 上下文。
+- [`src/slm/slm_lock.py`](../../src/slm/slm_lock.py)：提供可重入的跨进程建议性文件锁（`slm_process_lock()`，通过 `fcntl.flock` 作用于 `locks/slm_gguf.lock`），在 `XAI_Worker`、`MFD_Worker` 与 `AnalysisService` 之间串行化重型 2B GGUF 模型加载与推理，确保并发工作进程绝不争抢显存/内存。
+- [`src/slm/model_loader.py`](../../src/slm/model_loader.py) 与 [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py)：管理 GGUF 上下文配额分配、KV 缓存清理，并通过 `ReportTransducerFactory.release_transducer()` 执行确定性 `unload()`。在 `pytest` 测试环境下默认跳过真实 GGUF 加载，除非显式导出 `CARINA_ALLOW_REAL_SLM=1`。
 
 ### 2.4 文本真实性交叉审查引擎 (`revision_engine.py` 与 `output_sanitizer.py`)
 - [`src/slm/revision_engine.py`](../../src/slm/revision_engine.py)：提取大模型输出中的所有数值实体，并与底层 SQL 数据库中的真实物理指标进行二次交叉核对。

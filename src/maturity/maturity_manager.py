@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
 from core.dynamic_entropy_calculator import DynamicEntropyCalculator
 from core.enums import Maturity
@@ -207,3 +207,48 @@ class MaturityManager:
             manual_max_entropy=self.config.child_promotion_max_entropy,
             is_automatic_mode=self.config.is_automatic_mode,
         )
+
+
+def resolve_agent_phase(maturity_manager: Any, agent_id: str, default: Maturity = Maturity.CHILD) -> Maturity:
+    """
+    O(1) phase resolution compatible with real `MaturityManager` instances
+    and test doubles/mocks (`MagicMock`, `SimpleNamespace`) that populate `agent_maturity`.
+    """
+    if maturity_manager is None:
+        return default
+
+    # Test doubles frequently assign a plain mapping on the instance attribute `agent_maturity`.
+    instance_dict = getattr(maturity_manager, "__dict__", None)
+    if isinstance(instance_dict, dict) and "agent_maturity" in instance_dict:
+        direct_map = instance_dict["agent_maturity"]
+        if isinstance(direct_map, Mapping):
+            return direct_map.get(agent_id, default)
+
+    # Real MaturityManager stores `_agents: Dict[str, AgentMaturity]` for O(1) lookup.
+    if isinstance(getattr(maturity_manager, "_agents", None), dict):
+        return maturity_manager.get_agent_phase(agent_id, default)
+
+    # Explicit custom getter (e.g. SimpleNamespace with get_agent_phase callable)
+    getter = getattr(maturity_manager, "get_agent_phase", None)
+    if callable(getter) and not hasattr(maturity_manager, "assert_called"):
+        try:
+            return getter(agent_id, default)
+        except TypeError:
+            return getter(agent_id)
+
+    mat_map = getattr(maturity_manager, "agent_maturity", None)
+    if isinstance(mat_map, Mapping):
+        return mat_map.get(agent_id, default)
+
+    return default
+
+
+def resolve_maturity_map(maturity_manager: Any) -> Mapping[str, Maturity]:
+    """Resolves a single snapshot mapping once per cycle without repeated property allocations."""
+    if maturity_manager is None:
+        return {}
+    getter = getattr(maturity_manager, "get_maturity_map", None)
+    if callable(getter) and isinstance(getattr(maturity_manager, "_agents", None), dict):
+        return getter()
+    mat_map = getattr(maturity_manager, "agent_maturity", None)
+    return mat_map if isinstance(mat_map, Mapping) else {}

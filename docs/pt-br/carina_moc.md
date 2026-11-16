@@ -39,8 +39,9 @@ CARINA_CORE/
 │   ├── Dockerfile.build        # Construtor hermético multi-estágio (Node, Go, Python, dpkg-deb)
 │   └── deb/                    # Arquivos de controle Debian, unidades systemd & scripts pós-instalação
 │
-├── scripts/                    # Scripts de Compilação, Automação & Migrações
-│   └── build_deb.sh            # Gerador de pacotes Debian containerizado
+├── scripts/                    # Scripts de Compilação, Automação & Testes Limitados por Memória
+│   ├── build_deb.sh            # Gerador de pacotes Debian containerizado
+│   └── pytest_limited.sh       # Executor Pytest limitado por cgroup v2 / ulimit (máx. 2 GB RAM)
 │
 ├── proto/                      # Especificações do Protocolo gRPC
 │   └── synapse_hft.proto       # Definições Protobuf para telemetria de alta frequência e atuação
@@ -77,49 +78,51 @@ CARINA_CORE/
 ├── src_tsx/                    # Aplicação Web da Central de Controle Operacional (CCO)
 │   └── src_cco/                # React 18, TypeScript, Tailwind CSS, Camadas SVG, ECharts
 ├── src/                        # Código-fonte Principal em Python
-│   ├── agents/                 # Agentes neurais: LocalAgent (PPO), GuardianAgent, StrategistAgent
+│   ├── agents/                 # Agentes neurais: LocalAgent (PPO), GuardianAgent, PAEStateAugmentor & Checkpoints
 │   ├── analysis/               # Avaliador de Justificativas Semafóricas MUTCD, WarrantMath e Análise
-│   ├── blocks/                 # Construtor modular .docx, conversores de matemática OMML e sanitizadores
-│   ├── central_controller.py   # Servidor gRPC de telemetria de alta frequência
-│   ├── communication/          # MonitorClient, servidor HFT e ponte externa de telemetria
-│   ├── controller/             # ConnectionManager, FailSafeManager, StageValidator e sobreposições
+│   ├── blocks/                 # Construtor modular .docx, conversores OMML e formatadores com cache
+│   ├── central_controller.py   # Servidor gRPC de telemetria de alta frequência e dono único do Gateway
+│   ├── communication/          # MonitorClient, Segurança gRPC HFT (TLS/mTLS/Bearer) & ThreadSafePipe
+│   ├── controller/             # HardwareGatewayCoordinator, ConnectionManager, FenixStageDispatcher e sobreposições
 │   ├── core/                   # DecisionCoordinator, SafetyAuditor, ActionAuthorizer e PopulationManager
-│   ├── database/               # DatabaseEngine, DatabaseWorker e StepDecisionWorker
-│   ├── drivers/                # Proxy GoGatewayClient, DriverFactory, IncidentReporter e IncidentFilter
-│   ├── engine/                 # EpisodeRunner, StepProcessor, Otimizadores PPO/DQN e Treinadores
-│   ├── evp/                    # Preempção de Emergência (EVPService, Cinemática, PreemptionEngine)
+│   ├── database/               # DatabaseEngine, PostgresConnectionPool, SQLite WAL & StepDecisionWorker
+│   ├── drivers/                # Proxy GoGateway, RemoteHardwareDriverProxy, HardwareTelemetryDecoder & Ponte de Traps
+│   ├── engine/                 # StepProcessor, BatchedPAEEncoder, FleetBatchInferencer (vmap) & PhysicalActionMasker
+│   ├── evp/                    # Preempção de Emergência (EVPService, EVPSnapshotSynchronizer, Cinemática)
 │   ├── fenix/                  # F.E.N.I.X. Auto-cura e Supervisão de Processos (Supervisor, Runner, Reconciler)
 │   ├── handlers/               # Handlers de requisições de IA, comandos de UI e comandos de Watchdog
-│   ├── launcher/               # ProcessManager, SingleInstanceLock e UITrayManager
-│   ├── manager/                # CycleManager, StageTransitionManager, TopologyManager & ServiceManager
+│   ├── interfaces/             # Protocolos SOLID segregados (Controller, Drivers, Engine, Repositories)
+│   ├── launcher/               # ProcessManager, BackendServiceRegistry, FenixSupervisionLoop & WorkerEntrypoints
+│   ├── manager/                # CycleManager, StageTransitionManager, AgentPopulationLoader & ServiceManager
 │   ├── maturity/               # MaturityManager, AgentMaturity, PromotionService, Config e Port
 │   ├── mfd/                    # Analisador e Worker do Diagrama Fundamental Macroscópico (MFD)
-│   ├── models/                 # Arquiteturas Neurais (PAE, TCN, ST-GATv2 Lite)
-│   ├── optimizer/              # Treinamento Baseado em População (PBT) e Ajuste de Hiperparâmetros
+│   ├── models/                 # Backbone TCN unificado, ActorCriticNet, iTransformer PAE, QR-D3QN & ST-GATv2 Lite
+│   ├── optimizer/              # Treinamento Baseado em População (PBT), Otimizadores PPO em NumPy no Host & DQN
 │   ├── promotion/              # MaturityPacingCalculator, PerformanceMarginCalculator e PromotionEvaluator
-│   ├── rendering/              # StaticMapRenderer e AsyncHeatmapRenderer
-│   ├── repositories/           # StepDecisionRepo, FluidDynamicsRepo e CloudVaultRepo
-│   ├── safety/                 # Processo GuardianWorker e roteamento de sinais IPC
+│   ├── rendering/              # StaticMapRenderer, AsyncHeatmapRenderer & mpl_utils offscreen
+│   ├── repositories/           # StepDecisionRepo, FluidDynamicsRepo, HardwareConnectionRepo & ConnectionCSVStore
+│   ├── safety/                 # GuardianPhysicsEstimator, GuardianRiskCalibrator (Noisy-OR), GuardianShadowTrainer & Checkpoints
 │   ├── sas/                    # Smart Analysis System (Análise Estatística de Infraestrutura)
-│   ├── sds/                    # Smart Dashboard Service (Ponte de UI Flet e WebSockets)
+│   ├── sds/                    # Smart Dashboard Service (Ponte UI Flet, WebSockets & CCOBroadcastClient com Pinning)
 │   ├── security/               # Subsistema Desacoplado de Segurança (Auth, PBKDF2, Lockdown, Repositórios)
 │   ├── settings/               # Configurações Modulares (Interfaces SOLID, schemas, INI e .env)
-│   ├── slm/                    # Small Language Model (Inferência offline Qwen3.5 2B / llama.cpp)
+│   ├── slm/                    # Small Language Model (Qwen3.5 2B, sonda VRAM pynvml & slm_process_lock)
 │   ├── transports/             # Transportes polimórficos (Base, HTTP, MQTT, EndpointResolver)
-│   ├── utils/                  # SettingsManager, MetricsManager, Paths e Cálculo de Episódios
+│   ├── utils/                  # SettingsManager, MetricsManager, Paths, SumoNetCache e Cálculo de Episódios
 │   ├── watchdog/               # Monitor de heartbeat em tempo real e fail-safe de emergência
-│   └── xai/                    # Atribuição por Gradientes Integrados (Captum), gerador de laudos e worker
+│   └── xai/                    # Atribuição por Gradientes Integrados (Captum), construtor multiagente com cache & worker
 │
 ├── ui/                         # Aplicação Desktop Nativa em Flet
-│   ├── cards/                  # Cards modulares de telemetria e configurações (MonitorSettingsCard)
+│   ├── cards/                  # Cards modulares de configurações & telemetria (RemoteGateway, Hardware, EVP)
+│   ├── controllers/            # DashboardDataCoordinator & RemoteGatewaySettingsPersister
 │   ├── handlers/               # Handlers de eventos, SettingsHandler e SystemTrayHandler nativo
 │   ├── views/                  # DashboardView, PlanningView, DiagnosticsView, SettingsView
-│   ├── widgets/                # LiveCanvasMapWidget, PlanningControlPanel, MFDViewer, XAIViewer
+│   ├── widgets/                # LiveCanvasMapWidget, PlanningControlPanel, MFDViewer, AuditLogWidget Paginado
 │   ├── renderers/              # PlanningMapRenderer, MapVisualSyncer, MapDrawer
-│   ├── animators/              # MapAnimator e controladores de transição
+│   ├── animators/              # MapAnimator (pausa em janela oculta & gating por dirty-flag)
 │   └── locales/                # Dicionários multilíngues JSON (pt_br, en_us, es_es, etc.)
 │
-└── tests/                      # Suíte de Testes Pytest (Unitários, Integração e Mocks de Hardware)
+└── tests/                      # Suíte Pytest (967 Testes Coletados, memory_guard.py) + 46 Testes Go em src_go/
 ```
 
 ---
@@ -150,7 +153,7 @@ CARINA_CORE/
 ### 4. Interface Desktop & Operações
 - **[Interface Desktop Flet & Visão de Planejamento](ui_and_dashboard.md)**: Arquitetura da interface nativa em Flet/Flutter, visualização de planos semafóricos, socket de instância única (porta 42123) e streaming de telemetria.
 - **[Guias de Desenvolvimento & Extensão](developer_guides.md)**: Guia de configuração de ambiente de desenvolvimento, adição de novos agentes, configurações modulares e simulação de viaturas.
-- **[Diretrizes de Testes & Validação](testing.md)**: Execução de testes automatizados com `pytest` (861 testes), relatórios de cobertura de código, mocks de controladores físicos e testes do Guardião.
+- **[Diretrizes de Testes & Validação](testing.md)**: Execução de testes automatizados com `pytest` (967 testes em 192 módulos unitários, 8 de integração e 4 raiz + 46 testes Go), limitação de RAM com `scripts/pytest_limited.sh`, mocks de controladores físicos e validação de vetos de segurança do Guardião.
 - **[Implantação, Empacotamento & Containers](deployment_and_packaging.md)**: Guia de containerização Docker multi-stage, portas de rede, daemons do Systemd e malhas Tailscale.
 
 ### 5. Preempção de Emergência & Operações Remotas (EVP / CCO)

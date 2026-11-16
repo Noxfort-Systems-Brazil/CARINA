@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Noxfort Systems
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import os
 import logging
+import os
 from typing import Any, Dict, Optional
 
 
@@ -53,25 +53,26 @@ class ScenarioLoader:
 
         try:
             # 2. Setup multi-agent population & environment
-            self.agents, current_stages, self.strategist, self.guardians = (
-                self.agent_manager.setup_environment(
-                    map_path=map_path,
-                    topology_manager=self.topology_manager,
-                    state_extractor=self.state_extractor,
-                    maturity_manager=self.maturity_manager,
-                )
+            self.agents, current_stages, self.strategist, self.guardians = self.agent_manager.setup_environment(
+                map_path=map_path,
+                topology_manager=self.topology_manager,
+                state_extractor=self.state_extractor,
+                maturity_manager=self.maturity_manager,
             )
 
             # 3. Synchronize initial phases, guardians, and arterial ST-GATv2 strategist
             self.step_processor.set_current_phases(current_stages)
             if hasattr(self.step_processor, "set_guardians"):
                 self.step_processor.set_guardians(self.guardians)
+            if hasattr(self.cycle_manager, "set_guardians"):
+                self.cycle_manager.set_guardians(self.guardians)
             if hasattr(self.step_processor, "set_strategist"):
                 self.step_processor.set_strategist(self.strategist)
 
             # 3.1 Dynamic Episode Steps Sizing from Graph Topology
             try:
                 from src.utils.episode_step_calculator import EpisodeStepCalculator
+
                 pacing_res = EpisodeStepCalculator.calculate(map_path)
                 if hasattr(self.step_processor, "set_episode_steps"):
                     self.step_processor.set_episode_steps(pacing_res.episode_steps)
@@ -98,7 +99,10 @@ class ScenarioLoader:
                                 authorizer.load_peak_schedule_json(f_sched.read())
                             break
                         except Exception as e_sched:
-                            logging.warning(f"[ScenarioLoader] Error loading peak schedule from {candidate}: {e_sched}", exc_info=True)
+                            logging.warning(
+                                f"[ScenarioLoader] Error loading peak schedule from {candidate}: {e_sched}",
+                                exc_info=True,
+                            )
 
             # 4. Load MFD network topology
             if self.mfd and hasattr(self.mfd, "load_topology"):
@@ -113,9 +117,7 @@ class ScenarioLoader:
                 if latest and hasattr(latest, "efficiency"):
                     mfd_efficiency = latest.efficiency
 
-            self.cycle_manager.evaluate_cycle(
-                0, self.agents, self.step_processor.accumulated_metrics, mfd_efficiency
-            )
+            self.cycle_manager.evaluate_cycle(0, self.agents, self.step_processor.accumulated_metrics, mfd_efficiency)
 
             logging.info(
                 f"[ScenarioLoader] Scenario successfully loaded: {map_path} ({len(self.agents)} active agents)."

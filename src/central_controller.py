@@ -29,10 +29,13 @@ except ImportError:
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
 
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from communication.grpc_server_manager import GrpcServerManager
 from communication.hft_server import CarinaHFTImpl
 from communication.monitor_client import MonitorClient
 from controller.failsafe_manager import FailsafeManager
+from controller.hardware_gateway_coordinator import HardwareGatewayCoordinator, is_gateway_owner_role
 from controller.health_monitor import AIHealthMonitor
 from controller.override_manager import OverrideManager
 from controller.request_processor import RequestProcessor
@@ -43,17 +46,13 @@ from controller.yellow_schedule_manager import YellowScheduleManager
 from core.hft_event_loop import HftEventLoop
 from core.hft_system_facade import HftSystemFacade
 from database.database_manager import DatabaseManager
+from factories.service_container import CentralControllerContainer
 from sas.topology_recorder_bridge import TopologyRecorderBridge
 from sas.traffic_data_recorder import TrafficDataRecorder
 from sds.telemetry_aggregator import TelemetryAggregator
 from utils.map_processor import MapProcessor
 from utils.safety_rules import SafetyRules
 from utils.settings_manager import SettingsManager
-
-
-from typing import TYPE_CHECKING, Any, Dict, Optional
-
-from factories.service_container import CentralControllerContainer
 
 
 # --- CENTRAL CONTROLLER ---
@@ -80,6 +79,15 @@ class CentralController:
         services: Optional[Dict[str, Any]] = None,
     ):
         self.settings = settings
+        ai_pipe_conn = (
+            wrap_pipe(ai_pipe_conn)
+            if (
+                wrap_pipe := __import__(
+                    "communication.pipe_utils", fromlist=["wrap_thread_safe_pipe"]
+                ).wrap_thread_safe_pipe
+            )
+            else ai_pipe_conn
+        )
         self.ai_pipe_conn = ai_pipe_conn
         self.watchdog_queue = watchdog_queue
         self.sds_data_queue = sds_data_queue
@@ -119,6 +127,24 @@ class CentralController:
         self.grpc_server_manager = wired["grpc_server_manager"]
         self.hft_event_loop = wired["hft_event_loop"]
         self.is_running = True
+        self._fenix_queue = None
+        self.hardware_gateway_coordinator = wired.get("hardware_gateway_coordinator")
+
+        if is_gateway_owner_role() and self.hardware_gateway_coordinator is not None:
+            self.hardware_gateway_coordinator.start()
+
+    @property
+    def fenix_queue(self):
+        return self._fenix_queue
+
+    @fenix_queue.setter
+    def fenix_queue(self, value):
+        self._fenix_queue = value
+        if getattr(self, "hardware_gateway_coordinator", None) is not None:
+            self.hardware_gateway_coordinator.fenix_queue = value
+        ai_h = getattr(getattr(self, "request_processor", None), "ai_handler", None)
+        if ai_h is not None:
+            ai_h.fenix_queue = value
 
     def run(self):
         lm = self.locale_manager
@@ -152,6 +178,8 @@ class CentralController:
         self.is_running = False
         if hasattr(self, "hft_event_loop"):
             self.hft_event_loop.stop()
+        if getattr(self, "hardware_gateway_coordinator", None) is not None:
+            self.hardware_gateway_coordinator.stop()
 
         # We no longer deactivate local FixedTimeController here since CARINA is agnostic
         # and delegating it to Edge hardware.

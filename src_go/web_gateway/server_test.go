@@ -220,3 +220,56 @@ func TestServeBroadcastShortCircuit(t *testing.T) {
 		t.Fatal("timed out waiting for broadcast message")
 	}
 }
+
+func TestWebGatewayAuthAndEnabledGuards(t *testing.T) {
+	srv := NewWebGatewayServer(2201, nil)
+	srv.SetAuthTokens("evp-tok", "cco-tok")
+	srv.SetAllowedOrigin("https://cco.carina.local")
+	mux := srv.buildMux()
+
+	// 1. When disabled, /amb/v1 must return 503 (never stay exposed)
+	reqDisabled := httptest.NewRequest(http.MethodPost, "/amb/v1", strings.NewReader(`{"latitude":-23.5,"longitude":-46.6}`))
+	reqDisabled.Header.Set("Authorization", "Bearer evp-tok")
+	wDisabled := httptest.NewRecorder()
+	mux.ServeHTTP(wDisabled, reqDisabled)
+	if wDisabled.Result().StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for /amb/v1 when gateway disabled, got %d", wDisabled.Result().StatusCode)
+	}
+
+	// 2. When enabled, /amb/v1 without valid token must return 401
+	srv.SetEnabled(true)
+	reqNoTok := httptest.NewRequest(http.MethodPost, "/amb/v1", strings.NewReader(`{"latitude":-23.5,"longitude":-46.6}`))
+	wNoTok := httptest.NewRecorder()
+	mux.ServeHTTP(wNoTok, reqNoTok)
+	if wNoTok.Result().StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for /amb/v1 without token, got %d", wNoTok.Result().StatusCode)
+	}
+
+	// 3. With valid EVP token, /amb/v1 succeeds with 204
+	reqValidEvp := httptest.NewRequest(http.MethodPost, "/amb/v1", strings.NewReader(`{"latitude":-23.5,"longitude":-46.6}`))
+	reqValidEvp.Header.Set("Authorization", "Bearer evp-tok")
+	wValidEvp := httptest.NewRecorder()
+	mux.ServeHTTP(wValidEvp, reqValidEvp)
+	if wValidEvp.Result().StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204 for /amb/v1 with valid token, got %d", wValidEvp.Result().StatusCode)
+	}
+
+	// 4. /cco/broadcast enforces CCO token and emits configured CORS origin
+	reqCcoBad := httptest.NewRequest(http.MethodPost, "/cco/broadcast", strings.NewReader(`{"ok":true}`))
+	wCcoBad := httptest.NewRecorder()
+	mux.ServeHTTP(wCcoBad, reqCcoBad)
+	if wCcoBad.Result().StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for /cco/broadcast without token, got %d", wCcoBad.Result().StatusCode)
+	}
+
+	reqCcoGood := httptest.NewRequest(http.MethodPost, "/cco/broadcast", strings.NewReader(`{"ok":true}`))
+	reqCcoGood.Header.Set("X-CCO-Token", "cco-tok")
+	wCcoGood := httptest.NewRecorder()
+	mux.ServeHTTP(wCcoGood, reqCcoGood)
+	if wCcoGood.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for /cco/broadcast with valid token, got %d", wCcoGood.Result().StatusCode)
+	}
+	if origin := wCcoGood.Result().Header.Get("Access-Control-Allow-Origin"); origin != "https://cco.carina.local" {
+		t.Errorf("expected custom CORS origin, got %q", origin)
+	}
+}

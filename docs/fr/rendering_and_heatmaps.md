@@ -46,19 +46,19 @@ Situé dans [`src/rendering/map_coordinate_generator.py`](../../src/rendering/ma
 - Prend en charge le panoramique fluide (*pan*), le zoom par pincement (*pinch-to-zoom*) et le centrage automatique basé sur la boîte englobante de tous les carrefours actifs.
 - Gère la préservation du ratio d'aspect sur différentes résolutions d'écran.
 
-### 2.2 Moteur de Rendu Vectoriel Statique (`static_map_renderer.py`)
-Situé dans [`src/rendering/static_map_renderer.py`](../../src/rendering/static_map_renderer.py) :
-- Analyse la géométrie des voies, les limites des carrefours et les connexions internes de voies du fichier `.net.xml` de SUMO.
+### 2.2 Moteur de Rendu Vectoriel Statique (`static_map_renderer.py`) & Cache LRU SUMO Net (`sumo_net_cache.py`)
+Situé dans [`src/rendering/static_map_renderer.py`](../../src/rendering/static_map_renderer.py) et [`src/utils/sumo_net_cache.py`](../../src/utils/sumo_net_cache.py) :
+- Analyse la géométrie des voies, les limites des carrefours et les connexions internes de voies du fichier `.net.xml` de SUMO via [`read_sumo_net_cached()`](../../src/utils/sumo_net_cache.py) (cache LRU thread-safe jusqu'à 8 entrées indexé par chemin, `mtime_ns`, taille, `with_programs` et `with_internal`).
 - Restitue les artères multi-voies avec séparateurs de voies, flèches directionnelles et symboles de têtes de feux tricolores.
 - Met en cache les chemins vectoriels rendus en mémoire pour éliminer les recalculs processeur lors des scènes statiques.
 
-### 2.3 Moteur de Rendu de Cartes Thermiques Asynchrones (`async_heatmap_renderer.py`)
-Situé dans [`src/rendering/async_heatmap_renderer.py`](../../src/rendering/async_heatmap_renderer.py) :
+### 2.3 Moteur de Rendu de Cartes Thermiques Asynchrones (`async_heatmap_renderer.py`) & Matplotlib Hors Écran (`mpl_utils.py`)
+Situé dans [`src/rendering/async_heatmap_renderer.py`](../../src/rendering/async_heatmap_renderer.py) et [`src/rendering/mpl_utils.py`](../../src/rendering/mpl_utils.py) :
 - Utilise l'**Estimation de Densité par Noyau (KDE)** pour interpoler des cartes thermiques spatiales continues à partir de métriques discrètes de voies :
   - **Carte thermique de densité de trafic :** Affiche l'accumulation de véhicules par kilomètre carré.
   - **Carte thermique des temps d'attente et retards :** Met en évidence les points d'étranglement des artères.
   - **Carte thermique du risque de remontée de file (*spillback*) :** Visualise les ondes de congestion prédites par l'Agent Guardian.
-- Décharge le flou gaussien et les convolutions matricielles sur des threads de travail en arrière-plan, empêchant les chutes de fréquence d'affichage de l'IHM.
+- Décharge le flou gaussien et les convolutions matricielles sur des threads de travail en arrière-plan, et effectue le rendu des graphiques à travers des instances hors écran isolées `Figure` + `FigureCanvasAgg` (`create_offscreen_figure` / `close_offscreen_figure`) plutôt que l'état global `pyplot`, évitant ainsi les fuites mémoire et la contention du thread IHM.
 
 ---
 

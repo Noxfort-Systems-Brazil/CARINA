@@ -191,10 +191,11 @@ except Exception:
 
 Le binaire Go compilé (`bin/carina-go`) gère l'exécution à la microseconde des maintiens de préemption sur les contrôleurs NTCIP 1202 et UTMC2 :
 
-### 7.1 Routage des Commandes du Répartiteur (`dispatcher.go`)
-- Reçoit les enveloppes `PreemptionCommand` depuis le routeur de passerelle.
-- `activate_preempt` : Injecte les masques de bits OID physiques `ascPhaseHold` via SNMP sur le port UDP 161.
+### 7.1 Routage des Commandes du Répartiteur (`dispatcher.go`) & Synchronisation Inter-Processus
+- Reçoit les enveloppes `PreemptionCommand` (`stage_idx`, `stage_codes`, `target_stage`, `vehicle_id`) depuis le routeur de passerelle.
+- `activate_preempt` : Injecte les masques de bits physiques `phase_control.hold` (`1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1`) ou de maintien d'étape UTMC via SNMP sur le port UDP 161.
 - `release_preempt` : Efface les masques de bits de maintien, restituant le contrôle à l'actionnement local ou aux cycles nominaux.
+- **Synchronisation Inter-Processus (`EVPSnapshotSynchronizer` & `ai_evp_preempt`) :** Sous propriété unique de passerelle (`CARINA_GATEWAY_ROLE=owner` dans `CentralController`, `remote` dans `AI_Process`), [`EVPSnapshotSynchronizer`](../../src/evp/application/evp_snapshot_synchronizer.py) réplique les véhicules d'urgence actifs et les préemptions vers `AI_Process`, tandis qu'[`EVPBridge`](../../src/evp/evp_bridge.py) transmet les déclenchements distants de préemption via les commandes IPC `ai_evp_preempt`.
 
 ---
 
@@ -214,9 +215,10 @@ La passerelle Web Go héberge des points d'accès externes pour la télématique
     - HTTP 204 No Content                - Trames Télémétriques JSON en Direct
 ```
 
-### 8.1 Ingestion GPS Unidirectionnelle (`handlers_evp.go`)
-- **Route :** `POST /api/v1/evp/telemetry` (et `/amb`)
-- **Code Statut :** `204 No Content`
+### 8.1 Ingestion GPS Unidirectionnelle (`handlers_evp.go` & `evp_http_server.go`)
+- **Route :** `POST /api/v1/evp/telemetry` (et `/amb`, `/amb/`)
+- **Code Statut :** `204 No Content` (ou `503 Service Unavailable` lorsque `CARINA_GATEWAY_ENABLED=False`, `401 Unauthorized` si `CARINA_EVP_AUTH_TOKEN` échoue à la validation en temps constant Bearer/`X-EVP-Token`)
+- **Chiffrement TLS :** Prend en charge HTTPS via `CARINA_GATEWAY_TLS_CERT` et `CARINA_GATEWAY_TLS_KEY`.
 - **Latence d'Ingestion :** $< 0.5\text{ ms}$
 - **Schéma de Charge Utile :**
   ```json
@@ -294,6 +296,7 @@ CREATE TABLE IF NOT EXISTS evp_registered_fleet (
 ```
 
 ### 11.2 Table : `evp_telemetry_records`
+*(Automatiquement purgée au-delà de 168 heures / 7 jours par `database_worker.py` via `EVPTelemetryRepository.purge_old_telemetry`.)*
 ```sql
 CREATE TABLE IF NOT EXISTS evp_telemetry_records (
     id BIGSERIAL PRIMARY KEY,

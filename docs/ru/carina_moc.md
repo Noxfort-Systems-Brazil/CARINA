@@ -39,8 +39,9 @@ CARINA_CORE/
 │   ├── Dockerfile.build        # Многоэтапный герметичный сборщик (Node, Go, Python, dpkg-deb)
 │   └── deb/                    # Файлы контроля Debian, службы systemd и скрипты postinst
 │
-├── scripts/                    # Скрипты сборки, автоматизации и миграций
-│   └── build_deb.sh            # Контейнеризированный генератор пакетов Debian
+├── scripts/                    # Скрипты сборки, автоматизации и тестирования с лимитом ОЗУ
+│   ├── build_deb.sh            # Контейнеризированный генератор пакетов Debian
+│   └── pytest_limited.sh       # Запускатор Pytest с лимитом ОЗУ (cgroup v2 / ulimit, макс. 2 ГБ)
 │
 ├── proto/                      # Спецификации протокола gRPC
 │   └── synapse_hft.proto       # Описания Protobuf для высокочастотной телеметрии и управления
@@ -77,49 +78,51 @@ CARINA_CORE/
 ├── src_tsx/                    # Веб-приложение оператора центра управления (CCO)
 │   └── src_cco/                # React 18, TypeScript, Tailwind CSS, векторные SVG-слои карт, ECharts
 ├── src/                        # Основной исходный код
-│   ├── agents/                 # PPO LocalAgent, GuardianAgent и StrategistAgent
+│   ├── agents/                 # PPO LocalAgent, GuardianAgent, PAEStateAugmentor и чекпоинты
 │   ├── analysis/               # MUTCD WarrantEvaluator, WarrantMath и анализ трафика
-│   ├── blocks/                 # Модульный построитель .docx, конвертеры OMML и очистка текста
-│   ├── central_controller.py   # Высокочастотный сервер телеметрии gRPC
-│   ├── communication/          # MonitorClient, HFT-сервер и внешние мосты телеметрии
-│   ├── controller/             # ConnectionManager, FailSafeManager, StageValidator и переопределения
+│   ├── blocks/                 # Модульный построитель .docx, конвертеры OMML и кэшированные форматтеры
+│   ├── central_controller.py   # Высокочастотный сервер телеметрии gRPC и владелец шлюза
+│   ├── communication/          # MonitorClient, безопасность HFT gRPC (TLS/mTLS/Bearer) и ThreadSafePipe
+│   ├── controller/             # HardwareGatewayCoordinator, ConnectionManager, FenixStageDispatcher и переопределения
 │   ├── core/                   # DecisionCoordinator, SafetyAuditor, ActionAuthorizer и PopulationManager
-│   ├── database/               # DatabaseEngine, DatabaseWorker и StepDecisionWorker
-│   ├── drivers/                # Прокси шлюза Go на Python, DriverFactory, IncidentReporter и IncidentFilter
-│   ├── engine/                 # EpisodeRunner, StepProcessor, оптимизаторы и тренеры PPO/DQN
-│   ├── evp/                    # Приоритет спецтранспорта (EVPService, Kinematics, PreemptionEngine)
+│   ├── database/               # DatabaseEngine, PostgresConnectionPool, SQLite WAL и StepDecisionWorker
+│   ├── drivers/                # Прокси шлюза Go, RemoteHardwareDriverProxy, HardwareTelemetryDecoder и мост трапов
+│   ├── engine/                 # StepProcessor, BatchedPAEEncoder, FleetBatchInferencer (vmap) и PhysicalActionMasker
+│   ├── evp/                    # Приоритет спецтранспорта (EVPService, EVPSnapshotSynchronizer, Kinematics)
 │   ├── fenix/                  # Самовосстановление и супервизор процессов F.E.N.I.X. (Supervisor, Runner, Reconciler)
 │   ├── handlers/               # Обработчики запросов ИИ, команд интерфейса и команд Watchdog
-│   ├── launcher/               # ProcessManager, SingleInstanceLock и UITrayManager
-│   ├── manager/                # CycleManager, StageTransitionManager, TopologyManager и ServiceManager
+│   ├── interfaces/             # Разделенные протоколы SOLID (Controller, Drivers, Engine, Repositories)
+│   ├── launcher/               # ProcessManager, BackendServiceRegistry, FenixSupervisionLoop и WorkerEntrypoints
+│   ├── manager/                # CycleManager, StageTransitionManager, AgentPopulationLoader и ServiceManager
 │   ├── maturity/               # MaturityManager, AgentMaturity, PromotionService, Config и Port
 │   ├── mfd/                    # Анализатор макроскопической фундаментальной диаграммы (MFD) и воркер
-│   ├── models/                 # Нейросетевые архитектуры (PAE, TCN, ST-GATv2 Lite)
-│   ├── optimizer/              # Популяционное обучение (PBT) и тюнинг гиперпараметров
+│   ├── models/                 # Унифицированный TCN, ActorCriticNet, iTransformer PAE, QR-D3QN и ST-GATv2 Lite
+│   ├── optimizer/              # Популяционное обучение (PBT), оптимизаторы PPO и DQN на хосте в NumPy
 │   ├── promotion/              # MaturityPacingCalculator, PerformanceMarginCalculator и PromotionEvaluator
-│   ├── rendering/              # StaticMapRenderer и AsyncHeatmapRenderer
-│   ├── repositories/           # StepDecisionRepo, FluidDynamicsRepo и CloudVaultRepo
-│   ├── safety/                 # Процесс GuardianWorker и маршрутизация сигналов IPC
+│   ├── rendering/              # StaticMapRenderer, AsyncHeatmapRenderer и внеэкранный mpl_utils
+│   ├── repositories/           # StepDecisionRepo, FluidDynamicsRepo, HardwareConnectionRepo и ConnectionCSVStore
+│   ├── safety/                 # GuardianPhysicsEstimator, GuardianRiskCalibrator (Noisy-OR), GuardianShadowTrainer и чекпоинты
 │   ├── sas/                    # Smart Analysis System (офлайн-анализ инфраструктурных обоснований)
-│   ├── sds/                    # Smart Dashboard Service (мост интерфейса Flet и WebSockets)
+│   ├── sds/                    # Smart Dashboard Service (мост Flet, WebSockets и CCOBroadcastClient с пиннингом)
 │   ├── security/               # Изолированная подсистема безопасности (Auth, PBKDF2, Lockdown, репозитории)
 │   ├── settings/               # Модульные настройки (интерфейсы SOLID, схемы, INI и .env)
-│   ├── slm/                    # Малые языковые модели (офлайн-инференс Qwen3 / llama.cpp)
+│   ├── slm/                    # Малые языковые модели (Qwen3.5 2B, зондирование VRAM pynvml и slm_process_lock)
 │   ├── transports/             # Полиморфные транспорты (Base, HTTP, MQTT, EndpointResolver)
-│   ├── utils/                  # SettingsManager, MetricsManager, Paths и расчет шагов эпизода
+│   ├── utils/                  # SettingsManager, MetricsManager, Paths, SumoNetCache и расчет шагов эпизода
 │   ├── watchdog/               # Монитор пульса (heartbeat) процессов и отказоустойчивый fallback
-│   └── xai/                    # Атрибуция Integrated Gradients, построитель отчетов и воркер
+│   └── xai/                    # Атрибуция Integrated Gradients, кэшированный построитель отчетов и воркер
 │
 ├── ui/                         # Нативное десктопное приложение на Flet
-│   ├── cards/                  # Модульные карточки настроек и телеметрии (MonitorSettingsCard)
+│   ├── cards/                  # Модульные карточки настроек и телеметрии (RemoteGateway, Hardware, EVP)
+│   ├── controllers/            # DashboardDataCoordinator и RemoteGatewaySettingsPersister
 │   ├── handlers/               # Обработчики событий, SettingsHandler и нативный SystemTrayHandler
 │   ├── views/                  # DashboardView, PlanningView, DiagnosticsView, SettingsView
-│   ├── widgets/                # LiveCanvasMapWidget, PlanningControlPanel, MFDViewer, XAIViewer
+│   ├── widgets/                # LiveCanvasMapWidget, PlanningControlPanel, MFDViewer, пагинированный AuditLogWidget
 │   ├── renderers/              # PlanningMapRenderer, MapVisualSyncer, MapDrawer
-│   ├── animators/              # MapAnimator и контроллеры переходов
+│   ├── animators/              # MapAnimator (пауза скрытого окна и контроль dirty-флагов)
 │   └── locales/                # Многоязычные словари JSON (pt_br, en_us, es_es и др.)
 │
-└── tests/                      # Набор тестов Pytest (модульные, интеграционные и моки контроллеров)
+└── tests/                      # Набор Pytest (967 тестов, memory_guard.py) + 46 тестов Go в src_go/
 ```
 
 ---
@@ -150,7 +153,7 @@ CARINA_CORE/
 ### 4. Десктопный фронтенд и эксплуатация
 - **[Пользовательский интерфейс и Smart Dashboard Service](ui_and_dashboard.md)**: Архитектурный разбор нативного десктопного интерфейса на Flet, векторный планировщик Planning View, сокетная блокировка единственного экземпляра (порт 42123) и потоковая передача телеметрии по WebSockets.
 - **[Руководства разработчика и интеграция](developer_guides.md)**: Руководство по развертыванию сред, изменению конфигурации, расширению алгоритмов агентов и сборке пакетов.
-- **[Тестирование и валидация](testing.md)**: Инструкции по запуску набора тестов `pytest`, генерации отчетов о покрытии (`--cov=src`), мокированию контроллеров и валидации правил вето Guardian.
+- **[Тестирование и валидация](testing.md)**: Инструкции по запуску `pytest` (967 автоматизированных тестов в 192 модульных, 8 интеграционных и 4 корневых файлах + 46 тестов Go), ограничению ОЗУ через `scripts/pytest_limited.sh`, мокированию драйверов и валидации правил вето Guardian.
 - **[Развертывание, пакетирование и контейнеризация](deployment_and_packaging.md)**: Инструкции по контейнеризации в Docker (`Dockerfile`), службам Systemd и пакетам Debian `.deb`.
 
 ### 5. Приоритетный пропуск спецтранспорта и удаленное управление (EVP / CCO)

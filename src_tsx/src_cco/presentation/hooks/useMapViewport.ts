@@ -6,27 +6,47 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface UseMapViewportOptions {
   onEscape?: () => void;
+  viewportGroupRef?: React.RefObject<SVGGElement>;
+  centerX?: number;
+  centerY?: number;
 }
 
-export function useMapViewport({ onEscape }: UseMapViewportOptions = {}) {
+export function useMapViewport({ onEscape, viewportGroupRef, centerX = 0, centerY = 0 }: UseMapViewportOptions = {}) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  panRef.current = pan;
+  zoomRef.current = zoom;
+
+  const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const rafPanRef = useRef<number | null>(null);
   const pendingPanRef = useRef<{ x: number; y: number } | null>(null);
 
-  const schedulePan = useCallback((newPan: { x: number; y: number }) => {
-    pendingPanRef.current = newPan;
-    if (!rafPanRef.current) {
-      rafPanRef.current = requestAnimationFrame(() => {
-        if (pendingPanRef.current) {
-          setPan(pendingPanRef.current);
-        }
-        rafPanRef.current = null;
-      });
-    }
-  }, []);
+  const schedulePan = useCallback(
+    (newPan: { x: number; y: number }) => {
+      pendingPanRef.current = newPan;
+      if (!rafPanRef.current) {
+        rafPanRef.current = requestAnimationFrame(() => {
+          const target = pendingPanRef.current;
+          if (target) {
+            panRef.current = target;
+            if (viewportGroupRef?.current) {
+              viewportGroupRef.current.setAttribute(
+                'transform',
+                `translate(${target.x}, ${target.y}) translate(${centerX}, ${centerY}) scale(${zoomRef.current}) translate(${-centerX}, ${-centerY})`
+              );
+            } else {
+              setPan(target);
+            }
+          }
+          rafPanRef.current = null;
+        });
+      }
+    },
+    [viewportGroupRef, centerX, centerY]
+  );
 
   useEffect(() => {
     return () => {
@@ -36,23 +56,35 @@ export function useMapViewport({ onEscape }: UseMapViewportOptions = {}) {
     };
   }, []);
 
+  const commitDragPan = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    if (pendingPanRef.current) {
+      setPan(pendingPanRef.current);
+      pendingPanRef.current = null;
+    }
+  }, []);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    setIsDragging(true);
-    dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-  }, [pan.x, pan.y]);
+    isDraggingRef.current = true;
+    dragStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
+  }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging) return;
-    schedulePan({
-      x: e.clientX - dragStartRef.current.x,
-      y: e.clientY - dragStartRef.current.y,
-    });
-  }, [isDragging, schedulePan]);
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      schedulePan({
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y,
+      });
+    },
+    [schedulePan]
+  );
 
   const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+    commitDragPan();
+  }, [commitDragPan]);
 
   // Touch support on mobile devices (1-finger pan, 2-finger pinch)
   const touchStartDistRef = useRef<number | null>(null);
@@ -61,38 +93,40 @@ export function useMapViewport({ onEscape }: UseMapViewportOptions = {}) {
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 1) {
       const touch = e.touches[0];
-      setIsDragging(true);
-      dragStartRef.current = { x: touch.clientX - pan.x, y: touch.clientY - pan.y };
+      isDraggingRef.current = true;
+      dragStartRef.current = { x: touch.clientX - panRef.current.x, y: touch.clientY - panRef.current.y };
     } else if (e.touches.length === 2) {
-      setIsDragging(false);
+      isDraggingRef.current = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       touchStartDistRef.current = Math.hypot(dx, dy);
-      touchStartZoomRef.current = zoom;
+      touchStartZoomRef.current = zoomRef.current;
     }
-  }, [pan.x, pan.y, zoom]);
+  }, []);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 1 && isDragging) {
-      const touch = e.touches[0];
-      schedulePan({
-        x: touch.clientX - dragStartRef.current.x,
-        y: touch.clientY - dragStartRef.current.y,
-      });
-    } else if (e.touches.length === 2 && touchStartDistRef.current) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      const ratio = dist / touchStartDistRef.current;
-      setZoom(Math.min(Math.max(touchStartZoomRef.current * ratio, 0.5), 6.0));
-    }
-  }, [isDragging, schedulePan]);
-
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (e.touches.length === 1 && isDraggingRef.current) {
+        const touch = e.touches[0];
+        schedulePan({
+          x: touch.clientX - dragStartRef.current.x,
+          y: touch.clientY - dragStartRef.current.y,
+        });
+      } else if (e.touches.length === 2 && touchStartDistRef.current) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        const ratio = dist / touchStartDistRef.current;
+        setZoom(Math.min(Math.max(touchStartZoomRef.current * ratio, 0.5), 6.0));
+      }
+    },
+    [schedulePan]
+  );
 
   const handleTouchEnd = useCallback(() => {
-    setIsDragging(false);
+    commitDragPan();
     touchStartDistRef.current = null;
-  }, []);
+  }, [commitDragPan]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -137,8 +171,8 @@ export function useMapViewport({ onEscape }: UseMapViewportOptions = {}) {
         cancelAnimationFrame(animationFrameRef.current);
       }
 
-      const startPan = { ...pan };
-      const startZoom = zoom;
+      const startPan = { ...panRef.current };
+      const startZoom = zoomRef.current;
       const endZoom = Math.min(Math.max(targetZoom, 0.5), 6.0);
       const endPan = {
         x: -(targetX - centerX) * endZoom,
@@ -168,7 +202,7 @@ export function useMapViewport({ onEscape }: UseMapViewportOptions = {}) {
 
       animationFrameRef.current = requestAnimationFrame(step);
     },
-    [pan, zoom]
+    []
   );
 
   useEffect(() => {
@@ -184,7 +218,6 @@ export function useMapViewport({ onEscape }: UseMapViewportOptions = {}) {
     setZoom,
     pan,
     setPan,
-    isDragging,
     flyTo,
     handleMouseDown,
     handleMouseMove,

@@ -5,6 +5,8 @@
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from src.database.connection_pool import db_transaction
+
 try:
     from psycopg2.extras import execute_values
 except ImportError:
@@ -26,59 +28,35 @@ class TopologyDictionaryRepository:
 
     def ensure_table_exists(self) -> bool:
         """Ensures that the topology_dictionary table exists."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
         is_pg = getattr(self.engine, "db_type", "sqlite") == "postgres"
         try:
-            with conn.cursor() as cursor:
-                if is_pg:
-                    cursor.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS topology_dictionary (
-                            id BIGSERIAL PRIMARY KEY,
-                            element_type VARCHAR(20) NOT NULL,
-                            raw_net_id VARCHAR(255) UNIQUE NOT NULL,
-                            numeric_id BIGINT NOT NULL,
-                            custom_name VARCHAR(255) NOT NULL,
-                            from_node VARCHAR(100),
-                            to_node VARCHAR(100),
-                            is_bidirectional_pair BOOLEAN DEFAULT FALSE
-                        );
-                        """
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS topology_dictionary (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            element_type VARCHAR(20) NOT NULL,
-                            raw_net_id VARCHAR(255) UNIQUE NOT NULL,
-                            numeric_id BIGINT NOT NULL,
-                            custom_name VARCHAR(255) NOT NULL,
-                            from_node VARCHAR(100),
-                            to_node VARCHAR(100),
-                            is_bidirectional_pair BOOLEAN DEFAULT FALSE
-                        );
-                        """
-                    )
-            conn.commit()
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
+                pk_type = "BIGSERIAL PRIMARY KEY" if is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS topology_dictionary (
+                        id {pk_type},
+                        element_type VARCHAR(20) NOT NULL,
+                        raw_net_id VARCHAR(255) UNIQUE NOT NULL,
+                        numeric_id BIGINT NOT NULL,
+                        custom_name VARCHAR(255) NOT NULL,
+                        from_node VARCHAR(100),
+                        to_node VARCHAR(100),
+                        is_bidirectional_pair BOOLEAN DEFAULT FALSE
+                    );
+                    """
+                )
             return True
         except Exception as e:
             logging.error(f"[TopologyDictionaryRepo] Error ensuring table exists: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return False
 
     def bulk_save_topology_elements(self, elements: List[Dict[str, Any]]) -> bool:
         """Saves or updates topology dictionary elements in PostgreSQL or SQLite."""
         if not elements:
             return True
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
 
         batch = [
             (
@@ -94,7 +72,9 @@ class TopologyDictionaryRepository:
         ]
 
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
                 if getattr(self.engine, "db_type", "sqlite") == "postgres":
                     from psycopg2.extras import execute_values
 
@@ -123,23 +103,17 @@ class TopologyDictionaryRepository:
                             is_bidirectional_pair = excluded.is_bidirectional_pair;
                     """
                     cursor.executemany(query_sqlite, batch)
-            conn.commit()
             return True
         except Exception as e:
             logging.error(f"[TopologyDictionaryRepo] Bulk save topology elements failed: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return False
 
     def update_topology_custom_name(self, element_type: str, raw_net_id: str, new_name: str) -> bool:
         """Updates user configured custom name for a street or intersection in PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return False
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
                 cursor.execute(
                     """
                     UPDATE topology_dictionary
@@ -148,23 +122,17 @@ class TopologyDictionaryRepository:
                     """,
                     (new_name, element_type, raw_net_id),
                 )
-            conn.commit()
             return True
         except Exception as e:
             logging.error(f"[TopologyDictionaryRepo] Failed to update custom name for {raw_net_id}: {e}", exc_info=True)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return False
 
     def get_topology_custom_name(self, element_type: str, raw_net_id: str) -> Optional[str]:
         """Queries custom user-configured name for a street or intersection from PostgreSQL."""
-        conn = self.engine.get_connection()
-        if not conn:
-            return None
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(self.engine, commit=False) as (conn, cursor):
+                if not conn or not cursor:
+                    return None
                 cursor.execute(
                     """
                     SELECT custom_name FROM topology_dictionary

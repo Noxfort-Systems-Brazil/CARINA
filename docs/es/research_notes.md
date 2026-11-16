@@ -11,33 +11,33 @@ Este documento detalla el marco matemático, las arquitecturas de redes neuronal
 
 ---
 
-## 1. PPO-TCN: Redes Convolucionales Temporales sobre LSTMs
+## 1. PPO-TCN: Redes Convolucionales Temporales Causales Unificadas e Inferencia Vectorizada
 
-Las Redes Neuronales Recurrentes estándar (LSTM/GRU) sufren de desvanecimiento de gradiente y pérdida de contexto temporal durante la retropropagación en el tiempo en episodios prolongados (BPTT). CARINA reemplaza las LSTM con una red troncal de **Red Convolucional Temporal (TCN)** en el Agente Táctico PPO.
+Las Redes Neuronales Recurrentes estándar (LSTM/GRU) sufren de desvanecimiento de gradiente y cuellos de botella secuenciales durante la retropropagación en el tiempo (BPTT). CARINA reemplaza las LSTM con una **red troncal causal TCN unificada** ([`src/models/tcn_backbone.py`](../../src/models/tcn_backbone.py)) compartida entre los agentes tácticos, de seguridad y estratégicos:
 
 ```text
-Tensor de Entrada Histórico: X ∈ ℝ^(B × C × T)
-  B: Tamaño del lote (Batch size)
-  C: Características por paso temporal (ocupación, velocidad, cola, fase)
-  T: Ventana de contexto temporal (ej., T = 8 segundos a 10Hz = 80 tramas)
+Tensor de Entrada Histórico: X ∈ ℝ^(B × T × C) -> transpuesto a (B × C × T)
+  B: Tamaño del lote (o tamaño de flota bajo torch.vmap)
+  C: Características por paso temporal (ocupación, velocidad, cola, fase, ped_calls + latente PAE)
+  T: Ventana de contexto temporal (predeterminado sequence_length = 12 tramas)
 ```
 
-### 1.1 Convoluciones Causales Dilatadas
+### 1.1 Convoluciones Causales Dilatadas, `GroupNorm` y Attention Pooling
 
-Para garantizar cero filtración temporal (la predicción en el instante $t$ depende exclusivamente de marcas temporales $\le t$), la TCN utiliza convoluciones causales dilatadas en 1D:
+Para garantizar cero filtración temporal (la predicción en el instante $t$ depende estrictamente de marcas temporales $\le t$) manteniendo plena compatibilidad con `torch.vmap` y `torch.compile`, `TemporalBlock` reemplaza el obsoleto `weight_norm` por `TemporalConv1d`, `GroupNorm(1, C)` causal por canal, `SiLU`, inicialización ortogonal y [`TemporalAttentionPool`](../../src/models/tcn_backbone.py):
 
 $$y(t) = (x \star_d f)(t) = \sum_{i=0}^{k-1} f(i) \cdot x(t - d \cdot i)$$
 
 Donde:
 - $k$: Tamaño del kernel ($k = 3$)
-- $d$: Factor de dilatación ($d = 2^l$ en el índice de capa $l \in \{0, 1, 2, 3\}$)
+- $d$: Factor de dilatación ($d = 2^l$ en el índice de nivel $l \in \{0, 1, 2\}$ sobre `num_levels = 3`)
 - Tamaño del Campo Receptivo: $RF = 1 + \sum_{l=0}^{L-1} (k - 1) \cdot d_l$
 
-La TCN genera un tensor denso de representación temporal $H_{tcn}$, que alimenta a los cabezales del Actor y el Crítico de PPO.
+`ActorCriticNet` ([`src/models/actor_critic_tcn.py`](../../src/models/actor_critic_tcn.py)) utiliza troncos desacoplados de Actor y Crítico sobre `TemporalAttentionPool`, emitiendo logits FP32 sin procesar (`n_actions = 2`: `0 = ADVANCE`, `1 = KEEP`) enmascarados directamente mediante [`PhysicalActionMasker`](../../src/engine/physical_action_masker.py) (`apply_action_mask`) para `Categorical(logits=...)` seguro con AMP. Entre intersecciones homogéneas, [`FleetBatchInferencer`](../../src/engine/fleet_batch_inferencer.py) ejecuta la evaluación de políticas por lotes mediante `torch.func.stack_module_state` + `torch.vmap`.
 
-### 1.2 Objetivo Subrogado Recortado de PPO
+### 1.2 Objetivo Subrogado Recortado de PPO y GAE en Host NumPy
 
-La red de política de PPO se optimiza mediante la función objetivo subrogada recortada con Estimación de Ventaja Generalizada (GAE):
+La red de política de PPO se optimiza mediante la función objetivo subrogada recortada con Estimación de Ventaja Generalizada (GAE) calculada en host NumPy dentro de [`PPOOptimizer`](../../src/optimizer/ppo_optimizer.py), reutilizando `precomputed_latents` a lo largo de `k_epochs` minilotes:
 
 $$L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min \left( r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t \right) \right]$$
 
@@ -48,44 +48,44 @@ Donde:
 
 ---
 
-## 2. Autoencoder Predictivo (PAE) y Espacio Latente $Z$
+## 2. Modelo del Mundo iTransformer Universal Condicionado por Acción (PAE)
 
-El **Autoencoder Predictivo (PAE)** predice desbordamientos futuros de colas de tráfico basándose en tendencias espacio-temporales previas.
+El **Autoencoder Predictivo (PAE)** ([`src/models/pae.py`](../../src/models/pae.py)) es un **Modelo del Mundo iTransformer Condicionado por Acción** compartido que proyecta dinámicas futuras de carriles e incertidumbre epistémica a partir de secuencias históricas de estado:
 
 ```text
-         ┌──────────────┐          ┌───────────────────────┐          ┌──────────────┐
-X_hist   │ Encoder PAE  │ ───────> │ Cuello de Botella Z   │ ───────> │ Decodific.PAE│ ───> X_pred
-(t-8s..t)└──────────────┘          │ Z ∈ ℝ^16              │          └──────────────┘      (t+1s..t+30s)
-                                   └───────────────────────┘
+X_hist [B, T, D_in] ──> RevIN por Variable + Incrustación de Estadísticas [mean, std]
+                                 │
+                                 ▼ (Atención Invertida sobre Variables D_in + key_padding_mask)
+                         Codificador iTransformer + Consultas Latentes de Atención Cruzada (Z ∈ ℝ^latent_dim)
+                                 │
+                                 ├──> Concatenado a los estados de LocalAgent y GuardianAgent
+                                 └──> + Incrustación de Acción (0=ADVANCE, 1=KEEP) ──> (mean, log_var)
 ```
 
-### 2.1 Función de Pérdida del PAE
-
-El PAE se entrena tanto offline como online utilizando una regularización conjunta de Error Cuadrático Medio (MSE) y divergencia de Kullback-Leibler (KL):
-
-$$\mathcal{L}_{PAE} = \underbrace{\| X_{pred} - X_{future} \|_2^2}_{\text{Pérdida de Reconstrucción y Predicción}} + \beta \cdot D_{KL}\Big( q_\phi(Z|X) \,\parallel\, \mathcal{N}(0, I) \Big)$$
-
-El vector latente de 16 dimensiones $Z \in \mathbb{R}^{16}$ captura el momento físico de las colas de tráfico y se concatena al vector de entrada del PPO.
+### 2.1 Mecánicas Arquitectónicas Clave
+- **RevIN por Variable y Máscara de Relleno (`pae_preprocessing.py`):** Desacopla las dinámicas temporales de las escalas estáticas de saturación de los tramos mediante Reversible Instance Normalization y enmascara dimensiones rellenadas con ceros (`valid_dims`) durante el agrupamiento por atención cruzada para que las intersecciones con menos vías entrantes nunca corrompan los tokens latentes.
+- **Condicionamiento Contrafactual por Acción e Incertidumbre Heterocedástica:** `decode_with_uncertainty(z, action)` predice tanto el próximo estado esperado $\hat{\mu}(z, a)$ como la log-varianza $\log \hat{\sigma}^2(z, a)$ para `0 = ADVANCE` frente a `1 = KEEP`.
+- **Codificación de Flota en Una Sola Pasada (`BatchedPAEEncoder`):** Codifica todas las intersecciones activas una vez por paso y compila opcionalmente submódulos con `torch.compile` (`torch_compile_helper.py`).
 
 ---
 
-## 3. Agente Guardian Dueling DQN-TCN
+## 3. Agente Guardian QR-D3QN Distributivo y Calibración Noisy-OR
 
-El **Agente Guardian** estima continuamente el **Riesgo de Desbordamiento (Spillback Risk)** para cada carril de la intersección utilizando una red Dueling Deep Q-Network sobre representaciones de características TCN:
+El **Agente Guardian** ([`src/agents/guardian_agent.py`](../../src/agents/guardian_agent.py), [`src/models/d3qn_tcn.py`](../../src/models/d3qn_tcn.py)) combina una **Dueling Double DQN Distributiva por Regresión Cuantílica (`QR-D3QN`, `num_quantiles = 32`)** con proyección cinemática consciente de la capacidad y fusión de sensores no compensatoria calibrada (`src/safety/`):
 
-$$Q(s, a; \theta, \alpha, \beta) = V(s; \theta, \beta) + \left( A(s, a; \theta, \alpha) - \frac{1}{|\mathcal{A}|} \sum_{a' \in \mathcal{A}} A(s, a'; \theta, \alpha) \right)$$
+$$Z_\tau(s, a) = V_\tau(s) + \left( A_\tau(s, a) - \frac{1}{|\mathcal{A}|} \sum_{a' \in \mathcal{A}} A_\tau(s, a') \right), \quad \tau_k = \frac{k + 0.5}{N}, \; N=32$$
 
-Donde:
-- $V(s)$: Valor base escalar del estado $s$.
-- $A(s, a)$: Ventaja de ejecutar la acción de fase $a$.
-
-Si $\max_a Q(s, a_{spillback}) > \tau_{risk}$ (donde $\tau_{risk} = 0.8$), el Guardian anula la fase propuesta por el Agente Táctico y fuerza una fase de desahogo de emergencia.
+- **Riesgo de Cola ($\text{CVaR}_{\alpha}$):** Evalúa el Valor en Riesgo Condicional de la cola inferior ($\alpha = 0.20$) sobre `forward_quantiles` en lugar de únicamente el valor esperado.
+- **Cinemática Normalizada por Capacidad (`GuardianPhysicsEstimator`):** Segmenta estrictamente tripletes de aristas entrantes (`edge_feature_dim`), normaliza colas mediante la capacidad vehicular física de la vía (`edge_capacities`), proyecta sobre el horizonte de despeje $H = \text{yellow} + \text{all\_red}$ y puntúa el riesgo UCB contrafactual de desbordamiento en el PAE ponderado por su fiabilidad dinámica ($\exp(-\text{MSE}/0.10)\exp(-\overline{\log \sigma^2}/2)$).
+- **Calibración Invariante a la Escala y Fusión Noisy-OR (`GuardianRiskCalibrator`):** Ajusta calibración logística regularizada y umbrales de decisión por puntuación $F_2$ al graduarse de `CHILD`, combinando los detectores cinemático ($r_{\text{kin}}$), PAE ($r_{\text{pae}}$) y neuronal ($r_{\text{d3qn}}$) mediante Noisy-OR no compensatorio:
+  $$P_{\text{spillback}} = 1 - (1 - r_{\text{kin}})(1 - c_{\text{pae}} r_{\text{pae}})(1 - c_{\text{d3qn}} r_{\text{d3qn}})$$
+- **Entrenamiento en Sombra Solo en `CHILD` y Congelamiento de Despliegue (`GuardianShadowTrainer`):** Aprende *off-policy* en `Maturity.CHILD` mientras los planes de tiempo fijo controlan el hardware, luego ejecuta `freeze_for_deployment()` al promocionar (liberando `target_net`, `optimizer` y buffers PER) y guarda `guardian_{tl_id}.pth`.
 
 ---
 
-## 4. Capa Estratégica: Redes de Atención en Grafos (GATv2 Lite)
+## 4. Capa Estratégica: ST-GATv2 Lite con Predicción Online y CTDE (`src/models/st_gatv2_lite.py`)
 
-Para coordinar "Ondas Verdes" multi-intersección a lo largo de avenidas arteriales, CARINA modela la red vial como un grafo dirigido $\mathcal{G} = (\mathcal{V}, \mathcal{E})$.
+Para coordinar "Ondas Verdes" multi-intersección a lo largo de avenidas arteriales, CARINA modela la red vial como un grafo dirigido $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ usando `TemporalConvNetLite` + `TemporalAttentionPool` seguido de dos capas residuales `GATv2Conv`, un cabezal auxiliar de pronóstico al paso siguiente (`pred_head`) y un cabezal crítico cooperativo CTDE (`global_critic_head`). [`StrategicCoordinator`](../../src/engine/strategic_coordinator.py) muestrea secuencias usando [`StateExtractor.peek_state()`](../../src/engine/state_extractor.py) sin mutación.
 
 ### 4.1 Pesos de Atención GATv2
 
@@ -108,13 +108,13 @@ $$\mathcal{H}(\pi_\theta(\cdot | s_t)) = -\sum_{a \in \mathcal{A}} \pi_\theta(a 
 
 ### 5.1 Criterios de Progresión y Curva de Decaimiento Dinámico de Entropía
 
-Para garantizar que las políticas aleatorias nunca sean promovidas de forma prematura, la madurez de la política utiliza un techo de entropía acotado por las acciones $E_{max} = \ln(|\mathcal{A}|)$ (donde $E_{max} = \ln(3) \approx 1.0986$ para 3 acciones) o entropía normalizada $\mathcal{H}_{norm} = \mathcal{H} / \ln(|\mathcal{A}|) \in [0, 1]$. El umbral de admisión decae dinámicamente según la duración configurada por el usuario ($t$ episodios) mediante `DynamicEntropyCalculator`:
+Para garantizar que las políticas aleatorias nunca sean promovidas de forma prematura, la madurez de la política utiliza un techo de entropía acotado por las acciones $E_{max} = \ln(|\mathcal{A}|)$ (tomando por defecto $E_{max} = \ln(2) \approx 0.6931$ para el espacio de acción binario `ADVANCE`/`KEEP` de CARINA en `DynamicEntropyCalculator`) o entropía normalizada $\mathcal{H}_{norm} = \mathcal{H} / \ln(|\mathcal{A}|) \in [0, 1]$. El umbral de admisión decae dinámicamente según la duración configurada por el usuario ($t$ episodios) mediante `DynamicEntropyCalculator`:
 
 $$E(t) = E_{ideal} + (E_{max} - E_{ideal}) \cdot e^{-k \cdot t}$$
 
 Donde $E_{ideal} = 0.10$, $k = 0.05$ para la transición Child $\to$ Teen, y $k = 0.15$ para la transición Teen $\to$ Adult. Las metas nominales de progresión asintótica son:
 
-1. **Etapa CHILD (Modo Shadow):** $\mathcal{H} > E_{child}(t)$ (meta asintótica nominal $\mathcal{H} > 0.40$). Las acciones operan estrictamente en modo sombra (solo telemetría pasiva); el controlador base opera el hardware. Dado que $E(t) < \ln(3)$ para todo $t \ge 1$, una política puramente aleatoria ($\mathcal{H} = \ln 3$) tiene estrictamente prohibido graduarse. Duración mínima inviolable: 1 semana completa ($E_{\text{semana}}$ episodios calculados mediante [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py)) para cubrir las 168 franjas horarias reales.
+1. **Etapa CHILD (Modo Shadow):** $\mathcal{H} > E_{child}(t)$ (meta asintótica nominal $\mathcal{H} > 0.40$). Las acciones operan estrictamente en modo sombra (solo telemetría pasiva); el controlador base opera los planes semafóricos en hardware mientras `GuardianShadowTrainer` entrena QR-D3QN de forma segura *off-policy*. Dado que $E(t) < \ln(2)$ para todo $t \ge 1$, una política aleatoria uniforme ($\mathcal{H} = \ln 2$) tiene estrictamente prohibido graduarse. Duración mínima inviolable: 1 semana completa ($E_{\text{semana}}$ episodios calculados mediante [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py)) para cubrir las 168 franjas horarias reales.
 2. **Etapa TEEN (Autonomía Restringida):** $E_{adult}(t) < \mathcal{H} \le E_{child}(t)$ (rango nominal $0.15 < \mathcal{H} \le 0.40$). El agente opera el hardware físico exclusivamente fuera de los horarios punta (definidos por Synapse o el estándar urbano clásico); durante las horas punta, regresa a modo sombra por seguridad vial. Duración mínima inviolable: 1 semana completa ($E_{\text{semana}}$ episodios).
 3. **Etapa ADULT (Autonomía Completa):** $\mathcal{H} \le E_{adult}(t)$ (meta asintótica nominal $\mathcal{H} \le 0.15$, alcanzada en $t \ge 20$ episodios con $k=0.15$) y Recompensa Media $\mu_{reward} > \mu_{baseline} + \delta^*$. Se otorga actuación autónoma total 24/7 en todas las condiciones de tráfico.
 

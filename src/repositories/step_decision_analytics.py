@@ -9,6 +9,8 @@ Encapsulates analytics queries and compliance rate computations for XAI reportin
 
 import logging
 from typing import Any, Dict, List, Optional
+
+from src.database.connection_pool import db_transaction
 from src.repositories.topology_dictionary_repo import TopologyDictionaryRepository
 
 
@@ -23,11 +25,10 @@ class StepDecisionAnalytics:
     @classmethod
     def get_all_audited_agent_ids(cls, engine: Any) -> List[str]:
         """Queries database to get all unique agent_ids recorded in step_decision_counters."""
-        conn = engine.get_connection()
-        if not conn:
-            return []
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(engine, commit=False) as (conn, cursor):
+                if not conn or not cursor:
+                    return []
                 cursor.execute("SELECT DISTINCT agent_id FROM step_decision_counters ORDER BY agent_id;")
                 rows = cursor.fetchall()
                 return [str(r[0]) for r in rows if r and r[0] is not None]
@@ -43,22 +44,21 @@ class StepDecisionAnalytics:
         agent_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Fetches decision audit statistics for XAI reports from step_decision_counters DB table."""
-        conn = engine.get_connection()
-        if not conn:
-            return {
-                "total_evaluated": 0,
-                "total_approved": 0,
-                "temporal_interventions": 0,
-                "critical_vetoes": 0,
-                "exploratory_vetoes": 0,
-                "compliance_rate": 100.0,
-                "top_veto_reason": veto_reason_text[0],
-            }
-
+        default_stats = {
+            "total_evaluated": 0,
+            "total_approved": 0,
+            "temporal_interventions": 0,
+            "critical_vetoes": 0,
+            "exploratory_vetoes": 0,
+            "compliance_rate": 100.0,
+            "top_veto_reason": veto_reason_text[0],
+        }
         num_agent_id = cls._to_int_id(agent_id) if agent_id else None
 
         try:
-            with conn.cursor() as cursor:
+            with db_transaction(engine, commit=False) as (conn, cursor):
+                if not conn or not cursor:
+                    return default_stats
                 if num_agent_id is not None:
                     cursor.execute(
                         """
@@ -95,12 +95,7 @@ class StepDecisionAnalytics:
 
                 if total_eval == 0:
                     return {
-                        "total_evaluated": 0,
-                        "total_approved": 0,
-                        "temporal_interventions": 0,
-                        "critical_vetoes": 0,
-                        "exploratory_vetoes": 0,
-                        "compliance_rate": 100.0,
+                        **default_stats,
                         "top_veto_reason": "Aguardando Amostragem em Tempo Real",
                     }
 
@@ -146,11 +141,6 @@ class StepDecisionAnalytics:
         except Exception as e:
             logging.warning(f"[StepDecisionAnalytics] Failed to query statistics: {e}", exc_info=True)
             return {
-                "total_evaluated": 0,
-                "total_approved": 0,
-                "temporal_interventions": 0,
-                "critical_vetoes": 0,
-                "exploratory_vetoes": 0,
-                "compliance_rate": 100.0,
+                **default_stats,
                 "top_veto_reason": "Aguardando Amostragem em Tempo Real",
             }

@@ -53,12 +53,14 @@ class RequestProcessor:
         topology_manager: "TopologyManager",
         mfd_trigger_queue: Queue = None,
         yellow_schedule_manager=None,
+        hardware_gateway_coordinator=None,
     ):
 
         self.ai_pipe_conn = ai_pipe_conn
         self.watchdog_q = watchdog_q
         self.ui_command_queue = ui_command_queue
         self.yellow_schedule_manager = yellow_schedule_manager
+        self.hardware_gateway_coordinator = hardware_gateway_coordinator
 
         # Shared State
         self.override_commands_buffer = []
@@ -76,7 +78,13 @@ class RequestProcessor:
             yellow_schedule_manager=yellow_schedule_manager,
         )
         self.ai_handler = AIRequestHandler(
-            locale_manager, topology_manager, sds_data_queue, sas_data_queue, health_monitor, override_manager
+            locale_manager,
+            topology_manager,
+            sds_data_queue,
+            sas_data_queue,
+            health_monitor,
+            override_manager,
+            hardware_gateway_coordinator=hardware_gateway_coordinator,
         )
         self.watchdog_handler = WatchdogCommandHandler(locale_manager)
 
@@ -102,26 +110,86 @@ class RequestProcessor:
                 except Exception as _exc:
                     logging.debug("[controller] Ignored recoverable error: %s", _exc)
 
+    def _get_gateway_coordinator(self) -> Any:
+        coord = getattr(self, "hardware_gateway_coordinator", None)
+        if coord is not None:
+            return coord
+        if hasattr(self, "ai_handler") and self.ai_handler is not None:
+            return getattr(self.ai_handler, "hardware_gateway_coordinator", None)
+        return None
+
+    def _handle_set_hardware_connection(self, payload: dict, coordinator: Any) -> None:
+        action = payload.get("action", "toggle")
+        snmp_cfg = payload.get("snmp_config")
+        handled_by_owner = False
+        if coordinator is not None:
+            try:
+                from controller.hardware_gateway_coordinator import is_gateway_owner_role
+            except ImportError:
+                from src.controller.hardware_gateway_coordinator import is_gateway_owner_role
+            if is_gateway_owner_role() or getattr(coordinator, "_started", False):
+                coordinator.submit_task(
+                    coordinator.toggle_hardware_connection,
+                    payload.get("intersection_id"),
+                    payload.get("ip_address"),
+                    action,
+                    snmp_cfg,
+                )
+                handled_by_owner = True
+        if not handled_by_owner and self.ai_pipe_conn and not self.ai_pipe_conn.closed:
+            kwargs = {"snmp_config": snmp_cfg} if snmp_cfg else {}
+            self.ai_pipe_conn.send(
+                (
+                    "hardware",
+                    "toggle_connection",
+                    (payload.get("intersection_id"), payload.get("ip_address"), action),
+                    kwargs,
+                )
+            )
+
+    def _dispatch_ui_command(self, command: dict, sumo_conn: Any) -> None:
+        cmd_type = command.get("type")
+        payload = command.get("payload") or {}
+        coordinator = self._get_gateway_coordinator()
+
+        if cmd_type == "set_hardware_connection":
+            self._handle_set_hardware_connection(payload, coordinator)
+            return
+
+        if coordinator is not None:
+            direct_handlers = {
+                "sync_hardware_csv": lambda: coordinator.submit_task(coordinator.sync_hardware_csv, payload),
+                "set_evp_fleet": lambda: coordinator.submit_task(coordinator.set_evp_fleet, payload),
+                "tailscale_enable": lambda: coordinator.submit_task(
+                    coordinator.handle_tailscale_command, cmd_type, payload
+                ),
+                "tailscale_disable": lambda: coordinator.submit_task(
+                    coordinator.handle_tailscale_command, cmd_type, payload
+                ),
+                "tailscale_test": lambda: coordinator.submit_task(
+                    coordinator.handle_tailscale_command, cmd_type, payload
+                ),
+                "fenix_post_resurrection": lambda: coordinator.dispatch_fenix_reconcile_stages(self.ai_pipe_conn),
+            }
+            direct_action = direct_handlers.get(cmd_type)
+            if direct_action is not None:
+                direct_action()
+                return
+
+        self.ui_handler.process(command, sumo_conn, self.override_commands_buffer)
+        if cmd_type == "set_semaphore_override" and coordinator is not None:
+            sem_id = payload.get("semaphore_id")
+            sem_state = payload.get("state")
+            if sem_id and sem_state:
+                coordinator.submit_task(coordinator.sync_override_to_hardware, [sem_id], sem_state)
+
     def process_queues(self, sumo_conn: Any, is_ai_healthy: bool):
         # UI Commands (Flet Interface)
         try:
             while True:
                 command = self.ui_command_queue.get_nowait()
                 if isinstance(command, dict):
-                    if command.get("type") == "set_hardware_connection":
-                        payload = command.get("payload", {})
-                        action = payload.get("action", "toggle")
-                        if self.ai_pipe_conn and not self.ai_pipe_conn.closed:
-                            self.ai_pipe_conn.send(
-                                (
-                                    "hardware",
-                                    "toggle_connection",
-                                    (payload.get("intersection_id"), payload.get("ip_address"), action),
-                                    {},
-                                )
-                            )
-                    else:
-                        self.ui_handler.process(command, sumo_conn, self.override_commands_buffer)
+                    self._dispatch_ui_command(command, sumo_conn)
         except Empty:
             pass
         except EnvironmentConnectionException as e_conn:

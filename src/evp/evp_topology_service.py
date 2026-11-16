@@ -12,7 +12,8 @@ import logging
 import math
 import os
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from src.evp.evp_geo_projector import EVPEngineGeoProjector
 
@@ -26,6 +27,7 @@ class EVPTopologyService:
 
     def __init__(self):
         self._intersections_geo: Dict[str, Tuple[float, float]] = {}
+        self._intersections_readonly: Mapping[str, Tuple[float, float]] = MappingProxyType({})
         self._intersection_target_stages: Dict[str, int] = {}
         self._intersection_quadras: Dict[str, List[Dict[str, Any]]] = {}
         self._map_loaded: bool = False
@@ -83,6 +85,18 @@ class EVPTopologyService:
         bounds = self._ensure_geo_bounds()
         return EVPEngineGeoProjector.sumo_to_lat_lon(x, y, bounds)
 
+    def _refresh_intersections_snapshot_locked(self) -> None:
+        self._intersections_readonly = MappingProxyType(dict(self._intersections_geo))
+
+    def get_intersections_readonly(self) -> Mapping[str, Tuple[float, float]]:
+        """O(1) lock-minimal read-only view of intersection coordinates (avoids per-GPS-packet copy)."""
+        snap = self._intersections_readonly
+        if len(snap) != len(self._intersections_geo):
+            with self._lock:
+                self._refresh_intersections_snapshot_locked()
+                return self._intersections_readonly
+        return snap
+
     @property
     def intersections_geo(self) -> Dict[str, Tuple[float, float]]:
         with self._lock:
@@ -100,6 +114,7 @@ class EVPTopologyService:
         with self._lock:
             self._intersections_geo[intersection_id] = (lat, lon)
             self._intersection_target_stages[intersection_id] = target_stage
+            self._refresh_intersections_snapshot_locked()
             if quadra_length is not None and quadra_length > 0:
                 self._intersection_quadras[intersection_id] = [
                     {
@@ -133,6 +148,7 @@ class EVPTopologyService:
         """Attempts to automatically load road map topology from disk."""
         try:
             from ui.loader.map_asset_loader import MapAssetLoader
+
             loader = MapAssetLoader()
             map_data = loader.load_map_data()
             if map_data:
@@ -156,6 +172,7 @@ class EVPTopologyService:
                 return 0
 
             tls_registered = self._register_nodes(nodes)
+            self._refresh_intersections_snapshot_locked()
             self._map_incoming_edges(edges)
             self._map_loaded = True
             total_quadras = sum(len(q) for q in self._intersection_quadras.values())
@@ -168,11 +185,15 @@ class EVPTopologyService:
 
         if isinstance(map_data, tuple) and len(map_data) >= 2:
             n_raw, e_raw = map_data[0], map_data[1]
-            nodes = n_raw if isinstance(n_raw, dict) else {n["id"]: n for n in n_raw if isinstance(n, dict) and "id" in n}
+            nodes = (
+                n_raw if isinstance(n_raw, dict) else {n["id"]: n for n in n_raw if isinstance(n, dict) and "id" in n}
+            )
             edges = e_raw if isinstance(e_raw, list) else []
         elif isinstance(map_data, dict):
             n_raw = map_data.get("nodes", {})
-            nodes = n_raw if isinstance(n_raw, dict) else {n["id"]: n for n in n_raw if isinstance(n, dict) and "id" in n}
+            nodes = (
+                n_raw if isinstance(n_raw, dict) else {n["id"]: n for n in n_raw if isinstance(n, dict) and "id" in n}
+            )
             edges = map_data.get("edges", [])
         return nodes, edges
 
@@ -227,13 +248,18 @@ class EVPTopologyService:
             e_len = float(edge.get("length", 0.0))
             shape = edge.get("shape", [])
             if e_len <= 0 and isinstance(shape, list) and len(shape) >= 2:
-                e_len = sum(math.hypot(shape[i + 1][0] - shape[i][0], shape[i + 1][1] - shape[i][1]) for i in range(len(shape) - 1))
+                e_len = sum(
+                    math.hypot(shape[i + 1][0] - shape[i][0], shape[i + 1][1] - shape[i][1])
+                    for i in range(len(shape) - 1)
+                )
 
-            self._intersection_quadras.setdefault(to_node, []).append({
-                "edge_id": e_id,
-                "name": edge.get("name", e_id),
-                "from": edge.get("from"),
-                "to": to_node,
-                "length": e_len if e_len > 0 else 120.0,
-                "shape": shape,
-            })
+            self._intersection_quadras.setdefault(to_node, []).append(
+                {
+                    "edge_id": e_id,
+                    "name": edge.get("name", e_id),
+                    "from": edge.get("from"),
+                    "to": to_node,
+                    "length": e_len if e_len > 0 else 120.0,
+                    "shape": shape,
+                }
+            )

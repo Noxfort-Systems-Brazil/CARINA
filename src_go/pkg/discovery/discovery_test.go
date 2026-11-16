@@ -6,6 +6,10 @@ package discovery
 
 import (
 	"testing"
+
+	"carina/src_go/pkg/snmp"
+	"carina/src_go/pkg/snmptest"
+	"github.com/gosnmp/gosnmp"
 )
 
 func TestExtractBrandAndModel(t *testing.T) {
@@ -44,5 +48,49 @@ func TestExtractBrandAndModel(t *testing.T) {
 		if model != c.expectedModel {
 			t.Errorf("Para '%s': esperado model '%s', obteve '%s'", c.input, c.expectedModel, model)
 		}
+	}
+}
+
+func TestDiscoverAndCreateWithConfigProbesBitmask(t *testing.T) {
+	// 1. Generic sysDescr + NTCIP binary OCTET STRING bitmask probe -> NTCIP 1202
+	ntcipAgent := snmptest.StartMockAgent(t, map[string]gosnmp.SnmpPDU{
+		oidSysDescr:   {Type: gosnmp.OctetString, Value: []byte("Generic Traffic Controller")},
+		oidProbeNtcip: {Type: gosnmp.OctetString, Value: []byte{0x04}},
+	})
+	drvNtcip, err := DiscoverAndCreateWithConfig(
+		"127.0.0.1",
+		ntcipAgent.Port,
+		snmp.SNMPConfig{Version: "2c", Community: "public"},
+		"tl_ntcip",
+		[]int{0, 1, 2, 3},
+		"",
+	)
+	if err != nil {
+		t.Fatalf("DiscoverAndCreateWithConfig NTCIP falhou: %v", err)
+	}
+	defer drvNtcip.Shutdown()
+	if proto := drvNtcip.GetProtocolName(); proto != "NTCIP 1202" {
+		t.Errorf("Esperado protocolo NTCIP 1202, obteve %s", proto)
+	}
+
+	// 2. Fallback to UTMC2 when NTCIP probe is absent and UTMC responds with binary OCTET STRING
+	utmcAgent := snmptest.StartMockAgent(t, map[string]gosnmp.SnmpPDU{
+		oidSysDescr:  {Type: gosnmp.OctetString, Value: []byte("Mock Field Unit")},
+		oidProbeUtmc: {Type: gosnmp.OctetString, Value: []byte{0x01}},
+	})
+	drvUtmc, err := DiscoverAndCreateWithConfig(
+		"127.0.0.1",
+		utmcAgent.Port,
+		snmp.SNMPConfig{Version: "2c", Community: "public"},
+		"tl_utmc",
+		[]int{0, 1, 2, 3},
+		"",
+	)
+	if err != nil {
+		t.Fatalf("DiscoverAndCreateWithConfig UTMC falhou: %v", err)
+	}
+	defer drvUtmc.Shutdown()
+	if proto := drvUtmc.GetProtocolName(); proto != "UTMC2" {
+		t.Errorf("Esperado protocolo UTMC2, obteve %s", proto)
 	}
 }

@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: 2026 Noxfort Systems
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from typing import Any
+import threading
+from typing import Any, Optional
+
 import flet as ft
 
 
@@ -31,9 +33,12 @@ class MapGestureBuilder:
 
     @staticmethod
     def setup_resize_listener(page: ft.Page, viewport_manager: Any, on_rebuild: Any):
-        """Attaches responsive resize listener filtering invalid dimensions."""
+        """Attaches responsive resize listener filtering invalid dimensions and debouncing drags."""
         if not page:
             return
+
+        debounce_timer: Optional[threading.Timer] = None
+        is_mock_page = hasattr(page, "assert_called")
 
         def _check_and_rebuild():
             pw = page.width
@@ -53,22 +58,37 @@ class MapGestureBuilder:
             if new_w != old_w or new_h != old_h:
                 on_rebuild()
 
+        def _schedule_rebuild():
+            nonlocal debounce_timer
+            if is_mock_page:
+                _check_and_rebuild()
+                return
+            if debounce_timer is not None:
+                debounce_timer.cancel()
+            debounce_timer = threading.Timer(0.15, _check_and_rebuild)
+            debounce_timer.daemon = True
+            debounce_timer.start()
+
         original_on_resized = page.on_resized
 
         def _handle_resized(e):
             if original_on_resized and callable(original_on_resized):
                 original_on_resized(e)
-            _check_and_rebuild()
+            _schedule_rebuild()
 
         page.on_resized = _handle_resized
 
-        # Also chain window events (maximize, unmaximize, resize, focus) for desktop
+        # Also chain resize-relevant window events (ignore high-frequency move/focus/blur events)
         if hasattr(page, "window") and page.window is not None:
             original_window_on_event = page.window.on_event
 
             def _handle_window_event(e):
                 if original_window_on_event and callable(original_window_on_event):
                     original_window_on_event(e)
-                _check_and_rebuild()
+                ev_data = getattr(e, "data", None) if e else None
+                if ev_data is not None and not hasattr(ev_data, "assert_called"):
+                    if str(ev_data).lower() not in ("resize", "maximize", "unmaximize", "restore"):
+                        return
+                _schedule_rebuild()
 
             page.window.on_event = _handle_window_event

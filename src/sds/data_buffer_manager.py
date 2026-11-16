@@ -84,11 +84,21 @@ class DataBufferManager:
         with self.buffer_lock:
             empty_edges = []
             for edge_id, metrics in self.data_buffer.items():
-                metrics["occ"] = [(t, v) for t, v in metrics["occ"] if t >= cutoff_time]
-                metrics["spd"] = [(t, v) for t, v in metrics["spd"] if t >= cutoff_time]
-                metrics["q"] = [(t, v) for t, v in metrics["q"] if t >= cutoff_time]
+                all_empty = True
+                for key in ("occ", "spd", "q"):
+                    series = metrics[key]
+                    if len(series) == 1:
+                        if series[0][0] < cutoff_time:
+                            metrics[key] = []
+                        else:
+                            all_empty = False
+                    elif series:
+                        filtered = [(t, v) for t, v in series if t >= cutoff_time]
+                        metrics[key] = filtered
+                        if filtered:
+                            all_empty = False
 
-                if not metrics["occ"] and not metrics["spd"] and not metrics["q"]:
+                if all_empty:
                     empty_edges.append(edge_id)
 
             for edge_id in empty_edges:

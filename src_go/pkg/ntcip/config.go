@@ -28,6 +28,7 @@ type TelemetryConfig struct {
 	StatusGreens   string `json:"status_greens"`
 	StatusYellows  string `json:"status_yellows"`
 	StatusReds     string `json:"status_reds"`
+	StatusVehCalls string `json:"status_veh_calls"`
 	StatusPedCalls string `json:"status_ped_calls"`
 }
 
@@ -45,6 +46,7 @@ type Config struct {
 	System          SystemConfig       `json:"system"`
 	RawStageMap     map[string]int     `json:"stage_to_phase_map"`
 	StageToPhaseMap map[int]int        `json:"-"`
+	FailsafeOmitMs  int                `json:"failsafe_omit_ms,omitempty"`
 }
 
 // LoadConfig loads NTCIP configuration from custom disk path or embedded defaults.
@@ -62,7 +64,6 @@ func LoadConfig(customPath string) (*Config, error) {
 	}
 
 	if len(rawData) == 0 {
-		// Attempt standard local project path before falling back to embedded binary
 		standardPaths := []string{
 			"src_go/configs/ntcip_oids.json",
 			"config/ntcip_oids.json",
@@ -93,7 +94,6 @@ func LoadConfig(customPath string) (*Config, error) {
 		}
 	}
 
-	// Guarantee default 4-stage map if none provided
 	if len(cfg.StageToPhaseMap) == 0 {
 		cfg.StageToPhaseMap = map[int]int{
 			1: 34,
@@ -101,6 +101,10 @@ func LoadConfig(customPath string) (*Config, error) {
 			3: 17,
 			4: 68,
 		}
+	}
+
+	if cfg.FailsafeOmitMs <= 0 {
+		cfg.FailsafeOmitMs = 2000
 	}
 
 	return &cfg, nil

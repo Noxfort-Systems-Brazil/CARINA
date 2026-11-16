@@ -113,9 +113,9 @@ $$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \quad d = R \cdot
 
 ### 4.1 街区进入触发判定 (`is_at_block_entrance`)
 - 判定车辆与目标路口的空间几何距离是否严格落在准入区间：
-  
+
   $$d_{\text{min}} \le d_{\text{vehicle}} \le d_{\text{max}}$$
-  
+
   其中标准参数 $d_{\text{min}} = 60.0\text{ m}$，$d_{\text{max}} = 160.0\text{ m}$（若配置了 [`EVPTopologyService`](../../src/evp/evp_topology_service.py)，则自适应使用该路段真实的物理拓扑长度 $L_{\text{quadra}}$）。
 
 ### 4.2 驶离路口判定 (`has_checked_out`)
@@ -131,16 +131,16 @@ $$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \quad d = R \cdot
 stateDiagram-v2
     [*] --> Idle: 常态信号自适应配时
     Idle --> Approaching: 车辆进入接近区间且警报鸣响
-    
+
     state Approaching {
         [*] --> CheckCurrentStage
         CheckCurrentStage --> StageDivergent: 当前放行相位 != 目标优先绿灯相位
         CheckCurrentStage --> StageAligned: 当前放行相位 == 目标优先绿灯相位
-        
+
         StageDivergent --> Advancing: ACTION_ADVANCE (0) 强制步进
         Advancing --> EnforceClearance: 强制执行黄灯 (3s) + 全红 (2s)
         EnforceClearance --> StageAligned: 顺利切换至目标优先绿灯相位
-        
+
         StageAligned --> HoldGreen: ACTION_HOLD (1) 绿灯锁定
     }
 
@@ -191,10 +191,11 @@ except Exception:
 
 由 Go 语言编译生成的原生二进制文件（`bin/carina-go`）负责向 NTCIP 1202 与 UTMC2 交通机执行微秒级优先锁定指令下发：
 
-### 7.1 调度器指令路由与执行 (`dispatcher.go`)
-- 接收来自网关路由器的 `PreemptionCommand` 调度封包。
-- `activate_preempt`：通过 UDP 161 端口向现场交通机注入 `ascPhaseHold` OID 物理保持位掩码。
+### 7.1 调度器指令路由 (`dispatcher.go`) 与跨进程同步
+- 接收来自网关路由器的 `PreemptionCommand` 调度封包（`stage_idx`、`stage_codes`、`target_stage`、`vehicle_id`）。
+- `activate_preempt`：通过 UDP 161 端口向现场交通机注入 `phase_control.hold`（`1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1`）或 UTMC 相位保持位掩码。
 - `release_preempt`：即刻清除相应相位的保持位掩码，将控制权无缝归还给本地自主感应控制或周期循环计时器。
+- **跨进程同步 (`EVPSnapshotSynchronizer` 与 `ai_evp_preempt`)：** 在单一网关所有权架构下（`CentralController` 为 `CARINA_GATEWAY_ROLE=owner`，`AI_Process` 为 `remote`），[`EVPSnapshotSynchronizer`](../../src/evp/application/evp_snapshot_synchronizer.py) 将活动应急车辆与优先通行状态镜像同步至 `AI_Process`，而 [`EVPBridge`](../../src/evp/evp_bridge.py) 则通过 `ai_evp_preempt` IPC 指令转发远程优先通行触发请求。
 
 ---
 
@@ -214,9 +215,10 @@ Go Web 网关同时对外暴露用于车载终端遥测接入的端点以及面�
    - HTTP 204 No Content 零载荷回包      - 实时毫秒级 JSON 遥测帧
 ```
 
-### 8.1 单向轻量级 GPS 遥测摄入 (`handlers_evp.go`)
-- **API 路由：** `POST /api/v1/evp/telemetry`（兼容 `/amb`）
-- **状态回包：** `204 No Content`
+### 8.1 单向轻量级 GPS 遥测摄入 (`handlers_evp.go` & `evp_http_server.go`)
+- **API 路由：** `POST /api/v1/evp/telemetry`（兼容 `/amb`、`/amb/`）
+- **状态回包：** `204 No Content`（若 `CARINA_GATEWAY_ENABLED=False` 则返回 `503 Service Unavailable`；若 `CARINA_EVP_AUTH_TOKEN` 恒定时间 Bearer/`X-EVP-Token` 校验失败则返回 `401 Unauthorized`）
+- **TLS 加密：** 支持通过 `CARINA_GATEWAY_TLS_CERT` 与 `CARINA_GATEWAY_TLS_KEY` 启用 HTTPS。
 - **摄入处理延迟：** $< 0.5\text{ ms}$
 - **数据载荷格式：**
   ```json
@@ -294,6 +296,7 @@ CREATE TABLE IF NOT EXISTS evp_registered_fleet (
 ```
 
 ### 11.2 数据表：`evp_telemetry_records`
+*(由 `database_worker.py` 调用 `EVPTelemetryRepository.purge_old_telemetry` 自动清理超过 168 小时 / 7 天的历史记录。)*
 ```sql
 CREATE TABLE IF NOT EXISTS evp_telemetry_records (
     id BIGSERIAL PRIMARY KEY,

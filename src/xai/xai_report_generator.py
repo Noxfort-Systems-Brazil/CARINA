@@ -58,7 +58,11 @@ class XaiReportGenerator:
         lang = self.locale_manager.get_language()
         return XaiTemplateRepository.get_templates_for_language(lang)
 
-    def generate_full_multi_agent_report(self, primary_agent_id: Optional[str] = None) -> Dict[str, Any]:
+    def generate_full_multi_agent_report(
+        self,
+        primary_agent_id: Optional[str] = None,
+        precomputed_analyses: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Orchestrates end-to-end multi-agent XAI audit report generation."""
         logging.info(
             f"[XaiReportGenerator] Starting multi-agent XAI report orchestrator for {self.scenario_results_dir}..."
@@ -67,19 +71,21 @@ class XaiReportGenerator:
         # 1. Discover audited agent IDs via Repository
         agent_ids = self.repository.discover_audited_agent_ids(primary_agent_id)
 
-        # 2. Execute Captum mathematical attributions per agent in memory
+        # 2. Execute Captum mathematical attributions per agent in memory (reusing precomputed results)
         analyses_by_agent: Dict[str, Any] = {}
         primary_image_base64 = None
 
         for aid in agent_ids:
             try:
-                agent = self.reconstructor.reconstruct_agent(aid) if self.reconstructor else None
-                if not agent:
-                    continue
-                analyzer = CaptumAnalyzer(
-                    agent=agent, scenario_results_dir=self.scenario_results_dir, locale_manager=self.locale_manager
-                )
-                res = analyzer.generate_analysis_in_memory()
+                res = precomputed_analyses.get(aid) if precomputed_analyses else None
+                if res is None:
+                    agent = self.reconstructor.reconstruct_agent(aid) if self.reconstructor else None
+                    if not agent:
+                        continue
+                    analyzer = CaptumAnalyzer(
+                        agent=agent, scenario_results_dir=self.scenario_results_dir, locale_manager=self.locale_manager
+                    )
+                    res = analyzer.generate_analysis_in_memory()
                 if res:
                     analyses_by_agent[aid] = res
                     if primary_agent_id and aid == primary_agent_id:

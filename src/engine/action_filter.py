@@ -6,8 +6,8 @@ from typing import Dict, Tuple
 
 from core.action_authorizer import ActionAuthorizer
 from core.enums import Maturity
-from maturity.maturity_manager import MaturityManager
 from core.system_reporter import SystemReporter
+from maturity.maturity_manager import MaturityManager, resolve_agent_phase
 from utils.locale_manager_backend import LocaleManagerBackend
 
 
@@ -34,7 +34,7 @@ class ActionFilter:
         authorized_actions = {}
 
         for tl_id, action_int in raw_actions.items():
-            agent_maturity = self.maturity_manager.agent_maturity.get(tl_id, Maturity.CHILD)
+            agent_maturity = resolve_agent_phase(self.maturity_manager, tl_id, Maturity.CHILD)
 
             # 1. Authorization (Driving School rules)
             is_authorized, reason = self.action_authorizer.is_action_authorized(tl_id, agent_maturity, current_sim_time)

@@ -70,7 +70,7 @@ class EVPTelemetryRepository:
                     )
                 cursor.execute(
                     """
-                    CREATE INDEX IF NOT EXISTS idx_evp_veh_time 
+                    CREATE INDEX IF NOT EXISTS idx_evp_veh_time
                     ON evp_telemetry_records(vehicle_id, created_at DESC);
                     """
                 )
@@ -82,75 +82,129 @@ class EVPTelemetryRepository:
                 except Exception as _exc:
                     logger.debug("[evp] Ignored recoverable error: %s", _exc)
         except Exception as e:
-            logger.warning(f"[EVPTelemetryRepository] Aviso ao verificar/criar tabela de telemetria: {e}", exc_info=True)
+            logger.warning(
+                f"[EVPTelemetryRepository] Aviso ao verificar/criar tabela de telemetria: {e}", exc_info=True
+            )
         finally:
             self._close_conn(conn)
 
-    def save_telemetry(self, vehicle: EmergencyVehicle, evp_triggered: bool = False) -> bool:
-        """Saves telemetry snapshot to the database for forensics and auditing."""
-        if not self.engine:
-            return False
+    @staticmethod
+    def snapshot_telemetry(vehicle: EmergencyVehicle, evp_triggered: bool) -> tuple:
+        """Captures an immutable telemetry row snapshot safe for cross-thread batching."""
+        corp = getattr(vehicle.corporation, "value", vehicle.corporation)
+        return (
+            vehicle.vehicle_id,
+            corp,
+            vehicle.latitude,
+            vehicle.longitude,
+            vehicle.speed_kmh,
+            vehicle.heading_deg,
+            bool(vehicle.siren_active),
+            bool(evp_triggered),
+            vehicle.active_intersection_id,
+        )
 
+    @staticmethod
+    def _format_row(item: Any, is_pg: bool) -> tuple:
+        if isinstance(item, tuple) and len(item) == 9:
+            v_id, corp, lat, lon, spd, hdg, siren, triggered, int_id = item
+        else:
+            veh, triggered = item
+            corp = getattr(veh.corporation, "value", veh.corporation)
+            v_id, lat, lon, spd, hdg, siren, int_id = (
+                veh.vehicle_id,
+                veh.latitude,
+                veh.longitude,
+                veh.speed_kmh,
+                veh.heading_deg,
+                bool(veh.siren_active),
+                veh.active_intersection_id,
+            )
+        if is_pg:
+            return (v_id, corp, lat, lon, spd, hdg, bool(siren), bool(triggered), int_id)
+        return (v_id, corp, lat, lon, spd, hdg, 1 if siren else 0, 1 if triggered else 0, int_id)
+
+    def save_telemetry_batch(self, items: list) -> int:
+        """Persists a batch of telemetry snapshots or (vehicle, evp_triggered) tuples in one transaction."""
+        if not self.engine or not items:
+            return 0
         conn = None
         try:
             conn = self.engine.get_connection()
             if not conn:
-                return False
-
+                return 0
             cursor = conn.cursor()
             try:
                 is_pg = getattr(self.engine, "db_type", "sqlite") == "postgres"
-                if is_pg:
-                    cursor.execute(
-                        """
-                        INSERT INTO evp_telemetry_records (
-                            vehicle_id, corporation, latitude, longitude,
-                            speed_kmh, heading_deg, siren_active, evp_triggered, intersection_id
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-                        """,
-                        (
-                            vehicle.vehicle_id,
-                            vehicle.corporation.value,
-                            vehicle.latitude,
-                            vehicle.longitude,
-                            vehicle.speed_kmh,
-                            vehicle.heading_deg,
-                            vehicle.siren_active,
-                            evp_triggered,
-                            vehicle.active_intersection_id,
-                        ),
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        INSERT INTO evp_telemetry_records (
-                            vehicle_id, corporation, latitude, longitude,
-                            speed_kmh, heading_deg, siren_active, evp_triggered, intersection_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        (
-                            vehicle.vehicle_id,
-                            vehicle.corporation.value,
-                            vehicle.latitude,
-                            vehicle.longitude,
-                            vehicle.speed_kmh,
-                            vehicle.heading_deg,
-                            1 if vehicle.siren_active else 0,
-                            1 if evp_triggered else 0,
-                            vehicle.active_intersection_id,
-                        ),
-                    )
+                ph = "%s, %s, %s, %s, %s, %s, %s, %s, %s" if is_pg else "?, ?, ?, ?, ?, ?, ?, ?, ?"
+                sql = (
+                    "INSERT INTO evp_telemetry_records "
+                    "(vehicle_id, corporation, latitude, longitude, speed_kmh, heading_deg, "
+                    f"siren_active, evp_triggered, intersection_id) VALUES ({ph});"
+                )
+                rows = [self._format_row(it, is_pg) for it in items]
+                cursor.executemany(sql, rows)
                 if hasattr(conn, "commit"):
                     conn.commit()
-                return True
+                return len(rows)
             finally:
                 try:
                     cursor.close()
                 except Exception as _exc:
                     logger.debug("[evp] Ignored recoverable error: %s", _exc)
         except Exception as e:
-            logger.error(f"[EVPTelemetryRepository] Erro ao salvar telemetria da viatura {vehicle.vehicle_id}: {e}", exc_info=True)
-            return False
+            if conn and hasattr(conn, "rollback"):
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            logger.error(f"[EVPTelemetryRepository] Erro ao salvar lote de telemetria: {e}", exc_info=True)
+            return 0
         finally:
             self._close_conn(conn)
 
+    def save_telemetry(self, vehicle: EmergencyVehicle, evp_triggered: bool = False) -> bool:
+        """Saves telemetry snapshot to the database for forensics and auditing."""
+        return self.save_telemetry_batch([(vehicle, evp_triggered)]) > 0
+
+    def purge_old_telemetry(self, keep_hours: int = 168) -> int:
+        """Deletes EVP telemetry records older than `keep_hours` hours to bound storage growth."""
+        if not self.engine or keep_hours <= 0:
+            return 0
+        conn = None
+        try:
+            conn = self.engine.get_connection()
+            if not conn:
+                return 0
+            cursor = conn.cursor()
+            try:
+                is_pg = getattr(self.engine, "db_type", "sqlite") == "postgres"
+                if is_pg:
+                    cursor.execute(
+                        "DELETE FROM evp_telemetry_records WHERE created_at < NOW() - make_interval(hours => %s::int);",
+                        (int(keep_hours),),
+                    )
+                else:
+                    cursor.execute(
+                        "DELETE FROM evp_telemetry_records WHERE created_at < datetime('now', ? || ' hours');",
+                        (f"-{int(keep_hours)}",),
+                    )
+                deleted = max(0, int(getattr(cursor, "rowcount", 0) or 0))
+                if hasattr(conn, "commit"):
+                    conn.commit()
+                return deleted
+            finally:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            if conn and hasattr(conn, "rollback"):
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            logger.warning(f"[EVPTelemetryRepository] Error purging old telemetry records: {e}", exc_info=True)
+            return 0
+        finally:
+            self._close_conn(conn)

@@ -65,9 +65,10 @@ Ubicado en [`src/slm/local_llama_transducer.py`](../../src/slm/local_llama_trans
 - Administra la descarga de capas a GPU (`n_gpu_layers = -1` para descarga completa a CUDA).
 - Aplica decodificación voraz (`temperature = 0.0`, `repeat_penalty = 1.05`) con límites dinámicos de tokens para evitar bucles repetitivos y alucinaciones.
 
-### 2.3 Gestión de Dispositivos y Recursos (`device_manager.py` y `resource_manager.py`)
-- [`src/slm/device_manager.py`](../../src/slm/device_manager.py): Detecta y perfila el hardware disponible (NVIDIA CUDA, ROCm, Apple Metal o hilos de CPU).
-- [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py): Administra la asignación de contexto y purga la memoria de claves/valores (KV cache) entre episodios de reporte.
+### 2.3 Gestión de Dispositivos, Bloqueos y Recursos (`device_manager.py`, `slm_lock.py`, `resource_manager.py`)
+- [`src/slm/device_manager.py`](../../src/slm/device_manager.py): Consulta la VRAM libre/total de GPU mediante el ligero `pynvml` antes de recurrir a `torch.cuda`, evitando que los workers (`XAI_Worker`, `MFD_Worker`, `AnalysisService`) asignen un contexto CUDA adicional de ~400 MB en PyTorch únicamente para sondear la VRAM.
+- [`src/slm/slm_lock.py`](../../src/slm/slm_lock.py): Proporciona bloqueo de archivo consultivo reentrante entre procesos (`slm_process_lock()` mediante `fcntl.flock` en `locks/slm_gguf.lock`) serializando la carga e inferencia de modelos GGUF 2B pesados entre `XAI_Worker`, `MFD_Worker` y `AnalysisService` para que los workers concurrentes nunca compitan por VRAM/RAM.
+- [`src/slm/model_loader.py`](../../src/slm/model_loader.py) y [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py): Administran las asignaciones de contexto GGUF, la limpieza de la caché KV y un `unload()` determinista mediante `ReportTransducerFactory.release_transducer()`. Bajo `pytest`, la carga real de GGUF se omite por defecto a menos que se exporte explícitamente `CARINA_ALLOW_REAL_SLM=1`.
 
 ### 2.4 Motor de Revisión Factual (`revision_engine.py` y `output_sanitizer.py`)
 - [`src/slm/revision_engine.py`](../../src/slm/revision_engine.py): Extrae entidades numéricas del texto generado y comprueba su concordancia estricta con los valores de la base de datos SQL.

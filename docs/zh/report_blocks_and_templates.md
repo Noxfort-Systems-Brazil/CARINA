@@ -45,10 +45,11 @@ aliases: [报告生成引擎, 文档生成器, ABNT NBR 14724, OMML数学公式]
 - 递归解析各级层级标题（`#`、`##`、`###`）、有序/无序列表、引用块及高亮警告框。
 - 自动套用出版级排版规范（字体族：*Arial*、正文字号、1.5 倍行距、标准段前段后间距）。
 
-### 2.3 语义净化与本地化清洗器 (`report_semantic_cleaner.py`)
-位于 [`src/blocks/report_semantic_cleaner.py`](../../src/blocks/report_semantic_cleaner.py)：
+### 2.3 语义净化、清洗器与缓存格式化器 (`report_semantic_cleaner.py` & `report_number_formatter.py`)
+位于 [`src/blocks/report_semantic_cleaner.py`](../../src/blocks/report_semantic_cleaner.py) 与 [`src/blocks/report_number_formatter.py`](../../src/blocks/report_number_formatter.py)：
 - 在文档组装前剔除大模型生成的幻觉标记、残留标记符或未闭合的代码标签。
-- 确保数值格式在全篇的一致性，支持本地化小数分隔符转换（如葡萄牙语环境 `pt_BR` 自动转换为逗号 `,`，英语环境 `en_US` 转换为点号 `.`）。
+- 在 `ReportNumberFormatter` 中采用经 `stat` 校验的配置缓存来格式化单位（`metros`、`segundos`）以及本地化小数/千分位分隔符（例如 `pt_BR` 使用 `,`，`en_US` 使用 `.`），避免按单元格重复解析 `settings.ini`。
+- 在 [`slm_process_lock()`](../../src/slm/slm_lock.py)（`slm_gguf.lock`）的保护下协调 `XAI_Worker`、`MFD_Worker` 与 `AnalysisService` 之间的离线 LLM 文本合成，并通过 `ReportTransducerFactory.release_transducer()` 执行确定性模型卸载。
 
 ---
 

@@ -15,8 +15,8 @@ aliases: [Справочник API, Synapse HFT, Очереди IPC, Интер�
 
 CARINA взаимодействует с внешними датчиками, контроллерами светофорных объектов и средами микроскопического моделирования движения (SUMO/CityFlow) через высокочастотный **протокол Synapse HFT** поверх gRPC.
 
-- **Порт по умолчанию:** `50051` (настраивается в `config/settings.ini`)
-- **Транспорт:** HTTP/2 поверх TCP с опциональным шифрованием TLS.
+- **Порт по умолчанию:** `50051` (настраивается в `config/settings.ini` в секции `[SYNAPSE]`)
+- **Транспорт:** HTTP/2 поверх TCP с опциональным шифрованием **TLS / mTLS** (`grpc.ssl_server_credentials`) и **аутентификацией по Bearer-токену** (`BearerTokenServerInterceptor` в [`src/communication/grpc_security.py`](../../src/communication/grpc_security.py)), настраиваемыми через `CARINA_GRPC_AUTH_TOKEN`, `CARINA_GRPC_TLS_ENABLED`, `CARINA_GRPC_TLS_CERT`, `CARINA_GRPC_TLS_KEY`, `CARINA_GRPC_TLS_CA` и `CARINA_GRPC_REQUIRE_CLIENT_CERT`. Принимает метаданные `Authorization: Bearer <token>` или `x-carina-token: <token>`, проверяемые за постоянное время с помощью `hmac.compare_digest`.
 - **Пакет Protobuf:** `synapse.hft`
 
 ```protobuf
@@ -86,16 +86,16 @@ message ScenarioDefinition {
 
 ## 3. Спецификации очередей межпроцессного взаимодействия (IPC)
 
-CARINA координирует 11 буферизованных очередей IPC и 1 дуплексный канал связи (Pipe), управляемые модулем [`ProcessManager`](../../src/launcher/process_manager.py):
+CARINA координирует **12 буферизованных очередей IPC** и **1 потокобезопасный дуплексный канал связи (Pipe)** (`ThreadSafePipeConnection` в [`src/communication/pipe_utils.py`](../../src/communication/pipe_utils.py)), управляемые модулем [`ProcessManager`](../../src/launcher/process_manager.py):
 
 | Имя очереди | Макс. размер | Процесс-производитель | Процесс-потребитель | Схема полезной нагрузки / Тип сообщения |
 | :--- | :---: | :--- | :--- | :--- |
-| **`controller_conn`** | Pipe | `CentralController` | `AI_Process` | `("state", frame_id, traffic_frame_dict)` |
-| **`ai_conn`** | Pipe | `AI_Process` | `CentralController` | `("actuation", frame_id, signal_group_actions)` |
-| **`wd`** | 500 | Все микросервисы | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
-| **`sds`** | 500 | `CentralController` | `DashboardService` | `{"timestamp": float, "telemetry": dict, "active_phase": int}` |
+| **`controller_conn` / `ai_conn`** | Pipe | `CentralController` ↔ `AI_Process` | Двунаправленный | `("custom", "hft_step", ...)`, `("hft_telemetry_push", ...)`, `("ai_hardware_cmd", ...)`, `("ai_evp_preempt", ...)`, `("fenix_handover_complete", ...)` |
+| **`wd`** | 500 | `CentralController` / Микросервисы | `Watchdog` | `{"process": str, "timestamp": float, "status": "ALIVE"}` |
+| **`fenix`** | 50 | `Watchdog` / `CentralController` | `FenixSupervisionController` | `("TRIGGER_RESURRECTION", reason)` / `("HANDOVER_COMPLETE", payload)` |
+| **`sds`** | 500 | `CentralController` | `DashboardService` | `("hft_rich_update", payload)` (быстрая телеметрия 0.5 с и медленные теплокарты + `hardware_status`) |
 | **`sas`** | 500 | `CentralController` | `AnalysisService` | Исторические метрики потока для агрегации в PostgreSQL |
-| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | Команды GUI, ручное вмешательство, тайминги и настройки |
+| **`ui`** | 500 | `UITrayManager` / `LiveDataProvider` | `CentralController` | Команды GUI, `set_hardware_connection`, `tailscale_*`, `fenix_post_resurrection` |
 | **`ui_telemetry`** | 500 | `DashboardService` | `LiveDataProvider` | Бессетевые пакеты телеметрии в ОЗУ, заторы и метрики зрелости |
 | **`db`** | 500 | `AI_Process` | `DatabaseWorker` | `(state_tensor, action_int, reward_float, next_state_tensor)` |
 | **`g_state`** | 500 | `AI_Process` | `GuardianWorker` | `(lane_queues, pae_latent_vector_z, strategic_gat_vector)` |
@@ -175,7 +175,8 @@ CARINA передает статусные сигналы пульса (heartbea
 Скомпилированный веб-шлюз на Go предоставляет высокопроизводительный однонаправленный (fire-and-forget) маршрут приема данных бортовых GPS-маяков экстренных служб:
 
 - **Эндпоинт:** `POST /api/v1/evp/telemetry` (псевдонимы: `POST /amb` или `POST /amb/`)
-- **Порт:** `2201` (веб-шлюз Go / Tailscale Funnel) или `8085` (выделенный сервер Go EVP [`src_go/evp_go/`](../../src_go/evp_go) / автономный приемник)
+- **Порт:** `2201` (`CARINA_GATEWAY_PORT`, веб-шлюз Go / Tailscale Funnel) или `8085` (выделенный сервер Go EVP [`src_go/evp_go/`](../../src_go/evp_go))
+- **Безопасность:** Fail-closed при `CARINA_GATEWAY_ENABLED=False` (возвращает `503 Service Unavailable`); проверяет `CARINA_EVP_AUTH_TOKEN` за постоянное время через заголовки `Authorization: Bearer <token>`, `X-EVP-Token` или `X-Auth-Token` (возвращает `401 Unauthorized` при несовпадении) и поддерживает HTTPS/TLS (`CARINA_GATEWAY_TLS_CERT` / `CARINA_GATEWAY_TLS_KEY`).
 - **Ответ:** `204 No Content` (мгновенный возврат с субмиллисекундной обработкой)
 - **Схема полезной нагрузки:**
   ```json
@@ -195,29 +196,33 @@ CARINA передает статусные сигналы пульса (heartbea
 
 ## 7. Набор команд NDJSON IPC аппаратного и веб-шлюза на Go
 
-Команды, отправляемые из ядра Python системы CARINA демону `bin/carina-go` через стандартные анонимные системные пайпы (`stdin`/`stdout`):
+Команды, отправляемые из процесса-владельца CARINA (`CentralController`) бинарнику `bin/carina-go` через стандартные анонимные системные пайпы (`stdin`/`stdout`):
 
 | Команда (`cmd`) | Параметры / Полезная нагрузка | Возвращаемые данные | Описание |
 | :--- | :--- | :--- | :--- |
 | **`ping`** | Нет | `"pong"` | Проверка работоспособности шлюза ($< 1\text{ мс}$). |
-| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `protocol`, `green_stages` | Метаданные соединения | Устанавливает сессию связи SNMP/UDP с полевым контроллером. |
+| **`connect`** | `intersection_id`, `ip`, `port`, `community`, `snmp_config`, `config_path`, `protocol`, `green_stages` | Метаданные соединения | Устанавливает сессию связи SNMPv2c/v3 UDP и опциональный пользовательский JSON-профиль OID. |
 | **`disconnect`** | `intersection_id` | `success: true` | Закрывает соединение и освобождает сетевой сокет. |
 | **`apply_logical_action`** | `action` (0=NEXT, 1=HOLD), `current_stage_idx`, `green_stages`, `stage_codes` | `success: bool` | Передает нейросетевое или защитное действие физическим фазовым группам. |
-| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `vehicle_id` | Строка выполненного действия | Передает микросекундную команду преемпции фазы контроллеру. |
+| **`evp_preempt`** | `intersection_id`, `action_type` ("activate_preempt"/"release_preempt"), `target_stage`, `stage_idx`, `stage_codes`, `vehicle_id` | Строка выполненного действия | Передает микросекундную команду преемпции фазы полевым контроллерам. |
 | **`cco_broadcast`** | `data: dict` | `success: true` | Транслирует кадры телеметрии подключенным клиентам CCO SSE без ожидания ответа. |
-| **`tailscale_status`** | Нет | `TailscaleStatus` JSON | Запрашивает домен Tailscale Funnel, состояние узла и публичные URL CCO. |
-| **`emergency_release`** | Нет | `success: true` | Безусловно сбрасывает все удержания фаз по всей городской сети. |
+| **`gateway_set_enabled`** / **`gateway_get_status`** | `enabled: bool` | JSON статуса | Переключает защитную блокировку веб-шлюза (`503` при отключении) или запрашивает состояние. |
+| **`gateway_set_auth_tokens`** | `evp_auth_token`, `cco_auth_token`, `allowed_origin` | Флаги конфигурации | Динамически ротирует токены EVP/CCO и источник CORS на запущенном шлюзе Go. |
+| **`tailscale_status`** / **`tailscale_enable`** / **`tailscale_disable`** | `port`, `domain` | `TailscaleStatus` JSON | Управляет доменом Tailscale Funnel, состоянием узла и публичными URL CCO. |
+| **`emergency_release`** | Нет | `success: true` | Приостанавливает heartbeat-сигналы и снимает удержания фаз с сохранением драйверов для восстановления. |
+| **`resume_control`** | Нет | `resumed: int` | Перезапускает приостановленные heartbeat-сигналы контроллеров после восстановления из fail-safe Watchdog. |
 
 ---
 
 ## 8. Конечные точки REST и SSE оператора центра управления (CCO)
 
-Доступны на порту `2201` веб-шлюза Go (и защищены шифрованием Tailscale Funnel):
+Доступны на порту `2201` веб-шлюза Go (`CARINA_GATEWAY_PORT`, HTTPS при настроенном TLS; при отключенном шлюзе возвращает `503 Service Unavailable`):
 
-- **`GET /health`**: Возвращает статус состояния системы и доступность шлюза.
-- **`GET /cco` и `GET /cco/`**: Отдает собранное веб-приложение интерфейса оператора CCO на React 18.
-- **`GET /cco/stream`**: Постоянный поток Server-Sent Events (SSE), транслирующий состояния светофоров, теплокарты плотности и координаты спецтранспорта на видеостены ЦОДД в реальном времени.
-- **`GET /cco/topology`**: Отдает векторную геометрию улично-дорожной сети в формате GeoJSON/JSON, схемы полос и координаты перекрёстков для рендеринга интерактивных карт.
+- **`GET /` и `GET /health`**: Возвращают статус состояния системы и доступность шлюза.
+- **`GET /cco` и `GET /cco/`**: Отдает скомпилированный веб-интерфейс React 18 для CCO.
+- **`GET /cco/stream`**: Постоянный поток Server-Sent Events (SSE), транслирующий состояния светофоров, теплокарты заторов и координаты спецтранспорта на видеостены в реальном времени (проверяет `CARINA_CCO_AUTH_TOKEN` через `Authorization: Bearer`, `X-CCO-Token` или query-параметр `?token=`, а также CORS `CARINA_CCO_ALLOWED_ORIGIN`).
+- **`GET /cco/topology`**: Отдает векторную геометрию улично-дорожной сети в формате GeoJSON/JSON, схемы полос и координаты перекрёстков для рендеринга карты (защищено токеном).
+- **`POST /cco/broadcast`**: Защищенная точка приема данных, вызываемая модулем SDS [`CCOBroadcastClient`](../../src/sds/cco_broadcast_client.py) с неблокирующей пакетной передачей «побеждает последний» (latest-wins), аутентификацией `X-CCO-Token` и опциональным пиннингом SHA-256 сертификата ([`PinnedHTTPSConnection`](../../src/sds/cco_tls_transport.py)).
 
 ---
 

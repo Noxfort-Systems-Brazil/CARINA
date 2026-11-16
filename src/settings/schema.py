@@ -60,8 +60,23 @@ class SettingsSchema:
         "cco_subdomain": "REMOTE_GATEWAY",
         "evp_subdomain": "REMOTE_GATEWAY",
         "evp_auth_token": "REMOTE_GATEWAY",
+        "cco_auth_token": "REMOTE_GATEWAY",
+        "cco_allowed_origin": "REMOTE_GATEWAY",
+        "gateway_tls_cert": "REMOTE_GATEWAY",
+        "gateway_tls_key": "REMOTE_GATEWAY",
+        "gateway_tls_ca": "REMOTE_GATEWAY",
+        "gateway_tls_server_name": "REMOTE_GATEWAY",
+        "gateway_web_port": "REMOTE_GATEWAY",
+        "gateway_trap_port": "REMOTE_GATEWAY",
         "cco_port": "REMOTE_GATEWAY",
         "evp_port": "REMOTE_GATEWAY",
+        # CARINA Synapse gRPC Link Security
+        "grpc_auth_token": "SYNAPSE",
+        "grpc_tls_enabled": "SYNAPSE",
+        "grpc_tls_cert": "SYNAPSE",
+        "grpc_tls_key": "SYNAPSE",
+        "grpc_tls_ca": "SYNAPSE",
+        "grpc_require_client_cert": "SYNAPSE",
         # CARINA Database Settings
         "db_type": "DATABASE",
         "db_host": "DATABASE",
@@ -140,6 +155,8 @@ class SettingsSchema:
         "auto_performance_margin_enabled",
         "auto_reward_weights_enabled",
         "db_connected",
+        "grpc_tls_enabled",
+        "grpc_require_client_cert",
     }
 
     PROTECTED_ENV_KEYS: Set[str] = {

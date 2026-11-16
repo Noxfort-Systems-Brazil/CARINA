@@ -12,22 +12,38 @@ import (
 )
 
 type mockDriver struct {
-	released bool
-	shutdown bool
+	released          bool
+	shutdown          bool
+	lastActionData    map[string]interface{}
+	lastLogicalAction int
+	lastDecision      string
+	telemetryCalls    int
 }
 
-func (m *mockDriver) GetProtocolName() string                                                                    { return "MOCK" }
-func (m *mockDriver) ApplyAction(actionData map[string]interface{}) (bool, error)                                { return true, nil }
-func (m *mockDriver) ApplyLogicalAction(action int, c int, g []int, sc map[int]string) (bool, error)             { return true, nil }
-func (m *mockDriver) ApplyDecision(action string) (bool, error)                                                  { return true, nil }
-func (m *mockDriver) GetTelemetry() (map[string]interface{}, error)                                             { return nil, nil }
-func (m *mockDriver) SendHeartbeatPulse() (bool, error)                                                          { return true, nil }
-func (m *mockDriver) ReleaseControl() (bool, error)                                                              { m.released = true; return true, nil }
-func (m *mockDriver) GetBrand() string                                                                           { return "MockBrand" }
-func (m *mockDriver) GetModel() string                                                                           { return "MockModel" }
-func (m *mockDriver) GetSysDescr() string                                                                        { return "MockDescr" }
-func (m *mockDriver) SetMetadata(brand, model, sysDescr string)                                                  {}
-func (m *mockDriver) Shutdown()                                                                                  { m.shutdown = true }
+func (m *mockDriver) GetProtocolName() string { return "MOCK" }
+func (m *mockDriver) ApplyAction(actionData map[string]interface{}) (bool, error) {
+	m.lastActionData = actionData
+	return true, nil
+}
+func (m *mockDriver) ApplyLogicalAction(action int, c int, g []int, sc map[int]string) (bool, error) {
+	m.lastLogicalAction = action
+	return true, nil
+}
+func (m *mockDriver) ApplyDecision(action string) (bool, error) {
+	m.lastDecision = action
+	return true, nil
+}
+func (m *mockDriver) GetTelemetry() (map[string]interface{}, error) {
+	m.telemetryCalls++
+	return map[string]interface{}{"status": "online"}, nil
+}
+func (m *mockDriver) SendHeartbeatPulse() (bool, error)         { return true, nil }
+func (m *mockDriver) ReleaseControl() (bool, error)             { m.released = true; return true, nil }
+func (m *mockDriver) GetBrand() string                          { return "MockBrand" }
+func (m *mockDriver) GetModel() string                          { return "MockModel" }
+func (m *mockDriver) GetSysDescr() string                       { return "MockDescr" }
+func (m *mockDriver) SetMetadata(brand, model, sysDescr string) {}
+func (m *mockDriver) Shutdown()                                 { m.shutdown = true }
 
 func TestDisconnectWithExactAndAlternateID(t *testing.T) {
 	mgr := &HardwareManager{
@@ -63,5 +79,38 @@ func TestDisconnectWithExactAndAlternateID(t *testing.T) {
 	err = mgr.Disconnect("J1")
 	if err == nil {
 		t.Errorf("Expected error when disconnecting already disconnected intersection")
+	}
+}
+
+func TestPrefixFallbackOnControlAndTelemetry(t *testing.T) {
+	mgr := &HardwareManager{
+		drivers:          make(map[string]protocol.TrafficDriver),
+		heartbeats:       make(map[string]*heartbeat.Manager),
+		ipToIntersection: make(map[string]string),
+	}
+
+	dPrefixed := &mockDriver{}
+	dBare := &mockDriver{}
+	mgr.drivers["tl_J1"] = dPrefixed
+	mgr.drivers["J2"] = dBare
+
+	ok, err := mgr.ApplyAction("J1", map[string]interface{}{"action_type": "hold", "stage": 1})
+	if err != nil || !ok || dPrefixed.lastActionData["action_type"] != "hold" {
+		t.Fatalf("Expected ApplyAction with stripped ID to resolve tl_J1, got ok=%v err=%v", ok, err)
+	}
+
+	ok, err = mgr.ApplyLogicalAction("tl_J2", 0, 2, []int{0, 2}, map[int]string{0: "GGrr", 2: "rrGG"})
+	if err != nil || !ok || dBare.lastLogicalAction != 0 {
+		t.Fatalf("Expected ApplyLogicalAction with tl_ prefix to resolve J2, got ok=%v err=%v", ok, err)
+	}
+
+	ok, err = mgr.ApplyDecision("J1", "HOLD")
+	if err != nil || !ok || dPrefixed.lastDecision != "HOLD" {
+		t.Fatalf("Expected ApplyDecision to resolve tl_J1, got ok=%v err=%v", ok, err)
+	}
+
+	tel, err := mgr.GetTelemetry("tl_J2")
+	if err != nil || dBare.telemetryCalls != 1 || tel["status"] != "online" {
+		t.Fatalf("Expected GetTelemetry to resolve J2, got tel=%v err=%v", tel, err)
 	}
 }

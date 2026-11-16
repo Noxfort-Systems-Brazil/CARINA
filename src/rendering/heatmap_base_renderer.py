@@ -7,12 +7,11 @@ Base utilities and color interpolator for traffic heatmap renderers.
 Decomposes color mapping math and image serialization according to SRP and Clean Architecture.
 """
 
-import base64
-import io
+import logging
 import math
-from typing import Tuple
+from typing import Any, Tuple
 
-import matplotlib.pyplot as plt
+from rendering.mpl_utils import render_figure_to_base64
 
 
 class HeatmapColorScaler:
@@ -77,11 +76,11 @@ class HeatmapColorScaler:
         return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
-def save_figure_to_base64(fig: plt.Figure, ax: plt.Axes, dpi: int = 80) -> str:
+def save_figure_to_base64(fig: Any, ax: Any, dpi: int = 80) -> str:
     """Renders and encodes a matplotlib figure into a base64 PNG string."""
-    buf = io.BytesIO()
-    plt.savefig(
-        buf,
+    return render_figure_to_base64(
+        fig,
+        close_fig=True,
         format="png",
         dpi=dpi,
         facecolor=ax.get_facecolor(),
@@ -89,6 +88,3 @@ def save_figure_to_base64(fig: plt.Figure, ax: plt.Axes, dpi: int = 80) -> str:
         pad_inches=0.02,
         edgecolor="none",
     )
-    plt.close(fig)
-    buf.seek(0)
-    return base64.b64encode(buf.read()).decode("utf-8")

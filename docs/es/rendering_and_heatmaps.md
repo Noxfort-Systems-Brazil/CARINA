@@ -46,19 +46,19 @@ Ubicado en [`src/rendering/map_coordinate_generator.py`](../../src/rendering/map
 - Soporta desplazamiento suave (pan), zoom por pellizco y centrado automático basado en la caja delimitadora (bounding box) de todas las intersecciones activas.
 - Gestiona la preservación de la relación de aspecto a través de monitores con diferentes resoluciones.
 
-### 2.2 Renderizador de Mapa Vectorial Estático (`static_map_renderer.py`)
-Ubicado en [`src/rendering/static_map_renderer.py`](../../src/rendering/static_map_renderer.py):
-- Analiza la geometría de carriles, límites de cruces y conexiones internas desde el archivo `.net.xml` de SUMO.
+### 2.2 Renderizador de Mapa Vectorial Estático (`static_map_renderer.py`) y Caché LRU de Red SUMO (`sumo_net_cache.py`)
+Ubicado en [`src/rendering/static_map_renderer.py`](../../src/rendering/static_map_renderer.py) y [`src/utils/sumo_net_cache.py`](../../src/utils/sumo_net_cache.py):
+- Analiza la geometría de carriles, límites de cruces y conexiones internas del archivo `.net.xml` de SUMO mediante [`read_sumo_net_cached()`](../../src/utils/sumo_net_cache.py) (caché LRU segura para hilos con hasta 8 entradas indexadas por ruta, `mtime_ns`, tamaño, `with_programs` y `with_internal`).
 - Renderiza vías arteriales multicarril con líneas divisorias, flechas de sentido y símbolos de cabezales semafóricos.
 - Almacena en memoria las rutas vectoriales renderizadas para eliminar recálculos de CPU durante escenas estáticas.
 
-### 2.3 Renderizador de Mapas de Calor Asíncrono (`async_heatmap_renderer.py`)
-Ubicado en [`src/rendering/async_heatmap_renderer.py`](../../src/rendering/async_heatmap_renderer.py):
+### 2.3 Renderizador de Mapas de Calor Asíncrono (`async_heatmap_renderer.py`) y Matplotlib Offscreen (`mpl_utils.py`)
+Ubicado en [`src/rendering/async_heatmap_renderer.py`](../../src/rendering/async_heatmap_renderer.py) y [`src/rendering/mpl_utils.py`](../../src/rendering/mpl_utils.py):
 - Emplea **Estimación de Densidad de Kernel (KDE)** para interpolar mapas de calor espaciales continuos a partir de métricas discretas de carriles:
   - **Mapa de Calor de Densidad de Tráfico:** Muestra la acumulación de vehículos por kilómetro cuadrado.
   - **Mapa de Calor de Tiempos de Espera y Demoras:** Destaca cuellos de botella en vías arteriales.
   - **Mapa de Calor de Riesgo de Desbordamiento (Spillback):** Visualiza las ondas de congestión previstas por el Agente Guardian.
-- Descarga el desenfoque gaussiano y las convoluciones matriciales a hilos de trabajo en segundo plano, evitando pérdidas de fotogramas en la interfaz gráfica.
+- Descarga el desenfoque gaussiano y las convoluciones matriciales a hilos de trabajo en segundo plano, y renderiza gráficos mediante instancias aisladas fuera de pantalla `Figure` + `FigureCanvasAgg` (`create_offscreen_figure` / `close_offscreen_figure`) en lugar del estado global `pyplot`, evitando fugas de memoria y contención en el hilo de la GUI.
 
 ---
 

@@ -63,11 +63,15 @@ def run_database_worker(db_queue: Queue):
         cloud_sync_thread.start()
 
         def consolidation_purge_loop(db_mgr):
+            from src.evp.evp_telemetry_repository import EVPTelemetryRepository
+
+            evp_repo = EVPTelemetryRepository(db_mgr.engine, lambda c: c.close() if c and hasattr(c, "close") else None)
             # Wait 15 seconds before initial consolidation on boot
             time.sleep(15)
             while True:
                 try:
                     db_mgr.consolidate_and_purge_old_data(keep_hours=48)
+                    evp_repo.purge_old_telemetry(keep_hours=168)
                 except Exception as e:
                     logging.error(f"[DB_WORKER] Error in consolidation purge loop: {e}", exc_info=True)
                 # Run consolidation every 1 hour (3600 seconds)

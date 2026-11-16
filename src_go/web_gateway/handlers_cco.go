@@ -5,20 +5,24 @@
 package web_gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 // CCOHandler handles HTTP transport for CCO static assets, topology, and SSE streaming (Delivery Layer).
 type CCOHandler struct {
+	mu               sync.RWMutex
 	streamingService CCOStreamingService
 	distDir          string
 	topologyPath     string
+	allowedOrigin    string
 }
 
 func findDistDir() string {
@@ -83,7 +87,24 @@ func NewCCOHandler(streaming CCOStreamingService) *CCOHandler {
 		streamingService: streaming,
 		distDir:          findDistDir(),
 		topologyPath:     findTopologyPath(),
+		allowedOrigin:    ResolveAllowedOrigin(""),
 	}
+}
+
+// SetAllowedOrigin updates the Access-Control-Allow-Origin header emitted by CCO endpoints.
+func (h *CCOHandler) SetAllowedOrigin(origin string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.allowedOrigin = ResolveAllowedOrigin(origin)
+}
+
+func (h *CCOHandler) getAllowedOrigin() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.allowedOrigin != "" {
+		return h.allowedOrigin
+	}
+	return ResolveAllowedOrigin("")
 }
 
 // SetDistDir allows overriding the static build directory (useful for tests).
@@ -99,7 +120,7 @@ func (h *CCOHandler) SetTopologyPath(path string) {
 // ServeTopology serves the JSON vector topology representing road network and traffic light nodes.
 func (h *CCOHandler) ServeTopology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", h.getAllowedOrigin())
 
 	target := h.topologyPath
 	data, err := os.ReadFile(target)
@@ -190,7 +211,7 @@ func (h *CCOHandler) ServeStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", h.getAllowedOrigin())
 
 	clientChan := make(chan []byte, 32)
 	h.streamingService.RegisterClient(clientChan)
@@ -198,7 +219,9 @@ func (h *CCOHandler) ServeStream(w http.ResponseWriter, r *http.Request) {
 
 	// Send initial connection handshake event
 	initMsg := []byte("data: {\"type\":\"connected\",\"message\":\"Conectado ao CARINA CCO Gateway (Go)\"}\n\n")
-	_, _ = w.Write(initMsg)
+	if _, err := w.Write(initMsg); err != nil {
+		return
+	}
 	flusher.Flush()
 
 	// Keep-Alive Heartbeat ticker (15s) to prevent intermediate proxies/NAT from dropping idle connections
@@ -212,13 +235,17 @@ func (h *CCOHandler) ServeStream(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			// Send SSE comment heartbeat to maintain TCP keep-alive without triggering client payload events
-			_, _ = w.Write([]byte(": keepalive\n\n"))
+			if _, err := w.Write([]byte(": keepalive\n\n")); err != nil {
+				return
+			}
 			flusher.Flush()
 		case msg, ok := <-clientChan:
 			if !ok {
 				return
 			}
-			_, _ = w.Write(msg)
+			if _, err := w.Write(msg); err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}
@@ -226,10 +253,10 @@ func (h *CCOHandler) ServeStream(w http.ResponseWriter, r *http.Request) {
 
 // ServeBroadcast handles HTTP POST ingestion of CCO telemetry packets from any CARINA process.
 func (h *CCOHandler) ServeBroadcast(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", h.getAllowedOrigin())
 	if r.Method == http.MethodOptions {
 		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CCO-Token, X-Auth-Token")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -254,13 +281,14 @@ func (h *CCOHandler) ServeBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload interface{}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	var compactBuf bytes.Buffer
+	compactBuf.Grow(len(body))
+	if err := json.Compact(&compactBuf, body); err != nil {
 		http.Error(w, `{"error":"Invalid JSON payload"}`, http.StatusBadRequest)
 		return
 	}
 
-	_ = h.streamingService.Broadcast(payload)
+	_ = h.streamingService.Broadcast(json.RawMessage(compactBuf.Bytes()))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"success":true}`))

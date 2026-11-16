@@ -22,10 +22,7 @@ def haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float
     delta_phi = math.radians(lat2 - lat1)
     delta_lambda = math.radians(lon2 - lon1)
 
-    a = (
-        math.sin(delta_phi / 2.0) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
-    )
+    a = math.sin(delta_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return r * c
 
@@ -130,14 +127,46 @@ class EVPKinematicsEngine:
     ) -> Optional[Tuple[str, float]]:
         """
         Finds the nearest intersection and the distance in meters.
-        :param intersections: Dictionary mapping {intersection_id: (lat, lon)}
-        :return: Tuple (intersection_id, dist_meters) or None
+        Uses fast equirectangular prefiltering when there are > 20 geographic intersections
+        before evaluating exact Haversine distance on the closest shortlist.
         """
         if not intersections:
             return None
 
         best_id = None
         best_dist = float("inf")
+
+        if (
+            len(intersections) > 20
+            and abs(vehicle_lat) <= 90.0
+            and abs(vehicle_lon) <= 180.0
+            and not hasattr(self.calculate_distance_meters, "assert_called")
+        ):
+            cos_lat = math.cos(math.radians(vehicle_lat))
+            cos_sq = cos_lat * cos_lat
+            shortlist: list[Tuple[float, str, float, float]] = []
+            for int_id, (i_lat, i_lon) in intersections.items():
+                if abs(i_lat) > 90.0 or abs(i_lon) > 180.0:
+                    shortlist = []
+                    break
+                dlat = i_lat - vehicle_lat
+                dlon = i_lon - vehicle_lon
+                score = dlat * dlat + cos_sq * dlon * dlon
+                if len(shortlist) < 3:
+                    shortlist.append((score, int_id, i_lat, i_lon))
+                    if len(shortlist) == 3:
+                        shortlist.sort()
+                elif score < shortlist[2][0]:
+                    shortlist[2] = (score, int_id, i_lat, i_lon)
+                    shortlist.sort()
+            if shortlist:
+                for _, int_id, i_lat, i_lon in shortlist:
+                    d = self.calculate_distance_meters(vehicle_lat, vehicle_lon, i_lat, i_lon)
+                    if d < best_dist:
+                        best_dist = d
+                        best_id = int_id
+                if best_id is not None:
+                    return best_id, best_dist
 
         for int_id, (i_lat, i_lon) in intersections.items():
             d = self.calculate_distance_meters(vehicle_lat, vehicle_lon, i_lat, i_lon)

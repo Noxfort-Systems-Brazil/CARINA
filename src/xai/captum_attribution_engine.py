@@ -28,6 +28,13 @@ class CaptumAttributionEngine:
         ).to(self.device)
         if hasattr(self.wrapped_model, "eval"):
             self.wrapped_model.eval()
+        if hasattr(self.wrapped_model, "parameters"):
+            try:
+                for p in self.wrapped_model.parameters():
+                    if isinstance(p, torch.Tensor):
+                        p.requires_grad_(False)
+            except Exception:
+                pass
         self.ig = IntegratedGradients(self.wrapped_model)
 
     def compute_importances(self, limit: int = 100) -> Optional[np.ndarray]:

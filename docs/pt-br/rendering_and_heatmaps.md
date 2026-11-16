@@ -46,19 +46,19 @@ Localizado em `src/rendering/map_coordinate_generator.py`:
 - Suporta translação suave (*pan*), aproximação dinâmica (*pinch-to-zoom*) e auto-centralização calculada pela bounding box das interseções ativas.
 - Preserva a proporção métrica em telas widescreen e monitores industriais.
 
-### 2.2 Renderizador Vetorial Estático (`static_map_renderer.py`)
-Localizado em `src/rendering/static_map_renderer.py`:
-- Realiza o parse da geometria das faixas do arquivo `.net.xml`, conexões internas e polígonos de cruzamento.
+### 2.2 Renderizador Vetorial Estático (`static_map_renderer.py`) & Cache LRU de Rede SUMO (`sumo_net_cache.py`)
+Localizado em [`src/rendering/static_map_renderer.py`](../../src/rendering/static_map_renderer.py) e [`src/utils/sumo_net_cache.py`](../../src/utils/sumo_net_cache.py):
+- Realiza o parse da geometria das faixas do arquivo `.net.xml`, conexões internas e polígonos de cruzamento através de [`read_sumo_net_cached()`](../../src/utils/sumo_net_cache.py) (cache LRU thread-safe de até 8 entradas indexado por caminho, `mtime_ns`, tamanho, `with_programs` e `with_internal`).
 - Desenha vias arteriais com divisores de pista, setas direcionais e ícones de focos semafóricos.
 - Utiliza cache em memória de caminhos vetoriais rasterizados para evitar recálculos desnecessários de CPU.
 
-### 2.3 Renderizador Assíncrono de Mapas de Calor (`async_heatmap_renderer.py`)
-Localizado em `src/rendering/async_heatmap_renderer.py`:
+### 2.3 Renderizador Assíncrono de Mapas de Calor (`async_heatmap_renderer.py`) & Matplotlib Offscreen (`mpl_utils.py`)
+Localizado em [`src/rendering/async_heatmap_renderer.py`](../../src/rendering/async_heatmap_renderer.py) e [`src/rendering/mpl_utils.py`](../../src/rendering/mpl_utils.py):
 - Utiliza **Estimativa de Densidade por Kernel (KDE)** para interpolar mapas de calor espaciais contínuos a partir de métricas discretas de aproximação:
   - **Densidade Veicular:** Acúmulo de veículos por quilômetro quadrado.
   - **Tempo de Espera e Atraso:** Destaca gargalos e estrangulamentos viários.
   - **Risco de Spillback:** Visualiza ondas de congestionamento projetadas pelo Guardião.
-- Executa a convolução gaussiana e interpolações matriciais em threads assíncronas em segundo plano, garantindo 60 FPS estáveis na interface gráfica.
+- Executa a convolução gaussiana e interpolações matriciais em threads assíncronas em segundo plano, e renderiza gráficos através de instâncias offscreen isoladas de `Figure` + `FigureCanvasAgg` (`create_offscreen_figure` / `close_offscreen_figure`) em vez do estado global do `pyplot`, prevenindo vazamentos de memória e contenção na thread da GUI.
 
 ---
 

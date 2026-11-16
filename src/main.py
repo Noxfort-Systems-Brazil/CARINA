@@ -26,6 +26,7 @@ def run_ai_process(
     Coordinates environment logging, hardware setup, resource monitoring,
     and starts the continuous service loop of the Trainer engine.
     """
+    os.environ["CARINA_GATEWAY_ROLE"] = "remote"
     # 1. Logging Initialization
     log_base_dir = get_base_output_dir()
     log_dir_ai = os.path.join(log_base_dir, "logs", "main_ai", datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -127,12 +128,14 @@ def run_ai_process(
 
     # 6. Instantiate Trainer and Start Continuous Service Loop
     try:
+        from communication.pipe_utils import wrap_thread_safe_pipe
+
         print_and_log(lm.get_string("main_ai.initializing_trainer", default="[MAIN_AI] Initializing Trainer..."))
         trainer = EngineFactory.create_trainer(
             settings=settings,
             log_dir=log_dir_ai,
             gpu_info=gpu_info,
-            pipe_conn=pipe_conn,
+            pipe_conn=wrap_thread_safe_pipe(pipe_conn),
         )
 
         print_and_log(lm.get_string("main_ai.trainer_ready", default="Trainer ready. Entering event loop..."))

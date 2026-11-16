@@ -24,10 +24,12 @@ En la gestión semafórica municipal, las decisiones de IA de tipo "caja negra" 
 ```
 
 La canalización XAI implementa una arquitectura modular de constructores multiagente:
+- [`src/xai/xai_worker.py`](../../src/xai/xai_worker.py) y [`report_pipeline.py`](../../src/xai/report_pipeline.py): Ejecutan la atribución de Captum por agente una sola vez y reutilizan la caché `captum_result` resultante (`precomputed_analyses`) en la generación de informes consolidados multiagente, restringiendo la síntesis textual pesada del SLM (`run_slm`) estrictamente al agente objetivo primario bajo `slm_process_lock()` y accediendo a la BD mediante `DatabaseManager.get_instance(..., enable_step_worker=False)`.
 - [`src/xai/multi_agent_report_builder.py`](../../src/xai/multi_agent_report_builder.py): Coordina la generación de informes municipales a través de todas las intersecciones.
-- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Calcula atribuciones de gradiente a lo largo del camino de interpolación desde la línea base hasta la entrada actual.
+- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Calcula atribuciones de gradiente a lo largo del camino de interpolación desde la línea base hasta la entrada actual con los gradientes de parámetros del modelo envuelto congelados (`requires_grad_(False)`).
 - [`src/xai/network_attribution_aggregator.py`](../../src/xai/network_attribution_aggregator.py): Agrega la importancia de características a lo largo de avenidas arteriales.
-- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Despacha secciones del informe a renderizadores especializados.
+- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Despacha secciones del informe a renderizadores especializados (con renderizado de gráficos fuera de pantalla mediante `mpl_utils.py`).
+- [`src/sas/sas_helpers.py`](../../src/sas/sas_helpers.py) y [`sas_historical_data_processor.py`](../../src/sas/sas_historical_data_processor.py): Calculan 100 cuantiles en una sola pasada mediante `TrafficMetricsCalculator.compute_percentiles` y evitan la expansión redundante de muestras sintéticas (`SyntheticSampleGenerator`).
 
 ---
 

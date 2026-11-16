@@ -10,7 +10,7 @@ Connects physical intersections via the compiled Go Hardware Gateway over OS sta
 import logging
 import os
 import re
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from src.drivers.base_driver import BaseTrafficDriver
 from src.drivers.go_driver_proxy import GoTrafficDriverProxy
@@ -34,6 +34,8 @@ class DriverFactory:
         intersection_id: str = "Desconhecido",
         green_stages: list = None,
         locale_manager: Optional[Any] = None,
+        snmp_config: Optional[Dict[str, Any]] = None,
+        config_path: Optional[str] = None,
     ) -> Optional[BaseTrafficDriver]:
         """
         Connects target intersection to the Go Hardware Gateway.
@@ -54,14 +56,23 @@ class DriverFactory:
             if not client.is_running():
                 client.start()
 
-            res = client.connect_intersection(
-                intersection_id=intersection_id,
-                ip=ip_address,
-                port=port,
-                community=community_string,
-                protocol="auto",
-                green_stages=green_stages,
-            )
+            connect_kwargs: Dict[str, Any] = {
+                "intersection_id": intersection_id,
+                "ip": ip_address,
+                "port": port,
+                "community": community_string,
+                "protocol": "auto",
+                "green_stages": green_stages,
+            }
+            resolved_cfg_path = config_path
+            if not resolved_cfg_path and isinstance(snmp_config, dict):
+                resolved_cfg_path = snmp_config.get("config_path") or snmp_config.get("oid_config_path")
+            if resolved_cfg_path:
+                connect_kwargs["config_path"] = str(resolved_cfg_path)
+            if snmp_config:
+                connect_kwargs["snmp_config"] = snmp_config
+
+            res = client.connect_intersection(**connect_kwargs)
 
             if res.get("success", False):
                 data = res.get("data", {})
@@ -98,7 +109,9 @@ class DriverFactory:
                 return None
 
         except Exception as e:
-            logger.error(f"[DriverFactory] Exception connecting to Go Gateway for [{ip_address}:{port}]: {e}", exc_info=True)
+            logger.error(
+                f"[DriverFactory] Exception connecting to Go Gateway for [{ip_address}:{port}]: {e}", exc_info=True
+            )
             return None
 
     @staticmethod

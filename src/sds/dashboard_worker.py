@@ -26,6 +26,7 @@ def run_sds_worker(
     """
     Entry point for the Simulation Data Service (SDS) process.
     """
+    os.environ["CARINA_GATEWAY_ROLE"] = "remote"
     # --- CHANGE 1: Create translator instance for this process ---
     locale_manager = LocaleManagerBackend()
     lm = locale_manager

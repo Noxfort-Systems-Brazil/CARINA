@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Noxfort Systems
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MapTopology } from '../../domain/models/Topology';
 import { TrafficLightPanelMap } from '../../domain/models/TrafficLight';
 import { EmergencyVehicle } from '../../domain/models/EmergencyVehicle';
@@ -49,6 +49,20 @@ export const CcoMap: React.FC<CcoMapProps> = ({
 }) => {
   const { isDark } = useCcoTheme();
   const [inspectionData, setInspectionData] = useState<InspectionData | null>(null);
+  const viewportGroupRef = useRef<SVGGElement>(null);
+
+  const {
+    projection,
+    renderedStreets,
+    intersectionNodes,
+    trafficLightNodes,
+  } = useCcoMapLayers(topology, congestionMap, signals);
+
+  const handleClearInspection = useCallback(() => setInspectionData(null), []);
+  const handleSelectStreet = useCallback((street: RenderedStreet) => setInspectionData({ street }), []);
+  const handleSelectIntersection = useCallback((intersection: RenderedIntersection) => setInspectionData({ intersection }), []);
+  const handleSelectTrafficLight = useCallback((trafficLight: RenderedTrafficLight) => setInspectionData({ trafficLight }), []);
+  const handleSelectVehicle = useCallback((vehicle: EmergencyVehicle) => setInspectionData({ vehicle }), []);
 
   const {
     zoom,
@@ -64,15 +78,14 @@ export const CcoMap: React.FC<CcoMapProps> = ({
     handleWheel,
     handleReset,
   } = useMapViewport({
-    onEscape: () => setInspectionData(null),
+    onEscape: handleClearInspection,
+    viewportGroupRef,
+    centerX: projection?.centerX ?? 0,
+    centerY: projection?.centerY ?? 0,
   });
 
-  const {
-    projection,
-    renderedStreets,
-    intersectionNodes,
-    trafficLightNodes,
-  } = useCcoMapLayers(topology, congestionMap, signals);
+  const handleZoomIn = useCallback(() => setZoom((prev) => Math.min(prev * 1.25, 6.0)), [setZoom]);
+  const handleZoomOut = useCallback(() => setZoom((prev) => Math.max(prev * 0.8, 0.5)), [setZoom]);
 
   // Notify parent about available searchable layers
   useEffect(() => {
@@ -157,32 +170,33 @@ export const CcoMap: React.FC<CcoMapProps> = ({
         className="w-full h-full pointer-events-none"
         viewBox={projection.viewBox}
         preserveAspectRatio="xMidYMid meet"
-        onClick={() => setInspectionData(null)}
+        onClick={handleClearInspection}
       >
         <MapGlowFilters />
 
         {/* Grupo de Pan & Zoom com escala isotrópica ancorada no centro */}
         <g
+          ref={viewportGroupRef}
           transform={`translate(${pan.x}, ${pan.y}) translate(${projection.centerX}, ${projection.centerY}) scale(${zoom}) translate(${-projection.centerX}, ${-projection.centerY})`}
         >
           <MapRoadsLayer
             streets={renderedStreets}
             selectedStreetId={inspectionData?.street?.id}
-            onSelectStreet={(street) => setInspectionData({ street })}
+            onSelectStreet={handleSelectStreet}
           />
           <MapIntersectionsLayer
             nodes={intersectionNodes}
-            onSelectIntersection={(intersection) => setInspectionData({ intersection })}
+            onSelectIntersection={handleSelectIntersection}
           />
           <MapTrafficLightsLayer
             trafficLights={trafficLightNodes}
-            onSelectTrafficLight={(trafficLight) => setInspectionData({ trafficLight })}
+            onSelectTrafficLight={handleSelectTrafficLight}
           />
           <MapEmergencyVehiclesLayer
             vehicles={emergencyVehicles}
             projection={projection}
             filteredCorporation={filteredCorporation}
-            onSelectVehicle={(vehicle) => setInspectionData({ vehicle })}
+            onSelectVehicle={handleSelectVehicle}
           />
         </g>
       </svg>
@@ -194,15 +208,15 @@ export const CcoMap: React.FC<CcoMapProps> = ({
         scaleFactor={typeof window !== 'undefined' ? window.innerWidth / (projection.width || 800) : 1.0}
       />
       <MapZoomControls
-        onZoomIn={() => setZoom((prev) => Math.min(prev * 1.25, 6.0))}
-        onZoomOut={() => setZoom((prev) => Math.max(prev * 0.8, 0.5))}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
         onReset={handleReset}
       />
 
       {/* Unified Inspection Bottom Sheet (Mobile) & Floating Card (Desktop) */}
       <InspectionBottomSheet
         data={inspectionData}
-        onClose={() => setInspectionData(null)}
+        onClose={handleClearInspection}
       />
     </div>
   );

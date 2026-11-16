@@ -49,7 +49,7 @@ Where:
 The MFD analytical suite consists of 35 specialized modules in [`src/mfd/`](../src/mfd):
 
 ### 3.1 MFD Worker Process (`mfd_worker.py`)
-Runs as an isolated operating system process spawned by `ProcessManager`. It listens on the `mfd_trigger` IPC queue, performs macroscopic regressions, and returns results on `mfd_results`.
+Runs as an isolated operating system process spawned by `ProcessManager` with `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, and `OPENBLAS_NUM_THREADS=1`. It listens on the `mfd_trigger` IPC queue, parses SUMO networks through the LRU cache [`read_sumo_net_cached()`](../src/utils/sumo_net_cache.py), renders curves offscreen via [`mpl_utils.py`](../src/rendering/mpl_utils.py), executes SLM narration under [`slm_process_lock()`](../src/slm/slm_lock.py) with explicit `unload()`, and returns results on `mfd_results`.
 
 ### 3.2 Comparison Engine & Baseline Manager (`mfd_comparison_engine.py` & `mfd_baseline_manager.py`)
 - Continuously compares current adaptive AI throughput against fixed-time baseline curves.

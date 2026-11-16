@@ -65,9 +65,10 @@ CARINA выполняет весь синтез текстовых аналит�
 - Управляет аппаратным переносом слоев на GPU (`n_gpu_layers = -1` для полного переноса в CUDA).
 - Реализует «жадное» декодирование (`temperature = 0.0`, `repeat_penalty = 1.05`) с динамическим ограничением токенов для исключения галлюцинаций и зацикливаний.
 
-### 2.3 Управление устройствами и ресурсами (`device_manager.py` и `resource_manager.py`)
-- [`src/slm/device_manager.py`](../../src/slm/device_manager.py): Анализирует доступные аппаратные ресурсы (NVIDIA CUDA, ROCm, Apple Metal или потоки CPU).
-- [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py): Автоматически выделяет память под контекст и сбрасывает KV-кэш между сеансами генерации отчетов.
+### 2.3 Управление устройствами, блокировками и ресурсами (`device_manager.py`, `slm_lock.py`, `resource_manager.py`)
+- [`src/slm/device_manager.py`](../../src/slm/device_manager.py): Запрашивает свободную и общую видеопамять GPU через легковесный `pynvml` до обращения к `torch.cuda`, предотвращая выделение воркерами (`XAI_Worker`, `MFD_Worker`, `AnalysisService`) лишних ~400 МБ контекста PyTorch CUDA исключительно для опроса VRAM.
+- [`src/slm/slm_lock.py`](../../src/slm/slm_lock.py): Предоставляет реентерабельную межпроцессную рекомендательную файловую блокировку (`slm_process_lock()` через `fcntl.flock` на `locks/slm_gguf.lock`), сериализующую загрузку и инференс тяжелой 2B-модели GGUF между `XAI_Worker`, `MFD_Worker` и `AnalysisService`, чтобы параллельные воркеры никогда не конкурировали за VRAM/RAM.
+- [`src/slm/model_loader.py`](../../src/slm/model_loader.py) и [`src/slm/resource_manager.py`](../../src/slm/resource_manager.py): Управляют выделением контекста GGUF, очисткой KV-кэша и детерминированной выгрузкой `unload()` через `ReportTransducerFactory.release_transducer()`. В среде `pytest` загрузка реальной модели GGUF по умолчанию пропускается, если явно не экспортирована переменная `CARINA_ALLOW_REAL_SLM=1`.
 
 ### 2.4 Модуль фактической сверки (`revision_engine.py` и `output_sanitizer.py`)
 - [`src/slm/revision_engine.py`](../../src/slm/revision_engine.py): Извлекает числовые сущности из сгенерированного текста и сверяет их со строгими значениями из базы данных SQL.

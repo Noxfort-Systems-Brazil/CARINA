@@ -7,9 +7,11 @@ package ntcip
 import (
 	"fmt"
 	"strings"
+
+	"carina/src_go/pkg/protocol"
 )
 
-// ConvertStageToHardwareMask converts the stage index to an NTCIP phase bitmask.
+// ConvertStageToHardwareMask converts the 0-based stage index to an NTCIP phase bitmask.
 func (d *Driver) ConvertStageToHardwareMask(stageIdx int, greenStages []int, stageCodes map[int]string) int {
 	stageNum := stageIdx + 1
 
@@ -37,6 +39,13 @@ func (d *Driver) ConvertStageToHardwareMask(stageIdx int, greenStages []int, sta
 		}
 	}
 
+	if pos := protocol.IndexOfStage(stageIdx, greenStages); pos >= 0 {
+		if mask, ok := d.Config.StageToPhaseMap[pos+1]; ok {
+			return mask
+		}
+		return 1 << pos
+	}
+
 	if mask, ok := d.Config.StageToPhaseMap[stageNum]; ok {
 		return mask
 	}
@@ -48,24 +57,28 @@ func (d *Driver) ConvertStageToHardwareMask(stageIdx int, greenStages []int, sta
 func (d *Driver) ApplyDecision(action string) (bool, error) {
 	actionUpper := strings.ToUpper(strings.TrimSpace(action))
 
+	d.mu.Lock()
 	if actionUpper == "ADVANCE" || actionUpper == "0" {
 		maxStages := len(d.Config.StageToPhaseMap)
+		if maxStages == 0 {
+			maxStages = len(d.GreenStages)
+		}
 		if maxStages == 0 {
 			maxStages = 4
 		}
 		d.CurrentStage = (d.CurrentStage % maxStages) + 1
-	} else {
-		// HOLD
-		if d.CurrentStage <= 0 {
-			d.CurrentStage = 1
-		}
+	} else if d.CurrentStage <= 0 {
+		d.CurrentStage = 1
 	}
+	stageNum := d.CurrentStage
+	d.mu.Unlock()
 
-	mask, ok := d.Config.StageToPhaseMap[d.CurrentStage]
+	mask, ok := d.Config.StageToPhaseMap[stageNum]
 	if !ok || mask == 0 {
-		mask = 1 << (d.CurrentStage - 1)
+		mask = 1 << (stageNum - 1)
 	}
 
+	d.cancelFailsafeTimer()
 	err := d.Client.Set(d.Config.PhaseControl.Hold, mask)
 	return err == nil, err
 }
@@ -76,15 +89,14 @@ func (d *Driver) ApplyLogicalAction(action int, currentStageIdx int, greenStages
 		return false, fmt.Errorf("greenStages is empty")
 	}
 
-	currentListIdx := -1
-	for idx, s := range greenStages {
-		if s == currentStageIdx {
-			currentListIdx = idx
-			break
-		}
-	}
+	currentListIdx := protocol.IndexOfStage(currentStageIdx, greenStages)
 	if currentListIdx == -1 {
-		return false, fmt.Errorf("currentStageIdx %d is not in greenStages", currentStageIdx)
+		// During yellow/all-red intergreen phases, avoid aborting with error:
+		// release active hold on NEXT_STAGE or keep hardware timing its clearance safely.
+		if action == 0 {
+			return d.ApplyAction(map[string]interface{}{"action_type": "release_hold"})
+		}
+		return true, nil
 	}
 
 	if action == 0 { // NEXT_STAGE
@@ -93,15 +105,15 @@ func (d *Driver) ApplyLogicalAction(action int, currentStageIdx int, greenStages
 		nextStageMask := d.ConvertStageToHardwareMask(targetStageIdx, greenStages, stageCodes)
 		currentStageMask := d.ConvertStageToHardwareMask(currentStageIdx, greenStages, stageCodes)
 
-		// 1. Release active hold
+		d.mu.Lock()
+		d.CurrentStage = targetStageIdx + 1
+		d.mu.Unlock()
+
 		_, _ = d.ApplyAction(map[string]interface{}{"action_type": "release_hold"})
-		// 2. Force off current stage
 		_, _ = d.ApplyAction(map[string]interface{}{"action_type": "force_off", "stage_mask": currentStageMask})
-		// 3. Veh call next stage
-		return d.ApplyAction(map[string]interface{}{"action_type": "veh_call", "stage_mask": nextStageMask})
+		return d.ApplyAction(map[string]interface{}{"action_type": "veh_call", "stage_mask": nextStageMask, "stage_idx": targetStageIdx})
 	}
 
-	// HOLD
 	stageMask := d.ConvertStageToHardwareMask(currentStageIdx, greenStages, stageCodes)
-	return d.ApplyAction(map[string]interface{}{"action_type": "hold", "stage_mask": stageMask})
+	return d.ApplyAction(map[string]interface{}{"action_type": "hold", "stage_mask": stageMask, "stage_idx": currentStageIdx})
 }

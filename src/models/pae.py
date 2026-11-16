@@ -19,9 +19,10 @@ from typing import Any, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
+from src.models.pae_preprocessing import build_key_padding_mask, pad_to_input_dim, standardize_sequence
 from src.models.tcn_backbone import init_orthogonal
+from src.models.torch_compile_helper import compile_pae_submodules
 
 
 class PredictiveAutoencoder(nn.Module):
@@ -130,68 +131,18 @@ class PredictiveAutoencoder(nn.Module):
         return next(self.parameters()).device
 
     def pad_to_input_dim(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Pads or truncates agent local state vectors to the universal PAE `input_dim`.
-        """
-        current_dim = x.size(-1)
-        if not isinstance(current_dim, int):
-            return x
-        if current_dim < self.input_dim:
-            pad_size = self.input_dim - current_dim
-            return F.pad(x, (0, pad_size))
-        elif current_dim > self.input_dim:
-            return x[..., : self.input_dim]
-        return x
+        """Pads or truncates agent local state vectors to the universal PAE `input_dim`."""
+        return pad_to_input_dim(x, self.input_dim)
 
     def standardize_sequence(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Standardizes 2D `[batch, dim]` or 3D `[batch, seq_len, dim]` inputs to `[batch, history_len, input_dim]`.
-        """
-        x_padded = self.pad_to_input_dim(x)
-
-        if x_padded.dim() == 2:
-            x_padded = x_padded.unsqueeze(1)
-
-        size_t = x_padded.size()
-        if not isinstance(size_t, (tuple, list)) or len(size_t) != 3:
-            return x_padded
-        _, seq_len, _ = size_t
-
-        if seq_len == self.history_len:
-            return x_padded
-        elif seq_len < self.history_len:
-            pad_size = self.history_len - seq_len
-            first_frame = x_padded[:, :1, :]
-            padding = first_frame.repeat(1, pad_size, 1)
-            return torch.cat([padding, x_padded], dim=1)
-        else:
-            return x_padded[:, -self.history_len :, :]
+        """Standardizes 2D `[batch, dim]` or 3D `[batch, seq_len, dim]` inputs to `[batch, history_len, input_dim]`."""
+        return standardize_sequence(x, self.input_dim, self.history_len)
 
     def _build_key_padding_mask(
         self, batch_size: int, orig_dim: int, valid_dims: Optional[torch.Tensor], device: Any
     ) -> Optional[torch.Tensor]:
-        """
-        Builds boolean mask `[batch_size, input_dim]` where `True` marks zero-padded channels.
-        Only constructed on real PyTorch tensors when at least one channel is padded.
-        """
-        if not isinstance(getattr(nn, "Linear", None), type):
-            return None
-
-        if valid_dims is not None:
-            v_dims = valid_dims.to(device=device, dtype=torch.long).view(-1)
-            if v_dims.numel() == 1 and batch_size > 1:
-                v_dims = v_dims.expand(batch_size)
-            v_dims = torch.clamp(v_dims, min=1, max=self.input_dim)
-            if bool((v_dims >= self.input_dim).all()):
-                return None
-            col_idx = torch.arange(self.input_dim, device=device).unsqueeze(0)
-            return col_idx >= v_dims.unsqueeze(1)
-
-        if isinstance(orig_dim, int) and 0 < orig_dim < self.input_dim:
-            col_idx = torch.arange(self.input_dim, device=device).unsqueeze(0)
-            return (col_idx >= orig_dim).expand(batch_size, self.input_dim)
-
-        return None
+        """Builds boolean mask `[batch_size, input_dim]` where `True` marks zero-padded channels."""
+        return build_key_padding_mask(batch_size, orig_dim, self.input_dim, valid_dims, device)
 
     def encode(self, x: torch.Tensor, valid_dims: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
@@ -230,9 +181,7 @@ class PredictiveAutoencoder(nn.Module):
         # 4. Cross-Attention Latent Pooling using learnable queries
         queries = self.latent_queries.expand(batch_size, -1, -1)
         if padding_mask is not None:
-            attn_res = self.cross_attn_pool(
-                queries, x_out, x_out, key_padding_mask=padding_mask, need_weights=False
-            )
+            attn_res = self.cross_attn_pool(queries, x_out, x_out, key_padding_mask=padding_mask, need_weights=False)
         else:
             attn_res = self.cross_attn_pool(queries, x_out, x_out, need_weights=False)
 
@@ -241,9 +190,7 @@ class PredictiveAutoencoder(nn.Module):
         flat = pooled.reshape(batch_size, -1)
         return self.latent_proj(flat)
 
-    def _condition_latent(
-        self, z: torch.Tensor, action: Optional[Union[int, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def _condition_latent(self, z: torch.Tensor, action: Optional[Union[int, torch.Tensor]] = None) -> torch.Tensor:
         """Injects binary action embedding (`0=ADVANCE`, `1=KEEP`) into the latent representation."""
         if action is None:
             return z
@@ -265,9 +212,7 @@ class PredictiveAutoencoder(nn.Module):
         act_tensor = torch.clamp(act_tensor, min=0, max=self.n_actions - 1)
         return z + self.action_embedding(act_tensor)
 
-    def decode(
-        self, z: torch.Tensor, action: Optional[Union[int, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def decode(self, z: torch.Tensor, action: Optional[Union[int, torch.Tensor]] = None) -> torch.Tensor:
         """
         Predicts the next state mean `[batch_size, input_dim]` from `z` (optionally conditioned on `action`).
         """
@@ -305,32 +250,5 @@ class PredictiveAutoencoder(nn.Module):
     def optimize_engine(
         self, enable_compile: bool = True, mode: str = "reduce-overhead", warmup_batch_size: int = 1
     ) -> None:
-        """
-        Applies PyTorch 2.0+ `torch.compile` with synthetic warmup and safe eager fallback.
-        """
-        if not enable_compile:
-            return
-        if not hasattr(torch, "compile"):
-            logging.info("[PAE] torch.compile not available in this PyTorch version. Keeping eager mode.")
-            return
-
-        try:
-            logging.info(f"[PAE] Compiling iTransformer modules with mode='{mode}'...")
-            compiled_encoder = torch.compile(self.transformer_encoder, mode=mode)
-            compiled_latent_proj = torch.compile(self.latent_proj, mode=mode)
-            compiled_decoder = torch.compile(self.decoder, mode=mode)
-
-            dev = self.device
-            dummy = torch.randn(warmup_batch_size, self.input_dim, self.d_model, device=dev)
-            dummy_pool = torch.randn(warmup_batch_size, self.num_latent_queries * self.d_model, device=dev)
-            with torch.no_grad():
-                _ = compiled_encoder(dummy)
-                z = compiled_latent_proj(dummy_pool)
-                _ = compiled_decoder(z)
-
-            self.transformer_encoder = compiled_encoder
-            self.latent_proj = compiled_latent_proj
-            self.decoder = compiled_decoder
-            logging.info(f"[PAE] Compilation successful with warmup (batch_size={warmup_batch_size}).")
-        except Exception as e:
-            logging.warning(f"[PAE] torch.compile fallback to eager mode: {e}", exc_info=True)
+        """Applies PyTorch 2.0+ `torch.compile` with synthetic warmup and safe eager fallback."""
+        compile_pae_submodules(self, enable_compile=enable_compile, mode=mode, warmup_batch_size=warmup_batch_size)

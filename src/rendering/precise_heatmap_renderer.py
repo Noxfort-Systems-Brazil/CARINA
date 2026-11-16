@@ -6,9 +6,10 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
-import matplotlib.pyplot as plt
+import matplotlib
 
 from rendering.heatmap_base_renderer import HeatmapColorScaler, save_figure_to_base64
+from rendering.mpl_utils import close_offscreen_figure, create_offscreen_figure
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -45,48 +46,52 @@ class PreciseHeatmapRenderer:
                     return self._cache[cache_key]
 
             nodes, edges = map_data
-            fig, ax = plt.subplots(figsize=(4.0, 2.4), dpi=80)
-            cmap = plt.get_cmap("viridis")
-            threshold = max(saturation_threshold, 1.0)
+            fig, ax = create_offscreen_figure((4.0, 2.4), dpi=80)
+            try:
+                cmap = matplotlib.colormaps["viridis"]
+                threshold = max(saturation_threshold, 1.0)
 
-            for edge in edges:
-                edge_id = edge.get("id", "")
-                congestion_value = congestion_data.get(edge_id, 0.0)
+                for edge in edges:
+                    edge_id = edge.get("id", "")
+                    congestion_value = congestion_data.get(edge_id, 0.0)
 
-                if isinstance(congestion_value, dict):
-                    congestion_value = congestion_value.get("congestion", 0.0)
+                    if isinstance(congestion_value, dict):
+                        congestion_value = congestion_value.get("congestion", 0.0)
 
-                normalized_congestion = min(max(congestion_value / threshold, 0.0), 1.0)
-                color = cmap(normalized_congestion)
+                    normalized_congestion = min(max(congestion_value / threshold, 0.0), 1.0)
+                    color = cmap(normalized_congestion)
 
-                shape = edge.get("shape", [])
-                if len(shape) < 2:
-                    continue
+                    shape = edge.get("shape", [])
+                    if len(shape) < 2:
+                        continue
 
-                x_coords, y_coords = zip(*shape)
-                ax.plot(
-                    x_coords,
-                    y_coords,
-                    color=color,
-                    linewidth=1.5,
-                    zorder=1,
-                    solid_capstyle="round",
-                    antialiased=False,
-                )
+                    x_coords, y_coords = zip(*shape)
+                    ax.plot(
+                        x_coords,
+                        y_coords,
+                        color=color,
+                        linewidth=1.5,
+                        zorder=1,
+                        solid_capstyle="round",
+                        antialiased=False,
+                    )
 
-            if nodes:
-                node_x = [n["x"] for n in nodes.values() if "x" in n and "y" in n]
-                node_y = [n["y"] for n in nodes.values() if "x" in n and "y" in n]
-                if node_x and node_y:
-                    ax.scatter(node_x, node_y, s=5, color="#808080", zorder=2, alpha=0.7)
+                if nodes:
+                    node_x = [n["x"] for n in nodes.values() if "x" in n and "y" in n]
+                    node_y = [n["y"] for n in nodes.values() if "x" in n and "y" in n]
+                    if node_x and node_y:
+                        ax.scatter(node_x, node_y, s=5, color="#808080", zorder=2, alpha=0.7)
 
-            ax.set_aspect("equal", adjustable="box")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.axis("off")
-            ax.set_facecolor("#F7F7F7")
+                ax.set_aspect("equal", adjustable="box")
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.axis("off")
+                ax.set_facecolor("#F7F7F7")
 
-            image_base64 = save_figure_to_base64(fig, ax, dpi=80)
+                image_base64 = save_figure_to_base64(fig, ax, dpi=80)
+            except Exception:
+                close_offscreen_figure(fig)
+                raise
 
             with self._cache_lock:
                 if len(self._cache) >= self._cache_size_limit:

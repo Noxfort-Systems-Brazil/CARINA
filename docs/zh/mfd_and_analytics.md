@@ -49,7 +49,7 @@ $$K_{net} = \frac{\sum_{i=1}^N k_i \cdot L_i}{\sum_{i=1}^N L_i}, \quad Q_{net} =
 MFD 分析套件包含 [`src/mfd/`](../../src/mfd) 目录下的 35 个专业分析模块：
 
 ### 3.1 MFD 独立分析微服务 (`mfd_worker.py`)
-作为由 `ProcessManager` 派生的独立操作系统子进程运行。监听 `mfd_trigger` IPC 队列，异步执行宏观非线性曲线拟合回归，并通过 `mfd_results` 队列返回分析结果。
+作为由 `ProcessManager` 派生的独立操作系统子进程运行，默认配置 `OMP_NUM_THREADS=1`、`MKL_NUM_THREADS=1` 与 `OPENBLAS_NUM_THREADS=1`。监听 `mfd_trigger` IPC 队列，通过 LRU 缓存 [`read_sumo_net_cached()`](../../src/utils/sumo_net_cache.py) 解析 SUMO 路网，经由 [`mpl_utils.py`](../../src/rendering/mpl_utils.py) 离屏渲染曲线，在 [`slm_process_lock()`](../../src/slm/slm_lock.py) 保护下执行 SLM 文本叙述并显式调用 `unload()`，最后通过 `mfd_results` 队列返回分析结果。
 
 ### 3.2 对比评估引擎与基准管理器 (`mfd_comparison_engine.py` 与 `mfd_baseline_manager.py`)
 - 持续量化对比当前 AI 自适应控制下的路网通行吞吐量与传统固定配时基准曲线。

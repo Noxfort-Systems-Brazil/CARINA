@@ -24,10 +24,12 @@ aliases: [可解释人工智能, SAS分析, XAI生产管线, 司法级审计]
 ```
 
 XAI 生产管线采用基于微服务理念的模块化构建架构：
+- [`src/xai/xai_worker.py`](../../src/xai/xai_worker.py) 与 [`report_pipeline.py`](../../src/xai/report_pipeline.py)：单次执行单智能体 Captum 归因计算，并在汇总多智能体报告生成期间复用所得 `captum_result` 缓存（`precomputed_analyses`）；将重型 SLM 文本合成（`run_slm`）严格限定于主目标智能体（并在 `slm_process_lock()` 保护下运行），且通过 `DatabaseManager.get_instance(..., enable_step_worker=False)` 访问数据库。
 - [`src/xai/multi_agent_report_builder.py`](../../src/xai/multi_agent_report_builder.py)：主调度器，统筹全城各受控交叉口的工程审计报表生成。
-- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py)：计算从基线全零状态到实测输入状态插值路径上的路径积分梯度。
+- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py)：冻结被封装模型的参数梯度（`requires_grad_(False)`），计算从基线全零状态到实测输入状态插值路径上的路径积分梯度。
 - [`src/xai/network_attribution_aggregator.py`](../../src/xai/network_attribution_aggregator.py)：聚合整条主干道走廊上的特征敏感度重要性评分。
-- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py)：将文档各章节动态派发至专用的矢量与排版渲染器。
+- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py)：将文档各章节动态派发至专用的矢量与排版渲染器（支持通过 `mpl_utils.py` 执行离屏图表渲染）。
+- [`src/sas/sas_helpers.py`](../../src/sas/sas_helpers.py) 与 [`sas_historical_data_processor.py`](../../src/sas/sas_historical_data_processor.py)：通过 `TrafficMetricsCalculator.compute_percentiles` 在单遍扫描内计算 100 个分位数，并消除冗余的合成样本展开（`SyntheticSampleGenerator`）。
 
 ---
 

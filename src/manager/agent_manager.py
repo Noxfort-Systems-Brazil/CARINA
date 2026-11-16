@@ -10,6 +10,7 @@ import torch
 from agents.strategist_agent import StrategistAgent
 from manager.agent_checkpoint_repository import AgentCheckpointRepository
 from manager.agent_factory import AgentFactory
+from safety.guardian_checkpoint_service import GuardianCheckpointService
 
 # Re-exports for backward compatibility
 __all__ = ["AgentManager", "AgentFactory", "AgentCheckpointRepository"]
@@ -82,11 +83,36 @@ class AgentManager:
             map_path, input_dim=max_obs_size if max_obs_size > 0 else None, num_nodes=num_nodes
         )
 
-        # 3. Instantiate Guardian Agents synchronously
-        guardians = AgentFactory.create_guardians(self.settings, agents, self.shared_pae)
+        # 3. Instantiate Guardian Agents synchronously with true topology slicing & capacities
+        guardians = AgentFactory.create_guardians(
+            self.settings, agents, self.shared_pae, state_extractor=state_extractor
+        )
 
-        # 4. Restore State (Load Checkpoints)
+        # 4. Restore State (Load Checkpoints from map dir and active HFT session if present)
         self.restore_system_state(map_path, agents, strategist, guardians)
+        GuardianCheckpointService.load_all(guardians, device=self.device)
+        for tl_id, guardian in guardians.items():
+            if hasattr(guardian, "configure_topology") and state_extractor is not None:
+                guardian.configure_topology(
+                    edge_feature_dim=(
+                        state_extractor.get_edge_feature_dim(tl_id)
+                        if hasattr(state_extractor, "get_edge_feature_dim")
+                        else None
+                    ),
+                    edge_capacities=(
+                        state_extractor.get_edge_capacities(tl_id)
+                        if hasattr(state_extractor, "get_edge_capacities")
+                        else None
+                    ),
+                )
+            phase = (
+                maturity_manager.get_agent_phase(tl_id)
+                if callable(getattr(maturity_manager, "get_agent_phase", None))
+                else getattr(maturity_manager, "agent_maturity", {}).get(tl_id)
+            )
+            if phase is not None and str(getattr(phase, "name", phase)).upper() != "CHILD":
+                if callable(getattr(guardian, "freeze_for_deployment", None)):
+                    guardian.freeze_for_deployment()
 
         return agents, current_stages, strategist, guardians
 

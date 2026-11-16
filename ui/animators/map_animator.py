@@ -69,6 +69,8 @@ class MapAnimator:
         self.blink_toggle = False
         self.last_update_time = 0
         self.throttle_interval = 0.1
+        self._data_dirty = bool(initial_congestion_data or initial_panel_data)
+        self._was_hidden = False
 
     def start(self):
         if not self.thread or not self.thread.is_alive():
@@ -89,13 +91,16 @@ class MapAnimator:
                 congestion = data_packet.get("congestion_update", {})
                 if congestion:
                     self.latest_congestion_data.update(congestion)
+                    self._data_dirty = True
             elif packet_type in ["congestion_update", "update_dashboard_data"]:
                 payload = data_packet.get("payload", {})
                 if isinstance(payload, dict) and payload:
                     self.latest_congestion_data.update(payload)
+                    self._data_dirty = True
 
             if "panel_data" in data_packet and data_packet["panel_data"]:
                 self.latest_panel_data.update(data_packet["panel_data"])
+                self._data_dirty = True
 
     def get_active_overrides(self) -> Tuple[Dict[str, str], Dict[str, str]]:
         """Processes pending queue commands and returns a copy of (street_overrides, semaphore_overrides)."""
@@ -107,20 +112,62 @@ class MapAnimator:
             )
         return ({}, {})
 
+    def _is_window_hidden(self) -> bool:
+        page = getattr(self.widget, "page", None) if self.widget else None
+        if page is None:
+            return False
+        if getattr(page, "_carina_window_hidden", False) is True:
+            return True
+        win = getattr(page, "window", None)
+        if win is not None and (getattr(win, "minimized", False) is True or getattr(win, "visible", True) is False):
+            return True
+        return getattr(page, "window_minimized", False) is True or getattr(page, "window_visible", True) is False
+
     def _updater_loop(self):
         """The main loop that reads the latest telemetry and applies visual updates."""
         while self.is_running:
             try:
+                if self._is_window_hidden():
+                    self._was_hidden = True
+                    time.sleep(self.interval)
+                    continue
+                if self._was_hidden:
+                    self._was_hidden = False
+                    self._data_dirty = True
+
                 self.blink_toggle = not self.blink_toggle
 
-                with self.data_lock:
-                    congestion_to_render = self.latest_congestion_data.copy()
-                    panel_data_to_render = self.latest_panel_data.copy()
-
-                self.override_manager.process_queue()
+                has_pending_overrides = not self.override_manager.command_queue.empty()
+                if has_pending_overrides:
+                    self.override_manager.process_queue()
                 street_overrides = self.override_manager.get_street_overrides()
                 semaphore_overrides = self.override_manager.get_semaphore_overrides()
 
+                with self.data_lock:
+                    data_dirty = self._data_dirty
+                    self._data_dirty = False
+                    congestion_to_render = (
+                        self.latest_congestion_data.copy() if (data_dirty or has_pending_overrides) else None
+                    )
+                    panel_data_to_render = (
+                        self.latest_panel_data.copy() if (data_dirty or semaphore_overrides) else None
+                    )
+
+                alert_markers = (
+                    [
+                        m
+                        for m in list(self.vehicle_markers.values())
+                        if getattr(m, "siren_active", False) or getattr(m, "is_evp_triggered", False)
+                    ]
+                    if self.vehicle_markers
+                    else []
+                )
+
+                if not (data_dirty or has_pending_overrides or semaphore_overrides or alert_markers):
+                    time.sleep(self.interval)
+                    continue
+
+                rendered_any = False
                 current_time = time.time()
                 should_update_congestion = (current_time - self.last_update_time) >= self.throttle_interval
 
@@ -132,32 +179,32 @@ class MapAnimator:
                         street_overrides=street_overrides,
                     )
                     self.last_update_time = current_time
+                    rendered_any = True
 
-                if self.interactive_widgets and panel_data_to_render:
-                    for widget_id, widget in self.interactive_widgets.items():
+                if self.interactive_widgets and (panel_data_to_render or semaphore_overrides):
+                    pdata = panel_data_to_render or {}
+                    for widget in self.interactive_widgets.values():
                         if hasattr(widget, "apply_telemetry"):
-                            widget.apply_telemetry(panel_data_to_render, semaphore_overrides, self.blink_toggle)
+                            widget.apply_telemetry(pdata, semaphore_overrides, self.blink_toggle)
+                    rendered_any = True
 
-                if self.vehicle_markers:
-                    for marker in list(self.vehicle_markers.values()):
-                        is_alert = getattr(marker, "siren_active", False) or getattr(marker, "is_evp_triggered", False)
-                        if is_alert:
-                            marker.update_state(
-                                marker.latitude,
-                                marker.longitude,
-                                marker.speed_kmh,
-                                marker.heading_deg,
-                                marker.siren_active,
-                                self.blink_toggle,
-                                is_evp_triggered=getattr(marker, "is_evp_triggered", False),
-                            )
-                            try:
-                                if getattr(marker, "page", None):
-                                    marker.update()
-                            except Exception:
-                                pass
+                for marker in alert_markers:
+                    marker.update_state(
+                        marker.latitude,
+                        marker.longitude,
+                        marker.speed_kmh,
+                        marker.heading_deg,
+                        marker.siren_active,
+                        self.blink_toggle,
+                        is_evp_triggered=getattr(marker, "is_evp_triggered", False),
+                    )
+                    try:
+                        if getattr(marker, "page", None):
+                            marker.update()
+                    except Exception:
+                        pass
 
-                if self.get_panel_state_callback and self.on_panel_update_callback:
+                if self.get_panel_state_callback and self.on_panel_update_callback and panel_data_to_render is not None:
                     panel_state = self.get_panel_state_callback()
                     selected_id = panel_state.get("selected_id")
                     is_panel_visible = panel_state.get("is_panel_visible", False)
@@ -185,7 +232,7 @@ class MapAnimator:
                         mode = panel_state.get("mode", "UNKNOWN")
                         self.on_panel_update_callback(selected_id, semaphore_data, phase, mode)
 
-                if self.widget and getattr(self.widget, "page", None):
+                if rendered_any and self.widget and getattr(self.widget, "page", None):
                     try:
                         self.widget.update()
                     except AssertionError:

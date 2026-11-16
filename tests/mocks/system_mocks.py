@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: 2026 Noxfort Systems
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import os
 import sys
+import types
 from unittest.mock import MagicMock
 
 
@@ -68,3 +70,25 @@ def install_system_mocks():
     )()
 
     sys.modules["cv2"] = type("Mock", (object,), {})()
+
+
+def install_slm_test_guard() -> None:
+    """
+    Installs a lightweight `llama_cpp` stub when running tests unless `CARINA_ALLOW_REAL_SLM=1`.
+    Prevents accidental multi-GB GGUF model loading in-process while allowing unit tests
+    that patch `sys.modules['llama_cpp']` to inject their own mocks.
+    """
+    if os.environ.get("CARINA_ALLOW_REAL_SLM") == "1":
+        return
+    if "llama_cpp" in sys.modules:
+        return
+
+    class _DisabledTestLlama:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError(
+                "Real llama_cpp GGUF loading is disabled in pytest (set CARINA_ALLOW_REAL_SLM=1 to override)."
+            )
+
+    stub = types.ModuleType("llama_cpp")
+    stub.Llama = _DisabledTestLlama  # type: ignore[attr-defined]
+    sys.modules["llama_cpp"] = stub

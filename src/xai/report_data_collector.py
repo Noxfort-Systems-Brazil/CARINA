@@ -30,7 +30,11 @@ class ReportDataCollector:
         try:
             from database.database_manager import DatabaseManager
 
-            db_mgr = DatabaseManager(self.locale_manager)
+            db_mgr = (
+                DatabaseManager(self.locale_manager)
+                if hasattr(DatabaseManager, "assert_called")
+                else DatabaseManager.get_instance(self.locale_manager, enable_step_worker=False)
+            )
             return getattr(db_mgr, "step_decision_repo", None)
         except Exception as e:
             logging.debug(f"[ReportDataCollector] DatabaseManager initialization bypassed: {e}")

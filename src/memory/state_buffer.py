@@ -49,15 +49,14 @@ class StateReplayMemory:
         default_feat_dim = int(self.next_state_shape[-1]) if len(self.next_state_shape) > 0 else 1
 
         self.states = torch.zeros((self.capacity, *self.state_shape), device=self.device, dtype=torch.float32)
-        self.next_states = torch.zeros(
-            (self.capacity, *self.next_state_shape), device=self.device, dtype=torch.float32
-        )
+        self.next_states = torch.zeros((self.capacity, *self.next_state_shape), device=self.device, dtype=torch.float32)
         self.actions = torch.full((self.capacity,), -1, device=self.device, dtype=torch.long)
         self.valid_dims = torch.full((self.capacity,), default_feat_dim, device=self.device, dtype=torch.long)
         self.priorities = torch.zeros((self.capacity,), device=self.device, dtype=torch.float32)
 
         self.ptr = 0
         self.size = 0
+        self._max_priority = 1.0
 
     def push(
         self,
@@ -123,19 +122,92 @@ class StateReplayMemory:
         self.valid_dims[self.ptr] = max(1, inferred_valid)
 
         if priority is not None:
-            self.priorities[self.ptr] = float(priority)
+            prio_val = float(priority)
+            self.priorities[self.ptr] = prio_val
+            if prio_val > self._max_priority:
+                self._max_priority = prio_val
         else:
-            if self.size > 0:
-                p_max = self.priorities[: self.size].max()
-                if isinstance(p_max, tuple):
-                    p_max = p_max[0]
-                max_prio = p_max.item() if hasattr(p_max, "item") else float(p_max)
-            else:
-                max_prio = 1.0
-            self.priorities[self.ptr] = max_prio
+            self.priorities[self.ptr] = self._max_priority
 
         self.ptr = (self.ptr + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
+
+    def push_batch(
+        self,
+        states: torch.Tensor,
+        next_states: torch.Tensor,
+        actions: Optional[torch.Tensor] = None,
+        valid_dims: Optional[torch.Tensor] = None,
+        priority: Optional[float] = None,
+    ) -> None:
+        """
+        Vectorized circular batch insertion avoiding per-agent push loops and `.max().item()` syncs.
+        Assumes `states` has shape `[B, *state_shape]` and `next_states` has shape `[B, *next_state_shape]`.
+        """
+        n_items = int(states.size(0)) if hasattr(states, "size") else len(states)
+        if n_items <= 0 or self.capacity <= 0:
+            return
+
+        states_t = (
+            states.to(device=self.device, dtype=torch.float32)
+            if isinstance(states, torch.Tensor)
+            else torch.as_tensor(states, device=self.device, dtype=torch.float32)
+        )
+        next_t = (
+            next_states.to(device=self.device, dtype=torch.float32)
+            if isinstance(next_states, torch.Tensor)
+            else torch.as_tensor(next_states, device=self.device, dtype=torch.float32)
+        )
+
+        if actions is not None:
+            actions_t = (
+                actions.to(device=self.device, dtype=torch.long)
+                if isinstance(actions, torch.Tensor)
+                else torch.as_tensor(actions, device=self.device, dtype=torch.long)
+            )
+        else:
+            actions_t = torch.full((n_items,), -1, device=self.device, dtype=torch.long)
+
+        default_feat_dim = int(self.next_state_shape[-1]) if len(self.next_state_shape) > 0 else 1
+        if valid_dims is not None:
+            vdims_t = (
+                valid_dims.to(device=self.device, dtype=torch.long)
+                if isinstance(valid_dims, torch.Tensor)
+                else torch.as_tensor(valid_dims, device=self.device, dtype=torch.long)
+            )
+            vdims_t = torch.clamp(vdims_t, min=1)
+        else:
+            vdims_t = torch.full((n_items,), default_feat_dim, device=self.device, dtype=torch.long)
+
+        if n_items >= self.capacity:
+            states_t = states_t[-self.capacity :]
+            next_t = next_t[-self.capacity :]
+            actions_t = actions_t[-self.capacity :]
+            vdims_t = vdims_t[-self.capacity :]
+            n_items = self.capacity
+
+        prio_val = float(priority) if priority is not None else self._max_priority
+        if priority is not None and prio_val > self._max_priority:
+            self._max_priority = prio_val
+
+        first = min(n_items, self.capacity - self.ptr)
+        end_first = self.ptr + first
+        self.states[self.ptr : end_first] = states_t[:first]
+        self.next_states[self.ptr : end_first] = next_t[:first]
+        self.actions[self.ptr : end_first] = actions_t[:first]
+        self.valid_dims[self.ptr : end_first] = vdims_t[:first]
+        self.priorities[self.ptr : end_first] = prio_val
+
+        rem = n_items - first
+        if rem > 0:
+            self.states[:rem] = states_t[first:]
+            self.next_states[:rem] = next_t[first:]
+            self.actions[:rem] = actions_t[first:]
+            self.valid_dims[:rem] = vdims_t[first:]
+            self.priorities[:rem] = prio_val
+
+        self.ptr = (self.ptr + n_items) % self.capacity
+        self.size = min(self.size + n_items, self.capacity)
 
     def sample(
         self, batch_size: int, prioritized: bool = True, include_metadata: bool = False
@@ -192,12 +264,18 @@ class StateReplayMemory:
     def update_priorities(self, indices: torch.Tensor, errors: torch.Tensor) -> None:
         """Updates PER priorities based on per-sample prediction error."""
         new_priorities = torch.abs(errors) + self.eps
-        self.priorities[indices] = new_priorities.detach().float().squeeze()
+        p_vals = new_priorities.detach().float().squeeze()
+        self.priorities[indices] = p_vals
+        if isinstance(p_vals, torch.Tensor) and type(p_vals).__name__ != "DummyTensor" and p_vals.numel() > 0:
+            batch_max = float(p_vals.max().item())
+            if batch_max > self._max_priority:
+                self._max_priority = batch_max
 
     def clear(self) -> None:
         """Clears all stored transitions in the buffer."""
         self.ptr = 0
         self.size = 0
+        self._max_priority = 1.0
         self.states.zero_()
         self.next_states.zero_()
         self.actions.fill_(-1)

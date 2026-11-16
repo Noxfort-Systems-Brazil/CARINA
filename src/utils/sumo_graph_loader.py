@@ -9,13 +9,15 @@ Satisfies Single Responsibility Principle (SRP) by decoupling topology parsing
 from neural agent inference.
 """
 
-from collections import deque
 import logging
 import os
+from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import sumolib
 import torch
+
+from utils.sumo_net_cache import read_sumo_net_cached
 
 
 class SumoGraphTopologyLoader:
@@ -69,7 +71,7 @@ class SumoGraphTopologyLoader:
         )
 
         try:
-            net = sumolib.net.readNet(net_file)
+            net = read_sumo_net_cached(net_file, reader_fn=sumolib.net.readNet, with_programs=False, with_internal=None)
             traffic_lights = net.getTrafficLights()
 
             tls_id_to_idx = {tls.getID(): i for i, tls in enumerate(traffic_lights)}
@@ -130,9 +132,7 @@ class SumoGraphTopologyLoader:
             raise e
 
     @staticmethod
-    def find_downstream_tls(
-        start_node: Any, tls_ids_set: Set[str], net: Any
-    ) -> Dict[str, Tuple[float, float, float]]:
+    def find_downstream_tls(start_node: Any, tls_ids_set: Set[str], net: Any) -> Dict[str, Tuple[float, float, float]]:
         """
         Traverses the network starting from start_node to find reachable Traffic Lights.
         Returns a dictionary mapping neighbor_id -> (distance_meters, max_speed_mps, travel_time_seconds).

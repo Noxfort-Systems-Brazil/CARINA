@@ -13,14 +13,17 @@ This document details CARINA's dual-stage Neuro-Symbolic Safety Firewall ([`Guar
 
 ## 1. Dual-Stage Safety Firewall Overview
 
-CARINA completely decouples physical public safety from deep reinforcement learning performance. Neural policies can suggest actions, but all actions must be formally cleared through a safety firewall before dispatching to physical hardware:
+CARINA completely decouples physical public safety from deep reinforcement learning performance. Neural policies can suggest actions, but all actions pass through physical logit masking and multi-stage safety vetting before dispatching to physical hardware:
 
 ```text
-Proposed Phase Action ──> [0. EVP Priority Intercept] ──> [1. Symbolic Rules] ──> [2. Neural Veto] ──> Actuation
-                                 │                               │                        │
-                                 ├── Emergency Corridor (HOLD)   ├── Min Green / Yellow   └── Spillback (Q > 0.8)
-                                 └── Mandatory Clearance Check   └── Conflict Veto        └── Emergency Clearing
+State + PAE Latent ──> [PhysicalActionMasker] ──> [ActionVetoResolver] ──> Actuation
+                        (Logit Clearance/MinG)      ├── 0. EVP Priority Intercept (SR-00)
+                                                    ├── 1. Symbolic Rules (SR-01..SR-06)
+                                                    └── 2. QR-D3QN + Noisy-OR Risk Veto
 ```
+
+- [`PhysicalActionMasker`](../src/engine/physical_action_masker.py): Constrains `ActorCriticNet` FP32 logits prior to sampling, forbidding premature switches during yellow/all-red clearance or below minimum green and forcing transitions above maximum green.
+- [`ActionVetoResolver`](../src/engine/action_veto_resolver.py): Orchestrates EVP preemption overrides (`SR-00`) and `GuardianAgent` spillback vetoes (`ACTION_KEEP_STAGE`) in the step pipeline.
 
 ---
 
@@ -40,12 +43,14 @@ The [`SafetyAuditor`](../src/core/safety_auditor.py) and [`GuardianSymbolicAudit
 
 ---
 
-## 3. Neural Spillback Veto (`GuardianAgent`)
+## 3. Calibrated Neural Spillback Veto (`GuardianAgent` & `src/safety/`)
 
-The **Guardian Agent** ([`src/agents/guardian_agent.py`](../src/agents/guardian_agent.py)) runs a Dueling Deep Q-Network over TCN temporal representations to estimate **Spillback Risk** ($Q_{risk} \in [0.0, 1.0]$):
+The **Guardian Agent** ([`src/agents/guardian_agent.py`](../src/agents/guardian_agent.py)) integrates a **Distributional Quantile-Regression Dueling Double DQN (`D3QN_TCN`, `num_quantiles = 32`)** with capacity-aware kinematic physics and non-compensatory risk fusion:
 
-- **Threshold ($\tau_{risk}$):** $0.80$ (configurable in `config/settings.ini`).
-- **Emergency Override:** If $Q(s, a_{proposed}) > 0.80$, the tactical agent's proposal is vetoed. The Guardian injects an emergency clearance phase to discharge the congested arterial link before upstream gridlock occurs.
+- **Tail-Risk Quantile Estimation ($\text{CVaR}_{\alpha}$):** `GuardianNeuralPredictor` evaluates worst-case lower quantiles ($\alpha = 0.20$) rather than mean Q-values alone.
+- **Physical Kinematic & PAE Estimation ([`GuardianPhysicsEstimator`](../src/safety/guardian_physics_estimator.py)):** Slices strictly incoming-edge sensor triplets (`edge_feature_dim`), normalizes queues against physical road vehicle capacities (`edge_capacities`), projects saturation growth over the intergreen clearance horizon $H = \text{yellow} + \text{all\_red}$, and queries counterfactual PAE forecasts (`decode_with_uncertainty` for `ADVANCE` vs `KEEP`).
+- **Scale-Invariant Calibration & Noisy-OR Fusion ([`GuardianRiskCalibrator`](../src/safety/guardian_risk_calibrator.py)):** Calibrates quantile spreads via regularized logistic regression and $F_2$-score threshold tuning on `CHILD` graduation, combining physical, PAE, and QR-D3QN risks with non-compensatory Noisy-OR ($1 - \prod_i (1 - c_i r_i)$) and a hard physical/PAE spillback floor.
+- **Safe `CHILD`-Only Shadow Training & Freeze ([`GuardianShadowTrainer`](../src/safety/guardian_shadow_trainer.py) & [`GuardianCheckpointService`](../src/safety/guardian_checkpoint_service.py)):** Trains QR-D3QN off-policy exclusively during `Maturity.CHILD` while physical signals follow fixed-time plans; upon promotion to `TEEN`/`ADULT`, runs `finalize_child_calibration()` and `freeze_for_deployment()` (releasing `target_net`, `optimizer`, and PER buffers) and atomically persists `guardian_{tl_id}.pth`.
 
 ---
 
@@ -57,9 +62,9 @@ The `Watchdog` microservice ([`src/watchdog/watchdog_process.py`](../src/watchdo
 - **Heartbeat Timeout:** 5.0 seconds (initial grace period: 10 seconds).
 - **Fail-Safe Mechanism:** If the `AI_Process` or `CentralController` crashes, deadlocks, or misses consecutive heartbeats:
   1. The Watchdog notifies the desktop UI tray.
-  2. It immediately signals the [`FailsafeManager`](../src/controller/failsafe_manager.py) to drop phase holds on physical controllers.
+  2. It signals [`FailsafeManager`](../src/controller/failsafe_manager.py) -> `HardwareGatewayCoordinator.on_failsafe_triggered()`, invoking `EmergencyReleaseControlAll()` on the Go gateway (releasing holds while keeping SNMP drivers/trap listener ready for `resume_control` on recovery).
   3. Physical traffic controllers autonomously revert to local fixed-time plans or yellow flash.
-  4. Triggers the **F.E.N.I.X. Process Supervisor** (`on_fenix_trigger`) to initiate autonomous recovery and state reconciliation.
+  4. Triggers the **F.E.N.I.X. Process Supervisor** (`on_fenix_trigger` via `fenix` queue and [`fenix_supervision_loop.py`](../src/launcher/fenix_supervision_loop.py)) to initiate autonomous recovery and closed-loop state reconciliation.
   5. **Preemption Dwell Watchdog:** In parallel, [`EVPPreemptionEngine`](../src/evp/evp_preemption_engine.py) enforces a strict $45.0\text{ s}$ maximum preemption dwell timeout, releasing arterial holds if vehicle checkout is delayed or missed.
 
 ---
@@ -113,11 +118,11 @@ Located in [`src/fenix/recovery_policy.py`](../src/fenix/recovery_policy.py):
 - Computes exponential backoff between restart attempts ($2.0\text{ s} \to 4.0\text{ s} \to 8.0\text{ s}$).
 - Prevents infinite restart loops: if crash rate exceeds $M$ failures (default: 5), transitions to `HALTED`.
 
-### 5.3 Clean Boundary Handover (`StateReconciler`)
-Located in [`src/fenix/state_reconciler.py`](../src/fenix/state_reconciler.py):
+### 5.3 Clean Boundary Handover (`StateReconciler` & `FenixStageDispatcher`)
+Located in [`src/fenix/state_reconciler.py`](../src/fenix/state_reconciler.py) and [`src/controller/fenix_stage_dispatcher.py`](../src/controller/fenix_stage_dispatcher.py):
 - **Mid-Stage Collision Hazard:** When the AI process resurrects, injecting commands mid-stage into a physical intersection could violate clearance intervals or cause abrupt signal switches.
-- **Zero-Risk Handshake:** The reconciler interrogates current physical controller stages (`reconcile_with_field`).
-- **Phase Transition Unlock:** Neural control is only unlocked (`on_stage_transition_detected`) when the physical controller naturally transitions to its next local stage, guaranteeing smooth, collision-free resumption.
+- **Closed-Loop Field Handshake:** `FenixStageDispatcher` queries fresh controller snapshots from the Go gateway, decodes active field stages via [`HardwareTelemetryDecoder`](../src/drivers/hardware_telemetry_decoder.py), and reconciles `StateReconciler` (`reconcile_with_field` via `fenix_post_resurrection`).
+- **Phase Transition Unlock:** Neural control is unlocked (`on_stage_transition_detected`) when the physical controller transitions to a safe stage boundary, emitting `fenix_handover_complete` -> `HANDOVER_COMPLETE` so `FenixSupervisor` confirms resurrection and resumes heartbeats (`resume_control`).
 
 ---
 

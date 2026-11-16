@@ -27,6 +27,7 @@ class StepTelemetryPublisher:
         tls_lanes_state: Dict[str, Any],
         maturity_info: Dict[str, Any],
         mfd_data: Optional[Dict[str, Any]] = None,
+        hardware_status: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Builds the rich HFT telemetry payload and dispatches it over the IPC channel.
@@ -45,6 +46,8 @@ class StepTelemetryPublisher:
             "mfd": mfd_data,
             "sim_time": sim_time,
         }
+        if hardware_status:
+            rich_payload["hardware_status"] = hardware_status
 
         try:
             self.pipe_conn.send(("ai_telemetry_sync", rich_payload))

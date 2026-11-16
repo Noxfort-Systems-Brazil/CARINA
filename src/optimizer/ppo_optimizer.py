@@ -4,6 +4,7 @@
 
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -47,6 +48,7 @@ class PPOOptimizer:
         memory_batch: Sequence[Any],
         evaluate_fn: Callable,
         last_next_value: Optional[float] = None,
+        precomputed_latents: Optional[torch.Tensor] = None,
     ) -> float:
         """
         Executes PPO optimization epochs over `memory_batch`.
@@ -64,6 +66,14 @@ class PPOOptimizer:
         if len(rewards) == 0:
             return 0.0
 
+        is_real_torch = isinstance(getattr(nn, "Linear", None), type) and isinstance(old_state_values, torch.Tensor)
+
+        # Extract CPU state values before migrating tensors so GAE runs in pure host NumPy without GPU micro-kernels
+        if is_real_torch:
+            vals_cpu_np = old_state_values.detach().float().cpu().numpy().reshape(-1)
+        else:
+            vals_cpu_np = None
+
         if hasattr(old_states, "to"):
             old_states = old_states.to(self.device)
         if hasattr(old_actions, "to"):
@@ -73,37 +83,47 @@ class PPOOptimizer:
         if hasattr(old_state_values, "to"):
             old_state_values = old_state_values.to(self.device)
 
-        is_real_torch = isinstance(getattr(nn, "Linear", None), type) and isinstance(old_state_values, torch.Tensor)
-
         # 1. Generalized Advantage Estimation (GAE) with exact terminal/bootstrap value
         with torch.no_grad():
-            if last_next_value is not None:
-                bootstrap_v: Any = torch.tensor(float(last_next_value), dtype=torch.float32, device=self.device)
-            else:
-                bootstrap_v = old_state_values[-1]
-
-            advantages = torch.zeros_like(torch.tensor(rewards, dtype=torch.float32), dtype=torch.float32).to(
-                self.device
-            )
-            gae: Any = 0.0
             n_steps = len(rewards)
-            for t in reversed(range(n_steps)):
-                non_terminal = 1.0 - float(dones[t])
-                next_value = old_state_values[t + 1] if t < n_steps - 1 else bootstrap_v
-                delta = rewards[t] + self.gamma * next_value * non_terminal - old_state_values[t]
-                gae = delta + self.gamma * self.gae_lambda * non_terminal * gae
-                advantages[t] = gae
+            if is_real_torch and vals_cpu_np is not None:
+                bootstrap_val = float(last_next_value) if last_next_value is not None else float(vals_cpu_np[-1])
+                rewards_np = np.asarray(rewards, dtype=np.float32)
+                non_term_np = 1.0 - np.asarray(dones, dtype=np.float32)
+                adv_np = np.zeros(n_steps, dtype=np.float32)
+                gae_f = 0.0
+                gamma = self.gamma
+                lam = self.gae_lambda
+                for t in range(n_steps - 1, -1, -1):
+                    nt = float(non_term_np[t])
+                    next_v = float(vals_cpu_np[t + 1]) if t < n_steps - 1 else bootstrap_val
+                    delta_f = float(rewards_np[t]) + gamma * next_v * nt - float(vals_cpu_np[t])
+                    gae_f = delta_f + gamma * lam * nt * gae_f
+                    adv_np[t] = gae_f
+                advantages = torch.from_numpy(adv_np).to(self.device)
+            else:
+                if last_next_value is not None:
+                    bootstrap_v: Any = torch.tensor(float(last_next_value), dtype=torch.float32, device=self.device)
+                else:
+                    bootstrap_v = old_state_values[-1]
+
+                advantages = torch.zeros_like(torch.tensor(rewards, dtype=torch.float32), dtype=torch.float32).to(
+                    self.device
+                )
+                gae: Any = 0.0
+                for t in reversed(range(n_steps)):
+                    non_terminal = 1.0 - float(dones[t])
+                    next_value = old_state_values[t + 1] if t < n_steps - 1 else bootstrap_v
+                    delta = rewards[t] + self.gamma * next_value * non_terminal - old_state_values[t]
+                    gae = delta + self.gamma * self.gae_lambda * non_terminal * gae
+                    advantages[t] = gae
 
             rewards_to_go = advantages + old_state_values
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         total_loss_val = 0.0
         n_samples = len(rewards)
-        use_minibatches = (
-            is_real_torch
-            and isinstance(old_states, torch.Tensor)
-            and n_samples > self.minibatch_size
-        )
+        use_minibatches = is_real_torch and isinstance(old_states, torch.Tensor) and n_samples > self.minibatch_size
 
         if hasattr(policy_net, "train"):
             policy_net.train(True)
@@ -115,7 +135,9 @@ class PPOOptimizer:
 
                 if use_minibatches:
                     perm = torch.randperm(n_samples, device=self.device)
-                    slices = [perm[start : start + self.minibatch_size] for start in range(0, n_samples, self.minibatch_size)]
+                    slices = [
+                        perm[start : start + self.minibatch_size] for start in range(0, n_samples, self.minibatch_size)
+                    ]
                 else:
                     slices = [None]
 
@@ -137,10 +159,21 @@ class PPOOptimizer:
                             mb_adv = (mb_adv - mb_adv.mean()) / (mb_adv.std() + 1e-8)
                         mb_returns = rewards_to_go[mb_idx]
 
+                    mb_latents = (
+                        precomputed_latents[mb_idx]
+                        if (precomputed_latents is not None and mb_idx is not None)
+                        else precomputed_latents
+                    )
+
                     optimizer.zero_grad()
 
                     with torch.amp.autocast(device_type=self.device.type, enabled=self.scaler.is_enabled()):
-                        new_log_probs, state_values, dist_entropy = evaluate_fn(mb_states, mb_actions)
+                        if mb_latents is not None:
+                            new_log_probs, state_values, dist_entropy = evaluate_fn(
+                                mb_states, mb_actions, precomputed_pae_latent=mb_latents
+                            )
+                        else:
+                            new_log_probs, state_values, dist_entropy = evaluate_fn(mb_states, mb_actions)
 
                         if is_real_torch and isinstance(new_log_probs, torch.Tensor):
                             dev = new_log_probs.device

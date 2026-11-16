@@ -46,26 +46,69 @@ class NetworkEventHandler:
             )
             self.page.snack_bar.open = True
             self.page.update()
+        elif msg_type == "hardware_status_update":
+            payload = data.get("payload", {})
+            if isinstance(payload, dict):
+                try:
+                    from src.controller.connection_manager import HardwareConnectionManager
+
+                    HardwareConnectionManager.get_instance(
+                        locale_manager=self.locale_manager
+                    ).update_remote_hardware_status(payload)
+                except Exception:
+                    pass
+                hw_handler = getattr(self.settings_view, "hardware_handler", None)
+                if hw_handler is not None and getattr(hw_handler, "page", None) is not None:
+                    try:
+                        hw_handler.refresh_ui()
+                    except Exception:
+                        pass
+        elif msg_type == "hardware_trap":
+            payload = data.get("payload", {})
+            if isinstance(payload, dict):
+                self.handle_hardware_trap(payload)
+        elif msg_type == "evp_telemetry":
+            payload = data.get("payload", {})
+            if isinstance(payload, dict):
+                try:
+                    from src.evp.evp_notifier import EVPNotifier
+
+                    EVPNotifier.get_instance().notify(payload)
+                except Exception:
+                    pass
+        elif msg_type == "tailscale_response":
+            payload = data.get("payload", {})
+            rg_card = getattr(self.settings_view, "remote_gateway_card", None)
+            if rg_card is not None and hasattr(rg_card, "handle_remote_response"):
+                try:
+                    rg_card.handle_remote_response(payload if isinstance(payload, dict) else {})
+                except Exception:
+                    pass
         else:
+            if isinstance(data.get("hardware_status"), dict):
+                try:
+                    from src.controller.connection_manager import HardwareConnectionManager
+
+                    HardwareConnectionManager.get_instance(
+                        locale_manager=self.locale_manager
+                    ).update_remote_hardware_status(data["hardware_status"])
+                except Exception:
+                    pass
             self.dashboard_view.update_live_data(data)
             # Optimization Note: Broadcast to CCO is already performed directly
             # by DashboardOrchestrator at the source, eliminating duplication and UI blocking in Flet.
 
-
     def _broadcast_to_cco(self, data: dict):
         """Dispatches live traffic and TLS updates to the CCO web videowall."""
         try:
-            import json
-            import urllib.request
+            from src.sds.cco_broadcast_client import CCOBroadcastClient
 
-            cco_body = json.dumps({"type": "congestion_update", **data}).encode("utf-8")
-            req = urllib.request.Request(
-                "http://127.0.0.1:2201/cco/broadcast",
-                data=cco_body,
-                headers={"Content-Type": "application/json"},
-            )
-            urllib.request.urlopen(req, timeout=0.15)
-            return
+            client = getattr(self, "_cco_broadcast_client", None)
+            if client is None:
+                client = CCOBroadcastClient(timeout=0.15)
+                self._cco_broadcast_client = client
+            if client.broadcast(data):
+                return
         except Exception:
             pass
 

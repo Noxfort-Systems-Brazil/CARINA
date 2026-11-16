@@ -11,33 +11,33 @@ aliases: [神经科学研究, 数学理论推导, PPO-TCN, GOMES]
 
 ---
 
-## 1. PPO-TCN：基于时序卷积网络 (TCN) 替代传统循环网络 (LSTM)
+## 1. PPO-TCN：统一因果时序卷积网络与向量化推理
 
-传统循环神经网络（如 LSTM/GRU）在长回合的时间反向传播（BPTT）过程中极易遭遇梯度消失与历史时序上下文遗忘问题。CARINA 在 PPO 战术智能体中引入了 **时序卷积网络（Temporal Convolutional Network, TCN）** 作为主干特征提取器。
+传统循环神经网络（如 LSTM/GRU）在长回合的时间反向传播（BPTT）过程中极易遭遇梯度消失与序贯计算瓶颈。CARINA 采用跨战术、安全与战略智能体共享的**统一因果时序卷积网络（TCN）主干**（[`src/models/tcn_backbone.py`](../../src/models/tcn_backbone.py)）彻底替代 LSTM：
 
 ```text
-输入历史张量: X ∈ ℝ^(B × C × T)
-  B: 训练批量大小 (Batch size)
-  C: 每个时间步的特征维度 (时间占有率、平均车速、排队长度、信号灯相位)
-  T: 时序历史上下文滑动窗口 (例如: 10Hz 采样率下 8 秒时长 = 80 帧)
+输入历史张量: X ∈ ℝ^(B × T × C) -> 转置为 (B × C × T)
+  B: 训练批量大小（或在 torch.vmap 下的路网车队规模）
+  C: 每个时间步的特征维度（时间占有率、平均车速、排队长度、信号灯相位、ped_calls + PAE 潜向量）
+  T: 时序历史上下文滑动窗口（默认 sequence_length = 12 帧）
 ```
 
-### 1.1 空洞因果卷积 (Dilated Causal Convolutions)
+### 1.1 空洞因果卷积、`GroupNorm` 与注意力池化
 
-为了严格杜绝未来信息的时序泄漏（即时间步 $t$ 处的特征推断严格仅依赖于 $\le t$ 的历史观测），TCN 采用了基于一维空洞因果卷积的结构：
+为了严格杜绝未来信息的时序泄漏（即时间步 $t$ 处的特征推断严格仅依赖于 $\le t$ 的历史观测），同时保持与 `torch.vmap` 及 `torch.compile` 的完全兼容，`TemporalBlock` 以 `TemporalConv1d`、因果通道级 `GroupNorm(1, C)`、`SiLU`、正交初始化及 [`TemporalAttentionPool`](../../src/models/tcn_backbone.py) 替代了已弃用的 `weight_norm`：
 
 $$y(t) = (x \star_d f)(t) = \sum_{i=0}^{k-1} f(i) \cdot x(t - d \cdot i)$$
 
 其中各项定义如下：
 - $k$：一维卷积核尺寸 ($k = 3$)
-- $d$：空洞扩张因子 ($d = 2^l$，在网络层索引 $l \in \{0, 1, 2, 3\}$ 处呈指数级扩张)
+- $d$：空洞扩张因子 ($d = 2^l$，在 `num_levels = 3` 的层级索引 $l \in \{0, 1, 2\}$ 处呈指数级扩张)
 - 感受野有效跨度：$RF = 1 + \sum_{l=0}^{L-1} (k - 1) \cdot d_l$
 
-TCN 最终输出高密度的时序抽象特征张量 $H_{tcn}$，并将其并行输入至 PPO 的 Actor（策略网络）与 Critic（价值网络）输出头。
+[`ActorCriticNet`](../../src/models/actor_critic_tcn.py) 在 `TemporalAttentionPool` 之上构建解耦的 Actor 与 Critic 主干，输出原始 FP32 对数几率（`n_actions = 2`：`0 = ADVANCE`，`1 = KEEP`），并直接经由 [`PhysicalActionMasker`](../../src/engine/physical_action_masker.py)（`apply_action_mask`）屏蔽非法动作以支持 AMP 安全的 `Categorical(logits=...)` 采样。面向同构交叉口，[`FleetBatchInferencer`](../../src/engine/fleet_batch_inferencer.py) 利用 `torch.func.stack_module_state` + `torch.vmap` 执行批量化策略推理。
 
-### 1.2 PPO 截断代理目标函数与优势估计
+### 1.2 PPO 截断代理目标函数与主机端 NumPy GAE
 
-PPO 策略网络利用融合了广义优势估计（GAE）的截断代理目标函数进行梯度反向传播优化：
+PPO 策略网络利用由 [`PPOOptimizer`](../../src/optimizer/ppo_optimizer.py) 在主机端 NumPy 中计算的广义优势估计（GAE）优化截断代理目标函数，并在 `k_epochs` 个小批次（minibatch）间复用 `precomputed_latents`：
 
 $$L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min \left( r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t \right) \right]$$
 
@@ -48,44 +48,44 @@ $$L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min \left( r_t(\theta)\hat{A}_t,
 
 ---
 
-## 2. 预测自编码器 (PAE) 与潜在特征流形 $Z$
+## 2. 通用动作条件 iTransformer 世界模型 (PAE)
 
-**预测自编码器 (Predictive Autoencoder, PAE)** 旨在通过时空连续历史趋势，前瞻性地预测未来短周期内的交通排队溢流动态。
+**预测自编码器 (Predictive Autoencoder, PAE)**（[`src/models/pae.py`](../../src/models/pae.py)）是一个共享的**动作条件 iTransformer 世界模型**，用于从历史状态序列推演未来车道交通动力学演化及认知不确定性：
 
 ```text
-        ┌──────────────┐          ┌───────────────────────┐          ┌──────────────┐
-X_hist  │  PAE 编码器  │ ───────> │    潜在瓶颈流形 Z     │ ───────> │  PAE 解码器  │ ───> X_pred
-(t-8s..t)└──────────────┘          │  Z ∈ ℝ^16             │          └──────────────┘      (t+1s..t+30s)
-                                   └───────────────────────┘
+X_hist [B, T, D_in] ──> 逐变量 RevIN + [mean, std] 统计量嵌入
+                                 │
+                                 ▼ (跨 D_in 变量的倒置注意力 + key_padding_mask)
+                         iTransformer 编码器 + 交叉注意力潜查询 (Z ∈ ℝ^latent_dim)
+                                 │
+                                 ├──> 拼接注入 LocalAgent 与 GuardianAgent 状态向量
+                                 └──> + 动作嵌入 (0=ADVANCE, 1=KEEP) ──> (mean, log_var)
 ```
 
-### 2.1 PAE 联合正则化损失函数
-
-PAE 在离线预训练及在线微调中采用联合均方误差（MSE）与 Kullback-Leibler（KL）散度正则化约束：
-
-$$\mathcal{L}_{PAE} = \underbrace{\| X_{pred} - X_{future} \|_2^2}_{\text{未来时空预测重构损失}} + \beta \cdot D_{KL}\Big( q_\phi(Z|X) \,\parallel\, \mathcal{N}(0, I) \Big)$$
-
-生成的 16 维潜在物理特征向量 $Z \in \mathbb{R}^{16}$ 紧凑刻画了道路排队车流的动量演化，并与基础环境观测拼接注入 PPO 输入层。
+### 2.1 核心架构机制
+- **逐变量 RevIN 与键填充掩码 (`pae_preprocessing.py`)：** 通过可逆实例归一化（Reversible Instance Normalization）将时序动态与静态路段饱和尺度解耦，并在交叉注意力池化期间对零填充维度（`valid_dims`）施加掩码，确保驶入道路数量较少的路口不会污染潜向量表征。
+- **反事实动作条件化与异方差不确定性：** `decode_with_uncertainty(z, action)` 针对 `0 = ADVANCE` 与 `1 = KEEP` 分别预测期望下一时刻状态 $\hat{\mu}(z, a)$ 及其对数方差 $\log \hat{\sigma}^2(z, a)$。
+- **单遍车队批量编码 (`BatchedPAEEncoder`)：** 在每个仿真步对所有活动路口执行一次性统一编码，并支持通过 `torch.compile`（`torch_compile_helper.py`）编译加速子模块。
 
 ---
 
-## 3. Dueling DQN-TCN 守卫安全智能体
+## 3. 分布式 QR-D3QN 守卫安全智能体与 Noisy-OR 校准
 
-**Guardian 守卫智能体** 通过在 TCN 时序特征上运行 Dueling Deep Q-Network，持续评估每个进口道车流的**溢流回堵风险指数**：
+**Guardian 守卫智能体**（[`src/agents/guardian_agent.py`](../../src/agents/guardian_agent.py)，[`src/models/d3qn_tcn.py`](../../src/models/d3qn_tcn.py)）将**分布式分位数回归对决双 Q 网络 (`QR-D3QN`, `num_quantiles = 32`)** 与容量感知运动学推演及校准后的非补偿性传感器融合机制（`src/safety/`）深度结合：
 
-$$Q(s, a; \theta, \alpha, \beta) = V(s; \theta, \beta) + \left( A(s, a; \theta, \alpha) - \frac{1}{|\mathcal{A}|} \sum_{a' \in \mathcal{A}} A(s, a'; \theta, \alpha) \right)$$
+$$Z_\tau(s, a) = V_\tau(s) + \left( A_\tau(s, a) - \frac{1}{|\mathcal{A}|} \sum_{a' \in \mathcal{A}} A_\tau(s, a') \right), \quad \tau_k = \frac{k + 0.5}{N}, \; N=32$$
 
-其中：
-- $V(s)$：状态 $s$ 的标量基准状态价值。
-- $A(s, a)$：采取特定信号相位动作 $a$ 的相对优势值。
-
-若 $\max_a Q(s, a_{spillback}) > \tau_{risk}$（其中风险阈值 $\tau_{risk} = 0.8$），Guardian 智能体将强行覆盖战术智能体的提议动作，直接注入紧急清空相位。
+- **尾部风险 ($\text{CVaR}_{\alpha}$)：** 基于 `forward_quantiles` 评估下尾条件风险价值（$\alpha = 0.20$），而非仅依据均值期望做判断。
+- **容量归一化运动学推演 (`GuardianPhysicsEstimator`)：** 严格截取驶入路段三元组（`edge_feature_dim`），依据物理道路车辆容量（`edge_capacities`）对排队长度进行归一化，推演绿间隔清空视界 $H = \text{yellow} + \text{all\_red}$ 内的饱和度演化，并计算由动态 PAE 可靠度（$\exp(-\text{MSE}/0.10)\exp(-\overline{\log \sigma^2}/2)$）加权的反事实 PAE UCB 溢流风险。
+- **尺度不变校准与 Noisy-OR 融合 (`GuardianRiskCalibrator`)：** 在 `CHILD` 毕业时拟合正则化逻辑回归校准参数与 $F_2$-score 决策阈值，通过非补偿性 Noisy-OR 融合运动学（$r_{\text{kin}}$）、PAE（$r_{\text{pae}}$）与神经网络（$r_{\text{d3qn}}$）三路检测器：
+  $$P_{\text{spillback}} = 1 - (1 - r_{\text{kin}})(1 - c_{\text{pae}} r_{\text{pae}})(1 - c_{\text{d3qn}} r_{\text{d3qn}})$$
+- **`CHILD` 期影子训练与部署冻结 (`GuardianShadowTrainer`)：** 在 `Maturity.CHILD` 阶段由固定配时计划控制现场硬件的同时开展安全的离线策略学习，晋升毕业时执行 `freeze_for_deployment()`（释放 `target_net`、`optimizer` 与 PER 缓冲区）并持久化保存 `guardian_{tl_id}.pth`。
 
 ---
 
-## 4. 宏观战略协调层：图注意力网络 (ST-GATv2 Lite)
+## 4. 宏观战略协调层：支持在线预测与 CTDE 的 ST-GATv2 Lite (`src/models/st_gatv2_lite.py`)
 
-为了在主干道相邻路口之间自主协调形成大范围“动态绿波带”，CARINA 将整座城市的道路拓扑建模为有向图 $\mathcal{G} = (\mathcal{V}, \mathcal{E})$。
+为了在主干道相邻路口之间自主协调形成大范围“动态绿波带”，CARINA 将整座城市的道路拓扑建模为有向图 $\mathcal{G} = (\mathcal{V}, \mathcal{E})$，采用 `TemporalConvNetLite` + `TemporalAttentionPool` 后接两层残差 `GATv2Conv` 层，并配备辅助单步前向预测头（`pred_head`）和协同 CTDE 评价头（`global_critic_head`）。[`StrategicCoordinator`](../../src/engine/strategic_coordinator.py) 通过无副作用的 [`StateExtractor.peek_state()`](../../src/engine/state_extractor.py) 采集节点序列。
 
 ### 4.1 GATv2 动态注意力系数计算
 
@@ -108,13 +108,13 @@ $$\mathcal{H}(\pi_\theta(\cdot | s_t)) = -\sum_{a \in \mathcal{A}} \pi_\theta(a 
 
 ### 5.1 晋升评估准则与动态熵衰减边界
 
-为彻底杜绝盲目随机探索策略过早获得硬件控制权，系统设定了动作空间理论最大熵上限 $E_{max} = \ln(|\mathcal{A}|)$（例如包含 3 种动作时 $E_{max} = \ln(3) \approx 1.0986$），或归一化熵 $\mathcal{H}_{norm} = \mathcal{H} / \ln(|\mathcal{A}|) \in [0, 1]$。`DynamicEntropyCalculator` 依据训练经历的迭代回合数（$t$ 回合）动态衰减准入熵阈值：
+为彻底杜绝盲目随机探索策略过早获得硬件控制权，系统设定了动作空间理论最大熵上限 $E_{max} = \ln(|\mathcal{A}|)$（在 `DynamicEntropyCalculator` 中，针对 CARINA 的二元 `ADVANCE`/`KEEP` 动作空间默认设为 $E_{max} = \ln(2) \approx 0.6931$），或归一化熵 $\mathcal{H}_{norm} = \mathcal{H} / \ln(|\mathcal{A}|) \in [0, 1]$。`DynamicEntropyCalculator` 依据训练经历的迭代回合数（$t$ 回合）动态衰减准入熵阈值：
 
 $$E(t) = E_{ideal} + (E_{max} - E_{ideal}) \cdot e^{-k \cdot t}$$
 
 其中，理想目标熵 $E_{ideal} = 0.10$。幼年 $\to$ 青年阶段衰减系数取 $k = 0.05$，青年 $\to$ 成年阶段衰减系数取 $k = 0.15$。渐进的目标晋升区间如下：
 
-1. **幼年期 CHILD（影子观察模式）：** $\mathcal{H} > E_{child}(t)$（渐进基准 $\mathcal{H} > 0.40$）。动作仅作影子推演（仅被动采集遥测），底层由传统固定配时控制。由于对所有 $t \ge 1$ 均满足 $E(t) < \ln(3)$，完全随机策略（$\mathcal{H} = \ln 3$）绝对无法跨级晋升。不可逾越的法定安全观测底线：整整 1 周（通过 [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py) 动态计算求得的 $E_{\text{week}}$ 回合），确保覆盖完整的 168 个真实小时日历时段。
+1. **幼年期 CHILD（影子观察模式）：** $\mathcal{H} > E_{child}(t)$（渐进基准 $\mathcal{H} > 0.40$）。动作仅作影子推演（仅被动采集遥测）；底层由传统固定配时控制现场信号机，同时 `GuardianShadowTrainer` 安全地以离线策略（off-policy）训练 QR-D3QN。由于对所有 $t \ge 1$ 均满足 $E(t) < \ln(2)$，均匀随机策略（$\mathcal{H} = \ln 2$）绝对无法跨级晋升。不可逾越的法定安全观测底线：整整 1 周（通过 [`EpisodeStepCalculator`](../../src/utils/episode_step_calculator.py) 动态计算求得的 $E_{\text{week}}$ 回合），确保覆盖完整的 168 个真实小时日历时段。
 2. **青年期 TEEN（限制性自主运行）：** $E_{adult}(t) < \mathcal{H} \le E_{child}(t)$（渐进区间 $0.15 < \mathcal{H} \le 0.40$）。智能体仅获准在非高峰时段尝试驱动物理硬件（依据 Synapse 动态排程或经典城市通行标准）；在早晚高峰时段，系统强制降级为影子模式以确保道路交通安全。不可逾越的法定安全观测底线：整整 1 周（$E_{\text{week}}$ 回合）。
 3. **成年期 ADULT（完全自主接管）：** $\mathcal{H} \le E_{adult}(t)$（渐进基准 $\mathcal{H} \le 0.15$，在 $k=0.15$ 下经历 $t \ge 20$ 回合达成）且强化学习平均奖励 $\mu_{reward} > \mu_{baseline} + \delta^*$。正式授予 7×24 小时全天候、全工况物理硬件自主控制权限。
 

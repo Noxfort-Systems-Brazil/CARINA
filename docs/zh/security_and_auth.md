@@ -21,8 +21,13 @@ CARINA 直接管控城市关键市政交通基础设施。任何未经授权的�
    - `OPERATOR`：日常路口监测、手动相位调用、查看遥测数据及只读诊断。
    - `SUPERUSER`：完全管理权限、用户增删、安全策略配置以及解除系统锁定（`lockdown`）。
 4. **混合型凭据存储（离线优先与关系型持久化）：** 支持本地独立 JSON 文件存储（`security.json`，由 [`JsonUserRepository`](../../src/security/json_user_repo.py) 管理）、PostgreSQL/SQLite 关系型表持久化（`system_users` 和 `system_security_state`，由 [`SqlUserRepository`](../../src/security/sql_user_repo.py) 管理）以及双向韧性同步机制（[`HybridUserRepository`](../../src/security/hybrid_user_repo.py)）。
-5. **字段级加密与安全审计：** 敏感配置及令牌在静止状态下由 [`FieldEncryptor`](../../src/security/field_encryptor.py) 实施对称加密，关键操作通过 [`AuditLogger`](../../src/security/audit_logger.py) 生成不可篡改的审计追踪。
-6. **12-Factor 机密彻底隔离：** 杜绝在任何源代码中硬编码机密凭据，所有敏感信息统一由 `.env` 环境注入。
+5. **字段级加密与安全审计：** 敏感配置及令牌在静止状态下由 [`FieldEncryptor`](../../src/security/field_encryptor.py) 实施对称加密，关键操作通过 [`AuditLogger`](../../src/security/audit_logger.py)（借助 `db_transaction` 实现池化事务写入）生成不可篡改的审计追踪。
+6. **传输、端点与 SQL 安全加固：**
+   - **Synapse gRPC (`:50051`) 安全机制 ([`grpc_security.py`](../../src/communication/grpc_security.py))：** 支持 TLS/mTLS（`grpc.ssl_server_credentials`）以及恒定时间 Bearer / `x-carina-token` 令牌校验（`BearerTokenServerInterceptor`）。
+   - **默认关闭的 Web 网关与 EVP 认证 ([`auth.go`](../../src_go/web_gateway/auth.go), [`evp_http_server.go`](../../src_go/evp_go/evp_http_server.go))：** `gateway_enabled` 默认设置为 `False`（未启用时返回 `503 Service Unavailable`），强制执行恒定时间令牌匹配（`subtle.ConstantTimeCompare`）、显式 CORS（`CARINA_CCO_ALLOWED_ORIGIN`）以及 HTTPS/TLS 终止。
+   - **SHA-256 证书指纹固定 ([`cco_tls_transport.py`](../../src/sds/cco_tls_transport.py))：** 当 SDS 向 `/cco/broadcast` 推送数据时，`PinnedHTTPSConnection` 会校验 CA 信任链并支持对叶证书 SHA-256 摘要进行指纹固定。
+   - **参数化 SQL 时间间隔：** PostgreSQL 查询全部采用 `make_interval(...)` 而非字符串拼接。
+7. **12-Factor 机密彻底隔离：** 杜绝在任何源代码中硬编码机密凭据，所有敏感信息统一由 `.env` 环境注入。
 
 ```text
  客户端终端 (桌面 UI / CCO 平台 / CLI 工具)
@@ -102,15 +107,33 @@ CARINA_MQTT_HOST=127.0.0.1                     # 本地 Broker 或 https://tunne
 CARINA_MQTT_PORT=1883
 CARINA_MQTT_USER=
 CARINA_MQTT_PASSWORD=
+
+# --- 远程网关与 CCO/EVP 传输安全 ---
+CARINA_GATEWAY_ENABLED=False                   # 默认故障安全关闭，直至完成令牌配置
+CARINA_EVP_AUTH_TOKEN=
+CARINA_CCO_AUTH_TOKEN=
+CARINA_CCO_ALLOWED_ORIGIN=                     # CCO 端点的显式 CORS 来源
+CARINA_GATEWAY_TLS_CERT=
+CARINA_GATEWAY_TLS_KEY=
+CARINA_GATEWAY_TLS_CA=
+CARINA_GATEWAY_TLS_SERVER_NAME=
+
+# --- Synapse gRPC (:50051) 安全配置 ---
+CARINA_GRPC_AUTH_TOKEN=
+CARINA_GRPC_TLS_ENABLED=False
+CARINA_GRPC_TLS_CERT=
+CARINA_GRPC_TLS_KEY=
+CARINA_GRPC_TLS_CA=
+CARINA_GRPC_REQUIRE_CLIENT_CERT=False
 ```
 
 ---
 
 ## 4. 生产环境安全加固指南
 
-1. **轮换 SNMP 共同体名称：** 在实际城市路网部署中，严禁使用默认值 `"public"`。
-2. **限制 IPC 与 gRPC 监听端口：** 在生产环境中，将 gRPC（`50051`）与 WebSocket（`8080`）接口绑定至本地私有 VLAN 或 `127.0.0.1`，仅通过带 TLS 终止的反向代理向外暴露。
-3. **数据库最小特权原则：** 仅授予应用程序数据库账号在业务模式下的 `SELECT`, `INSERT` 和 `UPDATE` 权限。
+1. **轮换 SNMP 共同体名称并启用 SNMPv3：** 生产环境严禁保留默认共同体 `"public"`；建议通过 `hardware_controller_connections` 中的 `snmp_config` 配置 **SNMPv3 `AuthPriv`**（`SHA256` + `AES`）。
+2. **启用 gRPC 与 Web 网关 TLS 及令牌认证：** 在未设置强 `CARINA_EVP_AUTH_TOKEN`、`CARINA_CCO_AUTH_TOKEN`、`CARINA_CCO_ALLOWED_ORIGIN` 以及 `CARINA_GRPC_AUTH_TOKEN` + TLS 证书之前，绝不可在生产环境将 `CARINA_GATEWAY_ENABLED` 设为 `True`。
+3. **数据库最小特权原则：** 仅授予应用程序数据库账号在业务模式下的 `SELECT`、`INSERT`、`UPDATE` 以及 `DELETE`（用于过期数据保留清理）权限。
 4. **物理交通机故障安全机制：** 确保所有现场交通机均配置了在丢失上位机心跳通信时自动切换至本地黄闪或定时配时的硬件机制。
 5. **保护 JSON 密码库文件权限：** 确保 `security.json` 和 `lockdown.flag` 文件的访问权限严格限制为仅应用程序运行系统用户可读写（`chmod 600`）。
 

@@ -6,13 +6,32 @@ package main
 
 import (
 	"carina/src_go/pkg/manager"
+	"carina/src_go/pkg/snmp"
 )
 
 // handleHardwareCommand handles traffic light hardware communication commands (SOLID: SRP).
 func handleHardwareCommand(req RequestEnvelope, mgr *manager.HardwareManager, out ResponseSender) {
 	switch req.Cmd {
 	case "connect":
-		info, err := mgr.Connect(req.IntersectionID, req.IP, req.Port, req.Community, req.Protocol, req.GreenStages, req.ConfigPath)
+		snmpCfg := snmp.SNMPConfig{
+			Version:   "2c",
+			Community: req.Community,
+		}
+		if req.SNMPConfig != nil {
+			snmpCfg = *req.SNMPConfig
+			if snmpCfg.Community == "" && req.Community != "" {
+				snmpCfg.Community = req.Community
+			}
+		}
+		info, err := mgr.ConnectWithSNMPConfig(
+			req.IntersectionID,
+			req.IP,
+			req.Port,
+			snmpCfg,
+			req.Protocol,
+			req.GreenStages,
+			req.ConfigPath,
+		)
 		if err != nil {
 			out.Send(ResponseEnvelope{
 				ID:      req.ID,
@@ -111,6 +130,15 @@ func handleHardwareCommand(req RequestEnvelope, mgr *manager.HardwareManager, ou
 			ID:      req.ID,
 			Type:    "response",
 			Success: true,
+		})
+
+	case "resume_control":
+		resumed := mgr.ResumeControlAll()
+		out.Send(ResponseEnvelope{
+			ID:      req.ID,
+			Type:    "response",
+			Success: true,
+			Data:    map[string]interface{}{"resumed_count": resumed},
 		})
 	}
 }

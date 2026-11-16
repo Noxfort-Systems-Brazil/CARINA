@@ -119,7 +119,8 @@ def main():
         # Launch all backend subprocesses
         process_mgr.start_all_backend_services()
 
-        # Run the main UI/Tray loop on the main thread
+        # Run the main UI/Tray loop in remote gateway role (CentralController owns carina-go)
+        os.environ["CARINA_GATEWAY_ROLE"] = "remote"
         ui_mgr.run()
 
     except KeyboardInterrupt:

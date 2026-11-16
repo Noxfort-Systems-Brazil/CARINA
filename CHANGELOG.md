@@ -7,17 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-- **Unconsumed Consultant Agent (`src/agents/consultant_agent.py`)**: Removed obsolete background mentor agent whose cache was never consumed by decision or safety layers. The underlying `PredictiveAutoencoder` (`src/models/pae.py`) remains active as a direct physical representation model.
-- **Dead Cross-Attention Module (`src/models/cross_attention.py`)**: Removed dead cross-attention module; neural fusion is performed via direct spatiotemporal tensor concatenation and TCN/MLP processing.
+### Added
+- **Single-Owner Go Gateway & Closed-Loop Hardware Telemetry (`CARINA_GATEWAY_ROLE`)**: Assigned exclusive `bin/carina-go` ownership to `CentralController` (`CARINA_GATEWAY_ROLE=owner`) via `HardwareGatewayCoordinator` (`GatewayRuntimeWorker`, `HardwareCommandService`, `FenixStageDispatcher`, `TailscaleGatewayAdapter`), while `AI_Process`, `SDS`, and `UI` run as `remote` processes using `RemoteHardwareDriverProxy`, `sync_remote_driver_proxies`, `ThreadSafePipeConnection`, and `HardwareTelemetrySynchronizer` / `HardwareTelemetryDecoder`.
+- **SNMPv3 USM, Per-Intersection OID Overrides & Binary SNMP Trap Decoder**: Added full SNMPv3 (`NoAuthNoPriv`, `AuthNoPriv`, `AuthPriv` with SHA-256/512 and AES-128/192/256) in `src_go/pkg/snmp/config.go` and `hardware_controller_connections.snmp_config`, per-intersection `config_path` propagation, `GetBitmask` PDU codec (`src_go/pkg/snmp/codec.go`), `src_go/pkg/traplistener/snmp_decoder.go` for binary SNMPv1/v2c/v3 Trap/Inform PDUs, and `resume_control` / `gateway_set_auth_tokens` NDJSON gateway commands.
+- **Calibrated QR-D3QN Guardian Safety & `CHILD` Shadow Training (`src/safety/`)**: Implemented `GuardianPhysicsEstimator` (capacity-normalized incoming-edge slicing & clearance horizon projection), `GuardianRiskCalibrator` ($F_2$-tuned quantile spread calibration & non-compensatory Noisy-OR fusion), `GuardianShadowTrainer` (off-policy training restricted strictly to `Maturity.CHILD` followed by `freeze_for_deployment()`), and atomic `GuardianCheckpointService` (`guardian_{tl_id}.pth`).
+- **Phase 1–4 Performance & Memory Optimizations**:
+  - *Neural Hot-Path:* `BatchedPAEEncoder`, `FleetBatchInferencer` (`torch.func.stack_module_state` + `torch.vmap` + packed CPU decision arrays), `PhysicalActionMasker`, pure-NumPy host GAE in `PPOOptimizer`, and host-RAM `ReplayMemory` / `StateReplayMemory` (`push_batch`, $O(1)$ `_max_priority` cache).
+  - *Database & IPC:* `PostgresConnectionPool` (`ThreadedConnectionPool`), SQLite WAL & pragmas (`configure_sqlite_connection`), `db_transaction`, `enable_step_worker=False` for read-only workers, 168-hour `evp_telemetry_records` auto-purge, and 1 Hz rotating `HFTDiagnostics`.
+  - *SLM, XAI & Rendering:* Cross-process `slm_process_lock` (`slm_gguf.lock`), `pynvml` VRAM detection without PyTorch CUDA context bloat, `XaiWorker` Captum analysis cache reuse, `src/rendering/mpl_utils.py` offscreen Matplotlib rendering, and `read_sumo_net_cached` LRU cache.
+  - *UI & CCO:* `MapAnimator` hidden-window pause & dirty-flag throttling, paginated `AuditLogWidget` (<= 100 rows), `RemoteGatewaySettingsPersister`, `WebSocketServer` backpressure, and React CCO compositor-only animations (`transform`/`opacity`) + `requestAnimationFrame` viewport refs.
+- **Memory-Guarded Test Infrastructure**: Added `scripts/pytest_limited.sh` (systemd cgroup v2 `MemoryHigh=1536M` / `MemoryMax=2048M` / `MemorySwapMax=512M` or `ulimit -d`) and `tests/memory_guard.py` (`reclaim_test_resources()`), expanding the suite to **967 collected Pytest tests** (**935 unit**, **18 integration**, **14 root**) and **46 Go unit tests**.
+
+### Security
+- **gRPC Transport Security (`src/communication/grpc_security.py`)**: Added optional TLS/mTLS (`CARINA_GRPC_TLS_ENABLED`, `CARINA_GRPC_REQUIRE_CLIENT_CERT`) and `BearerTokenServerInterceptor` (`CARINA_GRPC_AUTH_TOKEN`) on `:50051`.
+- **Fail-Closed Web Gateway, Token Auth & Certificate Pinning**: Changed `gateway_enabled` default to `False` (returning `503 Service Unavailable` when disabled), enforced constant-time token checks (`CARINA_EVP_AUTH_TOKEN`, `CARINA_CCO_AUTH_TOKEN`) in `src_go/web_gateway/auth.go` and `evp_http_server.go`, added explicit CORS (`CARINA_CCO_ALLOWED_ORIGIN`), Gateway HTTPS/TLS, and SHA-256 leaf pinning in `CCOBroadcastClient` (`PinnedHTTPSConnection`).
+- **Parameterized PostgreSQL Intervals**: Replaced `%s` string interpolation inside PostgreSQL `INTERVAL` literals with `make_interval(...)` in `config/database/fluid_dynamics_queries.json`.
 
 ### Changed
+- **Corrected NTCIP 1202 & UTMC2 OID Profiles (`src_go/configs/`)**: Aligned `ntcip_oids.json` with standard NTCIP 1202 ASC MIBs (`.4.1.2/3/4/8/9.1` telemetry and `.5.1.2/4/5/6/7.1` control) and added UTMC2 `demand` OID (`1.3.6.1.4.1.2825.4.2.1.1.4.1.5.1`).
+- **Unified TCN & Action-Conditioned iTransformer PAE (`src/models/`)**: Replaced deprecated `weight_norm` with `TemporalConv1d` + `GroupNorm(1, C)` + `SiLU` + `TemporalAttentionPool`, upgraded `PredictiveAutoencoder` to an action-conditioned iTransformer with `key_padding_mask` and `decode_with_uncertainty`, and added auxiliary prediction + CTDE value heads to `STGATv2Lite`.
+- **SOLID Refactoring (`src/launcher/`, `src/controller/`, `src/drivers/`, `src/repositories/`, `src/interfaces/`)**: Modularized `process_manager.py`, `connection_operation_handler.py`, `traffic_frame_processor.py`, `connection_config_repo.py`, `agent_evaluator.py`, and `local_agent.py` into focused SRP collaborators with segregated protocols in `src/interfaces/`.
+- **Unconsumed Consultant Agent (`src/agents/consultant_agent.py`)**: Removed obsolete background mentor agent whose cache was never consumed by decision or safety layers. The underlying `PredictiveAutoencoder` (`src/models/pae.py`) remains active as a direct physical representation model.
+- **Dead Cross-Attention Module (`src/models/cross_attention.py`)**: Removed dead cross-attention module; neural fusion is performed via direct spatiotemporal tensor concatenation and TCN/MLP processing.
 - **Consolidation into Canonical 3-Agent Architecture**: Streamlined the multi-agent hierarchy into three clear, orthogonal roles:
   1. `LocalAgent` (Tactical PPO-TCN, sub-second execution at each junction)
-  2. `GuardianAgent` (Safety D3QN + CTB symbolic safety vetoes)
+  2. `GuardianAgent` (Safety QR-D3QN + CTB symbolic safety vetoes)
   3. `StrategistAgent` (Spatiotemporal network coordination via ST-GATv2 Lite running every 5s)
-- **Decoupled Strategic Coordinator (`src/core/strategic_coordinator.py`)**: Removed background consultant dispatch while preserving graph telemetry aggregation, PAE feature extraction, and topological scaling.
-- **Documentation & Report Harmonization**: Updated core architecture blueprints, multilingual documentation (PT-BR, EN, ES, FR), MOC knowledge graphs, developer guides, READMEs, XAI report section definitions, and OMML equation templates.
+- **Decoupled Strategic Coordinator (`src/engine/strategic_coordinator.py`)**: Preserved graph telemetry aggregation, non-mutating `peek_state()` sampling, and online self-supervised/CTDE updates.
+- **Documentation & Report Harmonization**: Updated root and multilingual documentation (PT-BR, EN, ES, FR, RU, ZH), architecture specs, OID tables, security guides, and testing documentation.
 
 ---
 

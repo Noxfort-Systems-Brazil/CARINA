@@ -6,13 +6,14 @@ import os
 import subprocess
 import sys
 import tempfile
-import pytest
-import torch
 from unittest.mock import MagicMock
 
+import pytest
+import torch
+
+from src.core.strategic_coordinator import StrategicCoordinator
 from src.models.pae import PredictiveAutoencoder
 from src.optimizer.pae_optimizer import PAEOptimizer
-from src.core.strategic_coordinator import StrategicCoordinator
 from src.utils.locale_manager_backend import LocaleManagerBackend
 
 
@@ -48,9 +49,7 @@ class TestPredictiveAutoencoder:
         mock_locale = LocaleManagerBackend()
         pae = PredictiveAutoencoder(input_dim=20, latent_dim=16, history_len=8)
 
-        coord = StrategicCoordinator(
-            settings=mock_settings, device="cpu", locale_manager=mock_locale, shared_pae=pae
-        )
+        coord = StrategicCoordinator(settings=mock_settings, device="cpu", locale_manager=mock_locale, shared_pae=pae)
         assert coord.shared_pae is pae
 
     def test_pae_real_torch_math_end_to_end(self):
@@ -109,6 +108,13 @@ with tempfile.TemporaryDirectory() as tmpdir:
 print('PAE_REAL_TORCH_VERIFIED')
 """
         cmd = [sys.executable, "-c", verify_script]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        sub_env = os.environ.copy()
+        sub_env.setdefault("OMP_NUM_THREADS", "1")
+        sub_env.setdefault("MKL_NUM_THREADS", "1")
+        sub_env.setdefault("OPENBLAS_NUM_THREADS", "1")
+        sub_env.setdefault("MALLOC_ARENA_MAX", "2")
+        if sub_env.get("CARINA_PYTEST_ALLOW_CUDA") != "1":
+            sub_env["CUDA_VISIBLE_DEVICES"] = ""
+        res = subprocess.run(cmd, capture_output=True, text=True, env=sub_env)
         assert res.returncode == 0, f"Subprocess failed:\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
         assert "PAE_REAL_TORCH_VERIFIED" in res.stdout

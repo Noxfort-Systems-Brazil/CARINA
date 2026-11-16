@@ -34,12 +34,16 @@ class TrafficLightDriver:
         community_string: str = "public",
         green_stages: Optional[List[int]] = None,
         locale_manager: Any = None,
+        snmp_config: Optional[Dict[str, Any]] = None,
+        config_path: Optional[str] = None,
     ) -> None:
         self.intersection_id = intersection_id
         self.ip_address = ip_address
         self.port = port
         self.community_string = community_string
         self.locale_manager = locale_manager
+        self.snmp_config = snmp_config
+        self.config_path = config_path
 
         self.hardware_driver: Optional[BaseTrafficDriver] = None
         self.is_connected = False
@@ -64,13 +68,21 @@ class TrafficLightDriver:
 
     def _connect(self) -> None:
         """Connects to hardware driver via DriverFactory discovery."""
+        connect_kwargs: Dict[str, Any] = {
+            "green_stages": self.green_stages,
+            "locale_manager": self.locale_manager,
+        }
+        if self.snmp_config is not None:
+            connect_kwargs["snmp_config"] = self.snmp_config
+        if self.config_path:
+            connect_kwargs["config_path"] = self.config_path
+
         self.hardware_driver = DriverFactory.create_and_connect_driver(
             self.ip_address,
             self.port,
             self.community_string,
             self.intersection_id,
-            green_stages=self.green_stages,
-            locale_manager=self.locale_manager,
+            **connect_kwargs,
         )
 
         if self.hardware_driver is not None:
@@ -224,8 +236,9 @@ class TrafficLightDriver:
                         default="[Intersection {id}] Warning: Failed to release hardware control during shutdown: {error}",
                         id=self.intersection_id,
                         error=e,
-                    )
-                , exc_info=True)
+                    ),
+                    exc_info=True,
+                )
 
             try:
                 self.hardware_driver.stop_heartbeat()
@@ -236,7 +249,9 @@ class TrafficLightDriver:
                 if hasattr(self.hardware_driver, "shutdown") and callable(self.hardware_driver.shutdown):
                     self.hardware_driver.shutdown()
             except Exception as e:
-                logger.warning(f"Error shutting down hardware driver for intersection {self.intersection_id}: {e}", exc_info=True)
+                logger.warning(
+                    f"Error shutting down hardware driver for intersection {self.intersection_id}: {e}", exc_info=True
+                )
 
             self.is_connected = False
             self.hardware_driver = None

@@ -28,24 +28,24 @@ This directory contains the canonical English documentation suite for **CARINA**
 | Document | Topic | Key Contents |
 |---|---|---|
 | 📚 **[Central Master (MOC)](carina_moc.md)** | Master Index & Knowledge Graph | Codebase overview, architectural directory hierarchy, and Obsidian bi-directional graph. |
-| 📖 **[System Architecture](architecture.md)** | Core Architecture | 8 concurrent OS microservices, ST-GATv2 Lite Graph Attention, Universal PAE, and Universal AMP acceleration. |
-| 🚑 **[Emergency Preemption (EVP)](evp_and_preemption.md)** | Emergency Vehicle Preemption | Autonomous green corridors, Haversine entry/exit kinematics gates ($60\text{--}160\text{ m}$), Tailscale Web Gateway (port 2201), and CCO React videowall. |
-| 🔌 **[Hardware Drivers & Go Gateway](hardware_drivers.md)** | Field Controllers | Industrial Go Hardware Gateway (`carina-go`), zero-port NDJSON pipe IPC, NTCIP 1202, UTMC2, SNMP client pool, and atomic fail-safe. |
-| 🛡️ **[Safety Architecture, Watchdog & FENIX](safety_and_watchdog.md)** | Neuro-Symbolic Safety | Symbolic veto rules (SR-01 to SR-05), D3QN Guardian spillback vetoes, real-time Watchdog (< 500 ms), and F.E.N.I.X. auto-resurrection. |
-| ⚡ **[Synapse HFT API & IPC Queues](api_reference.md)** | High-Frequency Interface | Sub-millisecond Synapse HFT gRPC interface (port 50051), 11 bounded IPC channels, and polymorphic telemetry transports. |
-| 🗄️ **[Database Architecture & Schemas](database_and_schemas.md)** | Persistence & Schemas | PostgreSQL asynchronous delta storage engine achieving **97.9% storage reduction**, 1-byte Smallint enums, and 12-Factor `.env`. |
-| 🧠 **[Neural Research & Formulations](research_notes.md)** | Mathematical Modeling | PPO-TCN temporal convolutions, PAE latent projections, Dueling DQN, ST-GATv2 Lite, and the DA SILVA curriculum. |
+| 📖 **[System Architecture](architecture.md)** | Core Architecture | 8 concurrent OS microservices, `CARINA_GATEWAY_ROLE` single owner, ST-GATv2 Lite, iTransformer PAE, and QR-D3QN. |
+| 🚑 **[Emergency Preemption (EVP)](evp_and_preemption.md)** | Emergency Vehicle Preemption | Autonomous green corridors, Haversine kinematics ($60\text{--}160\text{ m}$), cross-process sync, and token-protected Web Gateway (port 2201). |
+| 🔌 **[Hardware Drivers & Go Gateway](hardware_drivers.md)** | Field Controllers | Single-owner Go Gateway (`carina-go`), NDJSON pipe IPC, NTCIP 1202 (`.4.1.*`/`.5.1.*`), UTMC2, SNMPv3 USM, closed-loop stage decoding, and binary traps. |
+| 🛡️ **[Safety Architecture, Watchdog & FENIX](safety_and_watchdog.md)** | Neuro-Symbolic Safety | `PhysicalActionMasker`, symbolic rules (SR-00 to SR-06), QR-D3QN + Noisy-OR `CHILD` calibration, Watchdog, and F.E.N.I.X. closed-loop handover. |
+| ⚡ **[Synapse HFT API & IPC Queues](api_reference.md)** | High-Frequency Interface | Synapse HFT gRPC (TLS/mTLS & Bearer auth, port 50051), 12 bounded IPC queues + 1 thread-safe pipe, and pinned CCO broadcasting. |
+| 🗄️ **[Database Architecture & Schemas](database_and_schemas.md)** | Persistence & Schemas | PostgreSQL delta storage (**97.9% reduction**), `PostgresConnectionPool`, SQLite WAL, `make_interval` SQL, and 168h EVP retention. |
+| 🧠 **[Neural Research & Formulations](research_notes.md)** | Mathematical Modeling | Unified TCN (`GroupNorm` + `SiLU`), `torch.vmap` batching, iTransformer PAE, QR-D3QN + Noisy-OR, ST-GATv2 CTDE, and binary DA SILVA ($\ln 2$). |
 | 🚦 **[Traffic Signal Warrants (MUTCD)](traffic_engineering_warrants.md)** | Traffic Engineering | Algorithmic evaluation of formal FHWA/MUTCD regulatory signal warrants (Warrants 1, 2, 3, 4). |
 | 📈 **[MFD & Network Traffic Analytics](mfd_and_analytics.md)** | Macroscopic Physics | Macroscopic Fundamental Diagram (MFD) regressions, capacity drop mitigation, perimeter gating, and incident filter cache. |
-| 🔍 **[Explainable AI (XAI) & SAS](xai_and_sas.md)** | Municipal Audit & XAI | Google Captum Integrated Gradients, 5 formal mathematical equations, and Guardian veto forensic audit engine. |
-| 📄 **[Report Blocks Engine](report_blocks_and_templates.md)** | Automated Reporting | ABNT NBR 14724 compliant Word (.docx) generation with native Office Math Markup Language (OMML) equations. |
-| 🤖 **[Small Language Models (SLM)](slm_and_local_llm.md)** | Offline Private AI | Local 100% offline LLM inference (Qwen3.5 2B / llama.cpp) generating forensic textual explanations without cloud leakage. |
-| 🖥️ **[Desktop UI & Planning View](ui_and_dashboard.md)** | Frontend Architecture | Native Flet desktop GUI, interactive vector planning view, system tray management, and single instance lock (port 42123). |
-| 🗺️ **[Vector Map Rendering & Heatmaps](rendering_and_heatmaps.md)** | Geospatial Visualization | SUMO `.net.xml` offline vector parser and asynchronous real-time Kernel Density Estimation (KDE) heatmaps. |
-| 🔐 **[Security & Authentication](security_and_auth.md)** | Governance & Access | Role-based access control (RBAC), salted PBKDF2 hashing, brute-force lockdown, and 12-Factor isolation. |
-| 🛠️ **[Developer Guides](developer_guides.md)** | Engineering & Extension | Environment setup, custom neural agent implementation, and SOLID modular settings architecture. |
-| 🧪 **[Testing & Quality Assurance](testing.md)** | QA & Test Suite | Pytest suite with 861 automated tests, native Go unit tests (`go test`), Guardian safety mocks, and coverage validation. |
-| 🚀 **[Deployment & Packaging](deployment_and_packaging.md)** | Operations & Packaging | Multi-stage Docker containerization with CUDA acceleration and Linux Systemd daemon units. |
+| 🔍 **[Explainable AI (XAI) & SAS](xai_and_sas.md)** | Municipal Audit & XAI | Google Captum Integrated Gradients (cached multi-agent pipeline), 5 formal equations, and Guardian veto forensic audit engine. |
+| 📄 **[Report Blocks Engine](report_blocks_and_templates.md)** | Automated Reporting | ABNT NBR 14724 Word (.docx) generation with OMML equations and stat-cached `ReportNumberFormatter`. |
+| 🤖 **[Small Language Models (SLM)](slm_and_local_llm.md)** | Offline Private AI | Local Qwen3.5 2B / llama.cpp serialized via `slm_process_lock`, `pynvml` VRAM probing, and explicit `unload()`. |
+| 🖥️ **[Desktop UI & Planning View](ui_and_dashboard.md)** | Frontend Architecture | Flet desktop GUI, React 18 CCO (compositor animations & rAF viewport), `MapAnimator` window pause, and paginated `AuditLogWidget`. |
+| 🗺️ **[Vector Map Rendering & Heatmaps](rendering_and_heatmaps.md)** | Geospatial Visualization | SUMO `.net.xml` LRU cache (`read_sumo_net_cached`), offscreen `mpl_utils` rendering, and asynchronous KDE heatmaps. |
+| 🔐 **[Security & Authentication](security_and_auth.md)** | Governance & Access | RBAC, salted PBKDF2 lockdown, gRPC TLS/mTLS & Bearer auth, fail-closed `503` Web Gateway, and SHA-256 certificate pinning. |
+| 🛠️ **[Developer Guides](developer_guides.md)** | Engineering & Extension | 12-Factor `.env` & `[SYNAPSE]` settings, `CARINA_GATEWAY_ROLE`, segregated `src/interfaces/` protocols, and custom agents. |
+| 🧪 **[Testing & Quality Assurance](testing.md)** | QA & Test Suite | **967 Pytest tests** (935 unit, 18 integration, 14 root), **46 Go unit tests**, `scripts/pytest_limited.sh`, and `tests/memory_guard.py`. |
+| 🚀 **[Deployment & Packaging](deployment_and_packaging.md)** | Operations & Packaging | Multi-stage Docker builds, Systemd daemons, zero-trust fail-closed Web Gateway, and Tailscale Funnel deployment. |
 
 ---
 

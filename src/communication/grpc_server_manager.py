@@ -7,10 +7,16 @@ from concurrent import futures
 
 import grpc
 
+from communication.grpc_security import (
+    BearerTokenServerInterceptor,
+    build_grpc_server_credentials,
+    resolve_grpc_security_config,
+)
+
 
 class GrpcServerManager:
     """
-    Manages the lifecycle of the gRPC server (start, stop, bind).
+    Manages the lifecycle of the gRPC server (start, stop, bind) with optional TLS and token auth.
     """
 
     def __init__(self, settings, locale_manager, implementation_instance):
@@ -22,8 +28,10 @@ class GrpcServerManager:
     def start(self):
         server_port = self.settings.get("SYNAPSE", "port", fallback="50051")
         max_workers = self.settings.getint("SYNAPSE", "max_workers", fallback=10)
+        sec_cfg = resolve_grpc_security_config(self.settings)
 
-        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
+        interceptors = [BearerTokenServerInterceptor(sec_cfg.auth_token)] if sec_cfg.auth_token else []
+        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers), interceptors=interceptors)
 
         try:
             import synapse_hft_pb2_grpc as pb2_grpc
@@ -43,7 +51,12 @@ class GrpcServerManager:
             return
 
         bind_address = f"[::]:{server_port}"
-        self.server.add_insecure_port(bind_address)
+        creds = build_grpc_server_credentials(sec_cfg)
+        if creds is not None:
+            self.server.add_secure_port(bind_address, creds)
+            logging.info(f"[gRPC] TLS security enabled on port {server_port} (mTLS={sec_cfg.require_client_cert}).")
+        else:
+            self.server.add_insecure_port(bind_address)
 
         logging.info(
             self.locale_manager.get_string(

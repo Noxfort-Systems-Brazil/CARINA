@@ -12,14 +12,22 @@ import (
 	"carina/src_go/pkg/manager"
 )
 
+// actionApplier abstracts hardware action dispatch (implemented by *manager.HardwareManager).
+type actionApplier interface {
+	ApplyAction(intersectionID string, actionData map[string]interface{}) (bool, error)
+}
+
 // Dispatcher executes microsecond preemption commands on physical street controllers.
 type Dispatcher struct {
 	mu  sync.RWMutex
-	mgr *manager.HardwareManager
+	mgr actionApplier
 }
 
 // NewDispatcher instantiates the EVP Go dispatcher.
 func NewDispatcher(mgr *manager.HardwareManager) *Dispatcher {
+	if mgr == nil {
+		return &Dispatcher{}
+	}
 	return &Dispatcher{
 		mgr: mgr,
 	}
@@ -40,13 +48,23 @@ func (d *Dispatcher) ExecutePreemption(cmd PreemptionCommand) PreemptionResult {
 
 	switch cmd.ActionType {
 	case "activate_preempt":
+		stage := cmd.TargetStage
+		if stage <= 0 && cmd.StageIdx != nil {
+			stage = *cmd.StageIdx + 1
+		}
 		log.Printf("[EVP-Go] 🚨 Ativando preempção no semáforo %s para o estágio %d (Viatura: %s)",
-			cmd.IntersectionID, cmd.TargetStage, cmd.VehicleID)
+			cmd.IntersectionID, stage, cmd.VehicleID)
 
 		// 1. Apply direct HOLD action on the target stage of the emergency vehicle
 		actionData := map[string]interface{}{
 			"action_type": "hold",
-			"stage":       cmd.TargetStage,
+			"stage":       stage,
+		}
+		if cmd.StageIdx != nil {
+			actionData["stage_idx"] = *cmd.StageIdx
+		}
+		if len(cmd.StageCodes) > 0 {
+			actionData["stage_codes"] = cmd.StageCodes
 		}
 		success, err := d.mgr.ApplyAction(cmd.IntersectionID, actionData)
 		errMsg := ""
@@ -57,7 +75,7 @@ func (d *Dispatcher) ExecutePreemption(cmd PreemptionCommand) PreemptionResult {
 		return PreemptionResult{
 			IntersectionID: cmd.IntersectionID,
 			Success:        success,
-			ActionExecuted: fmt.Sprintf("HOLD_STAGE_%d", cmd.TargetStage),
+			ActionExecuted: fmt.Sprintf("HOLD_STAGE_%d", stage),
 			Error:          errMsg,
 		}
 

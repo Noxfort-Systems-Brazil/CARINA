@@ -113,9 +113,9 @@ $$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \quad d = R \cdot
 
 ### 4.1 Gatilho de Entrada na Quadra (`is_at_block_entrance`)
 - Avalia se a distância até o semáforo satisfaz:
-  
+
   $$d_{\text{min}} \le d_{\text{viatura}} \le d_{\text{max}}$$
-  
+
   Onde $d_{\text{min}} = 60,0\text{ m}$ e $d_{\text{max}} = 160,0\text{ m}$ (ou o comprimento real do link viário $L_{\text{quadra}}$ obtido via [`EVPTopologyService`](../../src/evp/evp_topology_service.py)).
 
 ### 4.2 Detecção de Checkout (`has_checked_out`)
@@ -131,16 +131,16 @@ A máquina de estados gerencia as transições de estágio sem violar os tempos 
 stateDiagram-v2
     [*] --> Idle: Operação Semafórica Nominal
     Idle --> Approaching: Viatura no Gate & Sirene Ativa
-    
+
     state Approaching {
         [*] --> CheckCurrentStage
         CheckCurrentStage --> StageDivergent: Estágio Atual != Estágio Alvo
         CheckCurrentStage --> StageAligned: Estágio Atual == Estágio Alvo
-        
+
         StageDivergent --> Advancing: ACTION_ADVANCE (0)
         Advancing --> EnforceClearance: Amarelo (3s) + Vermelho Total (2s)
         EnforceClearance --> StageAligned: Estágio Alvo Atingido
-        
+
         StageAligned --> HoldGreen: ACTION_HOLD (1)
     }
 
@@ -191,10 +191,11 @@ except Exception:
 
 O executável compilado em Go (`bin/carina-go`) executa as ordens de preempção em microsegundos sobre controladores NTCIP 1202 e UTMC2:
 
-### 7.1 Roteamento do Despachante (`dispatcher.go`)
-- Recebe mensagens `PreemptionCommand` do roteador do gateway.
-- `activate_preempt`: Insere máscaras OID `ascPhaseHold` via SNMP na porta UDP 161.
+### 7.1 Roteamento do Despachante (`dispatcher.go`) & Sincronia Entre Processos
+- Recebe mensagens `PreemptionCommand` (`stage_idx`, `stage_codes`, `target_stage`, `vehicle_id`) do roteador do gateway.
+- `activate_preempt`: Insere máscaras de bits `phase_control.hold` NTCIP (`1.3.6.1.4.1.1206.4.2.1.1.5.1.4.1`) ou retenção de estágio UTMC via SNMP na porta UDP 161.
 - `release_preempt`: Zera as máscaras de retenção, retornando o semáforo aos planos de coordenação locais.
+- **Sincronia Entre Processos (`EVPSnapshotSynchronizer` & `ai_evp_preempt`):** Sob propriedade única do gateway (`CARINA_GATEWAY_ROLE=owner` no `CentralController`, `remote` no `AI_Process`), [`EVPSnapshotSynchronizer`](../../src/evp/application/evp_snapshot_synchronizer.py) espelha viaturas de emergência ativas e preempções para o `AI_Process`, enquanto [`EVPBridge`](../../src/evp/evp_bridge.py) encaminha gatilhos remotos de preempção via comandos IPC `ai_evp_preempt`.
 
 ---
 
@@ -214,9 +215,10 @@ O Web Gateway em Go expõe portas para telemetria veicular e operação em naveg
     - HTTP 204 No Content               - Quadros JSON em Tempo Real
 ```
 
-### 8.1 Ingestão Unidirecional de GPS (`handlers_evp.go`)
-- **Rota:** `POST /api/v1/evp/telemetry` (e alias `/amb`)
-- **Resposta:** `204 No Content`
+### 8.1 Ingestão Unidirecional de GPS (`handlers_evp.go` & `evp_http_server.go`)
+- **Rota:** `POST /api/v1/evp/telemetry` (e aliases `/amb`, `/amb/`)
+- **Resposta:** `204 No Content` (ou `503 Service Unavailable` quando `CARINA_GATEWAY_ENABLED=False`, `401 Unauthorized` se `CARINA_EVP_AUTH_TOKEN` falhar na validação em tempo constante Bearer/`X-EVP-Token`)
+- **Criptografia TLS:** Suporta HTTPS via `CARINA_GATEWAY_TLS_CERT` e `CARINA_GATEWAY_TLS_KEY`.
 - **Latência de Ingestão:** $< 0,5\text{ ms}$
 - **Esquema de Carga:**
   ```json
@@ -293,6 +295,7 @@ CREATE TABLE IF NOT EXISTS evp_registered_fleet (
 ```
 
 ### 11.2 Tabela: `evp_telemetry_records`
+*(Expurgada automaticamente após 168 horas / 7 dias pelo `database_worker.py` via `EVPTelemetryRepository.purge_old_telemetry`.)*
 ```sql
 CREATE TABLE IF NOT EXISTS evp_telemetry_records (
     id BIGSERIAL PRIMARY KEY,

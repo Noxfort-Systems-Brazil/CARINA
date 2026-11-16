@@ -9,8 +9,11 @@ Delegates SQL statements to EVPFleetSql (Infrastructure / SRP).
 """
 
 import logging
-from typing import Dict, List, Optional
+import os
+import threading
+from typing import Any, Dict, List, Optional
 
+from src.database.connection_pool import db_transaction
 from src.evp.evp_fleet_csv_service import EVPFleetCsvService
 from src.evp.evp_models import CorporationType, RegisteredVehicle
 from src.evp.infrastructure.evp_fleet_sql import EVPFleetSql
@@ -25,6 +28,9 @@ class EVPConfigRepository(IEVPConfigRepository):
     Implements IEVPConfigRepository for Dependency Inversion (DIP) and provides
     backward-compatible static API facades. Delegates CSV parsing to EVPFleetCsvService (SRP).
     """
+
+    _engine_cache: Dict[str, Any] = {}
+    _engine_cache_lock = threading.Lock()
 
     def __init__(self, engine=None, locale_manager=None):
         self.engine = engine
@@ -53,24 +59,29 @@ class EVPConfigRepository(IEVPConfigRepository):
     def import_csv_config(filepath: str) -> List[RegisteredVehicle]:
         return EVPFleetCsvService.import_csv_config(filepath)
 
-    @staticmethod
-    def _get_engine(locale_manager=None, engine=None):
+    @classmethod
+    def _get_engine(cls, locale_manager=None, engine=None):
         if engine is not None:
             return engine
         from src.database.db_engine import DatabaseEngine
-        return DatabaseEngine(locale_manager=locale_manager)
+        from src.utils.paths import get_base_output_dir
+
+        cache_key = (
+            f"{get_base_output_dir()}::{os.getenv('CARINA_DB_TYPE', '')}::{os.getenv('CARINA_DB_CONNECTED', '')}"
+        )
+        with cls._engine_cache_lock:
+            cached = cls._engine_cache.get(cache_key)
+            if cached is None:
+                cached = DatabaseEngine(locale_manager=locale_manager)
+                cls._engine_cache[cache_key] = cached
+            return cached
 
     @classmethod
     def save_vehicle_db(cls, vehicle: RegisteredVehicle, locale_manager=None, engine=None) -> bool:
         """Saves or updates an emergency vehicle registration record in PostgreSQL/SQLite database."""
         try:
             eng = cls._get_engine(locale_manager, engine)
-            conn = eng.get_connection()
-            if not conn:
-                return False
-            cursor = conn.cursor()
             is_pg = getattr(eng, "db_type", "sqlite") == "postgres"
-
             sql = EVPFleetSql.get_upsert_vehicle_query(is_pg)
             params = (
                 vehicle.vehicle_id,
@@ -84,11 +95,14 @@ class EVPConfigRepository(IEVPConfigRepository):
                 vehicle.auth_token,
                 vehicle.is_active if is_pg else (1 if vehicle.is_active else 0),
             )
-            cursor.execute(sql, params)
-            cursor.execute(EVPFleetSql.get_delete_denied_query(is_pg), (vehicle.vehicle_id,))
-            conn.commit()
-            conn.close()
-            logger.info(f"[DB Persistence] Saved EVP vehicle '{vehicle.vehicle_id}' ({vehicle.corporation.value}) to database.")
+            with db_transaction(eng, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
+                cursor.execute(sql, params)
+                cursor.execute(EVPFleetSql.get_delete_denied_query(is_pg), (vehicle.vehicle_id,))
+            logger.info(
+                f"[DB Persistence] Saved EVP vehicle '{vehicle.vehicle_id}' ({vehicle.corporation.value}) to database."
+            )
             return True
         except Exception as e:
             logger.error(f"[DB Persistence] Failed to save EVP vehicle to database: {e}", exc_info=True)
@@ -99,17 +113,13 @@ class EVPConfigRepository(IEVPConfigRepository):
         """Deletes the vehicle registration record and adds it to evp_denied_fleet."""
         try:
             eng = cls._get_engine(locale_manager, engine)
-            conn = eng.get_connection()
-            if not conn:
-                return False
-            cursor = conn.cursor()
             clean_id = str(vehicle_id).strip().upper()
             is_pg = getattr(eng, "db_type", "sqlite") == "postgres"
-
-            cursor.execute(EVPFleetSql.get_delete_registered_query(is_pg), (clean_id,))
-            cursor.execute(EVPFleetSql.get_insert_denied_query(is_pg), (clean_id,))
-            conn.commit()
-            conn.close()
+            with db_transaction(eng, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
+                cursor.execute(EVPFleetSql.get_delete_registered_query(is_pg), (clean_id,))
+                cursor.execute(EVPFleetSql.get_insert_denied_query(is_pg), (clean_id,))
             logger.info(f"[DB Persistence] Deleted EVP vehicle '{clean_id}' and marked denied in database.")
             return True
         except Exception as e:
@@ -122,27 +132,24 @@ class EVPConfigRepository(IEVPConfigRepository):
         fleet: Dict[str, RegisteredVehicle] = {}
         try:
             eng = cls._get_engine(locale_manager, engine)
-            conn = eng.get_connection()
-            if not conn:
-                return fleet
-            cursor = conn.cursor()
-            cursor.execute(EVPFleetSql.SELECT_ALL_REGISTERED)
-            rows = cursor.fetchall()
-            for row in rows:
-                v = RegisteredVehicle(
-                    vehicle_id=str(row[0]),
-                    corporation=CorporationType.from_string(str(row[1])),
-                    plate=str(row[2] or ""),
-                    description=str(row[3] or ""),
-                    device_id=str(row[4] or ""),
-                    ip_address=str(row[5] or ""),
-                    port=int(row[6]) if row[6] is not None else 8085,
-                    protocol=str(row[7] or "HTTP"),
-                    auth_token=str(row[8] or ""),
-                    is_active=bool(row[9]),
-                )
-                fleet[v.vehicle_id] = v
-            conn.close()
+            with db_transaction(eng, commit=False) as (conn, cursor):
+                if not conn or not cursor:
+                    return fleet
+                cursor.execute(EVPFleetSql.SELECT_ALL_REGISTERED)
+                for row in cursor.fetchall():
+                    v = RegisteredVehicle(
+                        vehicle_id=str(row[0]),
+                        corporation=CorporationType.from_string(str(row[1])),
+                        plate=str(row[2] or ""),
+                        description=str(row[3] or ""),
+                        device_id=str(row[4] or ""),
+                        ip_address=str(row[5] or ""),
+                        port=int(row[6]) if row[6] is not None else 8085,
+                        protocol=str(row[7] or "HTTP"),
+                        auth_token=str(row[8] or ""),
+                        is_active=bool(row[9]),
+                    )
+                    fleet[v.vehicle_id] = v
             logger.info(f"[DB Persistence] Loaded {len(fleet)} authorized EVP vehicles from database.")
         except Exception as e:
             logger.error(f"[DB Persistence] Failed to load EVP vehicles from database: {e}", exc_info=True)
@@ -154,14 +161,11 @@ class EVPConfigRepository(IEVPConfigRepository):
         denied: List[str] = []
         try:
             eng = cls._get_engine(locale_manager, engine)
-            conn = eng.get_connection()
-            if not conn:
-                return denied
-            cursor = conn.cursor()
-            cursor.execute(EVPFleetSql.SELECT_ALL_DENIED)
-            rows = cursor.fetchall()
-            denied = [str(r[0]) for r in rows]
-            conn.close()
+            with db_transaction(eng, commit=False) as (conn, cursor):
+                if not conn or not cursor:
+                    return denied
+                cursor.execute(EVPFleetSql.SELECT_ALL_DENIED)
+                denied = [str(r[0]) for r in cursor.fetchall()]
         except Exception as e:
             logger.error(f"[DB Persistence] Failed to load denied EVP vehicles from database: {e}", exc_info=True)
         return denied
@@ -171,14 +175,11 @@ class EVPConfigRepository(IEVPConfigRepository):
         """Deletes all registered fleet vehicle entries completely from database."""
         try:
             eng = cls._get_engine(locale_manager, engine)
-            conn = eng.get_connection()
-            if not conn:
-                return False
-            cursor = conn.cursor()
-            cursor.execute(EVPFleetSql.CLEAR_ALL_REGISTERED)
-            cursor.execute(EVPFleetSql.CLEAR_ALL_DENIED)
-            conn.commit()
-            conn.close()
+            with db_transaction(eng, commit=True) as (conn, cursor):
+                if not conn or not cursor:
+                    return False
+                cursor.execute(EVPFleetSql.CLEAR_ALL_REGISTERED)
+                cursor.execute(EVPFleetSql.CLEAR_ALL_DENIED)
             logger.info("[DB Persistence] Cleared all EVP vehicle records and denylists from database.")
             return True
         except Exception as e:

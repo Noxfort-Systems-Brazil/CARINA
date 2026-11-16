@@ -40,11 +40,16 @@ def resource_path(relative_path: str) -> str:
 def get_base_output_dir() -> str:
     """
     Returns the base directory (OS Documents/Carina) where output files (logs, results) should be written.
-    Resolves the OS Documents folder dynamically (Linux).
+    Resolves the OS Documents folder dynamically (Linux), or uses CARINA_OUTPUT_DIR when explicitly set.
 
     Returns:
         str: The absolute path to the output base directory.
     """
+    env_output_dir = os.environ.get("CARINA_OUTPUT_DIR", "").strip()
+    if env_output_dir:
+        os.makedirs(env_output_dir, exist_ok=True)
+        return env_output_dir
+
     documents_dir = None
     try:
         # Try to get the official XDG Documents folder on Linux
@@ -76,8 +81,14 @@ def get_base_output_dir() -> str:
 def get_user_config_dir() -> str:
     """
     Returns the standard directory for user configuration and data,
-    which is persistent and hidden, following OS standards (e.g. XDG on Linux).
+    which is persistent and hidden, following OS standards (e.g. XDG on Linux),
+    or uses CARINA_CONFIG_DIR when explicitly set.
     """
+    env_config_dir = os.environ.get("CARINA_CONFIG_DIR", "").strip()
+    if env_config_dir:
+        os.makedirs(env_config_dir, exist_ok=True)
+        return env_config_dir
+
     import sys
 
     if sys.platform.startswith("win"):

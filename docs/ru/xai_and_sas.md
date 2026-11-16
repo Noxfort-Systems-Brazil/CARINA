@@ -24,10 +24,12 @@ aliases: [Объяснимый ИИ, Аналитика SAS, Конвейер XA
 ```
 
 Конвейер XAI базируется на модульной архитектуре построителей:
+- [`src/xai/xai_worker.py`](../../src/xai/xai_worker.py) и [`report_pipeline.py`](../../src/xai/report_pipeline.py): Выполняют атрибуцию Captum для каждого агента один раз и переиспользуют кэш `captum_result` (`precomputed_analyses`) при сборке консолидированного многоагентного отчета, ограничивая тяжелый текстовый синтез SLM (`run_slm`) исключительно основным целевым агентом под блокировкой `slm_process_lock()` и обращаясь к БД через `DatabaseManager.get_instance(..., enable_step_worker=False)`.
 - [`src/xai/multi_agent_report_builder.py`](../../src/xai/multi_agent_report_builder.py): Координирует сборку муниципальных аналитических отчетов по всем объектам сети.
-- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Рассчитывает атрибуцию градиентов вдоль траектории интерполяции от базовой линии к текущему входу.
+- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Рассчитывает атрибуцию градиентов вдоль траектории интерполяции от базовой линии к текущему входу с замороженными градиентами параметров модели (`requires_grad_(False)`).
 - [`src/xai/network_attribution_aggregator.py`](../../src/xai/network_attribution_aggregator.py): Агрегирует значимость признаков в масштабе магистральных направлений.
-- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Распределяет секции отчета по специализированным генераторам содержимого.
+- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Распределяет секции отчета по специализированным генераторам содержимого (с внеэкранным рендерингом графиков через `mpl_utils.py`).
+- [`src/sas/sas_helpers.py`](../../src/sas/sas_helpers.py) и [`sas_historical_data_processor.py`](../../src/sas/sas_historical_data_processor.py): Вычисляют 100 квантилей за один проход через `TrafficMetricsCalculator.compute_percentiles` и исключают избыточное развертывание синтетических выборок (`SyntheticSampleGenerator`).
 
 ---
 

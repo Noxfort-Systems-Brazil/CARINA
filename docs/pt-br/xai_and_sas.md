@@ -23,11 +23,13 @@ Na gestão pública municipal e na engenharia de tráfego, decisões automatizad
                                                                              └────────────────────────┘
 ```
 
-O pipeline de XAI emprega uma arquitetura modular de construção de laudos:
+O pipeline de XAI emprega uma arquitetura modular de construção de laudos multiagente:
+- [`src/xai/xai_worker.py`](../../src/xai/xai_worker.py) e [`report_pipeline.py`](../../src/xai/report_pipeline.py): Executam a atribuição do Captum por agente uma única vez e reutilizam o cache resultante `captum_result` (`precomputed_analyses`) na geração consolidada do laudo multiagente, restringindo a síntese textual pesada do SLM (`run_slm`) estritamente ao agente-alvo primário sob `slm_process_lock()` e acessando o banco via `DatabaseManager.get_instance(..., enable_step_worker=False)`.
 - [`src/xai/multi_agent_report_builder.py`](../../src/xai/multi_agent_report_builder.py): Orquestra a geração de relatórios periciais para todos os cruzamentos da malha.
-- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Calcula atribuições de gradiente ao longo do caminho de interpolação entre a linha de base e a entrada atual.
+- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py): Calcula atribuições de gradiente ao longo do caminho de interpolação entre a linha de base e a entrada atual com gradientes dos parâmetros do modelo encapsulado congelados (`requires_grad_(False)`).
 - [`src/xai/network_attribution_aggregator.py`](../../src/xai/network_attribution_aggregator.py): Consolida a importância das variáveis físicas ao longo de corredores arteriais inteiros.
-- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Despacha seções do relatório para renderizadores especializados.
+- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py): Despacha seções do relatório para renderizadores especializados (com renderização offscreen de gráficos via `mpl_utils.py`).
+- [`src/sas/sas_helpers.py`](../../src/sas/sas_helpers.py) e [`sas_historical_data_processor.py`](../../src/sas/sas_historical_data_processor.py): Calculam 100 quantis em uma única passagem via `TrafficMetricsCalculator.compute_percentiles` e evitam expansão redundante de amostras sintéticas (`SyntheticSampleGenerator`).
 
 ---
 
@@ -63,7 +65,7 @@ O gerador de laudos consulta a tabela PostgreSQL `step_decisions` para montar a 
 | **Cruzamento ID 1193472566** | 1.420 | 1.396 | 24 | **98,3%** | Proteção de Tempo Mínimo de Verde (7s) |
 | **Cruzamento ID 2281940123** | 1.420 | 1.418 | 2 | **99,8%** | Imposição de Entreverde Amarelo (3s) |
 
-Para detalhes sobre a formatação de documentos Word e renderização de fórmulas em OMML, consulte [Blocos de Relatório & Modelos Word](report_blocks_and_templates.md).  
+Para detalhes sobre a formatação de documentos Word e renderização de fórmulas em OMML, consulte [Blocos de Relatório & Modelos Word](report_blocks_and_templates.md).
 Para detalhes sobre a síntese em linguagem natural offline, consulte [Modelos Locais de Linguagem (SLM)](slm_and_local_llm.md).
 
 ---

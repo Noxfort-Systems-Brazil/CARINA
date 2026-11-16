@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Noxfort Systems
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useCcoViewModel } from './presentation/hooks/useCcoViewModel';
 import { CcoHeader } from './presentation/components/CcoHeader';
 import { CcoMap } from './presentation/components/CcoMap';
@@ -52,9 +52,12 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleToggleCorpFilter = (corp: string) => {
+  const handleToggleCorpFilter = useCallback((corp: string) => {
     setActiveCorpFilter((prev) => (prev === corp ? null : corp));
-  };
+  }, []);
+
+  const handleClearSearchTarget = useCallback(() => setSearchTarget(null), []);
+  const handleSelectTarget = useCallback((target: SearchTarget) => setSearchTarget(target), []);
 
   const bgClass = isDark ? 'bg-[#020617]' : 'bg-[#F7F7F7]';
 
@@ -77,7 +80,7 @@ const AppContent: React.FC = () => {
           emergencyVehicles={emergencyVehicles}
           filteredCorporation={activeCorpFilter}
           searchTarget={searchTarget}
-          onClearSearchTarget={() => setSearchTarget(null)}
+          onClearSearchTarget={handleClearSearchTarget}
           onLayersReady={setSearchableLayers}
         />
         <EvpAlertToast alerts={fleetSummary.activeAlerts} />
@@ -97,7 +100,7 @@ const AppContent: React.FC = () => {
         trafficLights={searchableLayers.trafficLights}
         intersections={searchableLayers.intersections}
         streets={searchableLayers.streets}
-        onSelectTarget={(target) => setSearchTarget(target)}
+        onSelectTarget={handleSelectTarget}
       />
     </div>
   );

@@ -3,12 +3,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 import sumolib
 
 from utils.historical_aggregator import HistoricalAggregator
+from utils.sumo_net_cache import read_sumo_net_cached
 
 if TYPE_CHECKING:
     from utils.locale_manager_backend import LocaleManagerBackend
@@ -39,6 +40,9 @@ class StateExtractor:
         # Where the index of the external list matches the character in the state string.
         self.tl_controlled_lanes_map: Dict[str, List[List[str]]] = {}
 
+        # Physical vehicle capacities per incoming edge (length * lanes / 7.0m)
+        self.tl_edge_capacities: Dict[str, List[float]] = {}
+
         # Historical aggregators for 5-minute context
         self.aggregators: Dict[str, HistoricalAggregator] = {}
 
@@ -54,18 +58,22 @@ class StateExtractor:
         """
         logging.info(f"Carregando topologia do mapa: {net_file_path}")
         try:
-            net = sumolib.net.readNet(net_file_path, withPrograms=True, withInternal=False)
+            net = read_sumo_net_cached(
+                net_file_path, reader_fn=sumolib.net.readNet, with_programs=True, with_internal=False
+            )
 
             self.tl_incoming_edges.clear()
             self.tl_green_stages.clear()
             self.tl_stage_codes.clear()
             self.tl_stage_durations.clear()
             self.tl_controlled_lanes_map.clear()
+            self.tl_edge_capacities.clear()
             self.aggregators.clear()
 
             for tls in net.getTrafficLights():
                 tl_id = tls.getID()
                 incoming_edges = set()
+                edge_cap_by_id: Dict[str, float] = {}
                 controlled_lanes_by_index = []
 
                 try:
@@ -88,11 +96,14 @@ class StateExtractor:
                                 # Save Lane ID for Map View UI
                                 lanes_for_this_index.append(lane_obj.getID())
 
-                                # Guard Edge ID for AI State Vector
+                                # Guard Edge ID and physical capacity for AI State Vector
                                 if hasattr(lane_obj, "getEdge"):
                                     edge = lane_obj.getEdge()
                                     if edge:
-                                        incoming_edges.add(edge.getID())
+                                        eid = edge.getID()
+                                        incoming_edges.add(eid)
+                                        if eid not in edge_cap_by_id:
+                                            edge_cap_by_id[eid] = self._estimate_edge_capacity(edge)
 
                         controlled_lanes_by_index.append(lanes_for_this_index)
 
@@ -100,6 +111,9 @@ class StateExtractor:
                     logging.warning(f"Erro ao extrair conexões para TLS {tl_id}: {e_conn}", exc_info=True)
 
                 self.tl_incoming_edges[tl_id] = sorted(list(incoming_edges))
+                self.tl_edge_capacities[tl_id] = [
+                    edge_cap_by_id.get(eid, 20.0) for eid in self.tl_incoming_edges[tl_id]
+                ]
                 self.tl_controlled_lanes_map[tl_id] = controlled_lanes_by_index
 
                 # Program Extraction (Phases and Colors)
@@ -136,21 +150,20 @@ class StateExtractor:
             logging.error(f"Erro fatal ao ler topologia com sumolib: {e}", exc_info=True)
             self.topology_loaded = False
 
-    def extract_state(self, traffic_frame: Dict[str, Any], tl_id: str, current_stage_idx: int) -> np.ndarray:
-        """
-        Extracts the state using HFT-vectorized comprehension arrays, avoiding slow python .extend() loops.
-        """
+    def _build_raw_state(
+        self, traffic_frame: Dict[str, Any], tl_id: str, current_stage_idx: int
+    ) -> Optional[np.ndarray]:
+        """Builds the raw un-aggregated feature vector for `tl_id`, or `None` if unavailable."""
         if not self.topology_loaded:
-            return np.array([], dtype=np.float32)
+            return None
 
         incoming_edges = self.tl_incoming_edges.get(tl_id, [])
         if not incoming_edges:
-            return np.array([], dtype=np.float32)
+            return None
 
         edges_data = traffic_frame.get("edges", {})
         default_edge = {"occupancy": 0.0, "mean_speed": 0.0, "queue_length": 0}
 
-        # O(1) Vectorized tuple expansion via C-backend list comprehension
         sensor_data = [
             val
             for edge_id in incoming_edges
@@ -172,19 +185,57 @@ class StateExtractor:
             except ValueError:
                 pass
 
-        # Pedestrian Call status (from hardware telemetry)
         ped_calls = 0.0
         if "tls_telemetry" in traffic_frame:
             telemetry = traffic_frame["tls_telemetry"].get(tl_id, {})
             ped_calls = 1.0 if telemetry.get("active_ped_calls", 0) > 0 else 0.0
 
-        raw_state = np.array(sensor_data + phase_one_hot + [ped_calls], dtype=np.float32)
+        return np.array(sensor_data + phase_one_hot + [ped_calls], dtype=np.float32)
+
+    def extract_state(self, traffic_frame: Dict[str, Any], tl_id: str, current_stage_idx: int) -> np.ndarray:
+        """
+        Extracts the state using HFT-vectorized comprehension arrays, updating historical statistics once per step.
+        """
+        raw_state = self._build_raw_state(traffic_frame, tl_id, current_stage_idx)
+        if raw_state is None:
+            return np.array([], dtype=np.float32)
 
         # Apply 5-minute historical aggregation
         if tl_id not in self.aggregators:
             self.aggregators[tl_id] = HistoricalAggregator(len(raw_state))
 
         return self.aggregators[tl_id].update(raw_state)
+
+    def peek_state(self, traffic_frame: Dict[str, Any], tl_id: str, current_stage_idx: int) -> np.ndarray:
+        """
+        Computes the aggregated state vector without mutating running HistoricalAggregator EMAs/peaks.
+        Used by secondary consumers (e.g., StrategicCoordinator) reading the same simulation step.
+        """
+        raw_state = self._build_raw_state(traffic_frame, tl_id, current_stage_idx)
+        if raw_state is None:
+            return np.array([], dtype=np.float32)
+
+        aggregator = self.aggregators.get(tl_id)
+        if aggregator is None:
+            return HistoricalAggregator(len(raw_state)).peek(raw_state)
+        return aggregator.peek(raw_state)
+
+    @staticmethod
+    def _estimate_edge_capacity(edge: Any) -> float:
+        """Estimates vehicle holding capacity `(length * lanes) / 7.0m` from sumolib edge."""
+        raw_len = edge.getLength() if hasattr(edge, "getLength") else None
+        raw_lanes = edge.getLaneNumber() if hasattr(edge, "getLaneNumber") else None
+        length = float(raw_len) if isinstance(raw_len, (int, float)) and not isinstance(raw_len, bool) else 140.0
+        lanes = int(raw_lanes) if isinstance(raw_lanes, (int, float)) and not isinstance(raw_lanes, bool) else 1
+        return max(1.0, (length * max(1, lanes)) / 7.0)
+
+    def get_edge_feature_dim(self, tl_id: str) -> int:
+        """Returns the number of raw edge telemetry features (3 per incoming edge)."""
+        return len(self.tl_incoming_edges.get(tl_id, [])) * 3
+
+    def get_edge_capacities(self, tl_id: str) -> List[float]:
+        """Returns estimated vehicle capacities per incoming edge for saturation normalization."""
+        return list(self.tl_edge_capacities.get(tl_id, []))
 
     def get_observation_space_size(self, tl_id: str) -> int:
         if not self.topology_loaded:

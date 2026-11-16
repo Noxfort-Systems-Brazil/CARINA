@@ -24,10 +24,12 @@ Dans la gestion du trafic municipal, les décisions de type « boîte noire » d
 ```
 
 Le pipeline XAI utilise une architecture de constructeur multi-agents modulaire :
+- [`src/xai/xai_worker.py`](../../src/xai/xai_worker.py) & [`report_pipeline.py`](../../src/xai/report_pipeline.py) : Exécutent l'attribution Captum par agent une seule fois et réutilisent le cache `captum_result` résultant (`precomputed_analyses`) lors de la génération de rapports multi-agents consolidés, restreignant la synthèse textuelle SLM lourde (`run_slm`) strictement à l'agent cible principal sous `slm_process_lock()` et accédant à la BD via `DatabaseManager.get_instance(..., enable_step_worker=False)`.
 - [`src/xai/multi_agent_report_builder.py`](../../src/xai/multi_agent_report_builder.py) : Coordonne la génération des rapports municipaux sur tous les carrefours.
-- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py) : Calcule les attributions de gradients le long de la trajectoire d'interpolation de la référence vers l'entrée actuelle.
+- [`src/xai/captum_attribution_engine.py`](../../src/xai/captum_attribution_engine.py) : Calcule les attributions de gradients le long de la trajectoire d'interpolation de la référence vers l'entrée actuelle avec les gradients des paramètres du modèle encapsulé gelés (`requires_grad_(False)`).
 - [`src/xai/network_attribution_aggregator.py`](../../src/xai/network_attribution_aggregator.py) : Agrège l'importance des caractéristiques à travers les artères urbaines.
-- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py) : Répartit les sections de rapport vers les moteurs de rendu spécialisés.
+- [`src/xai/report_block_registry.py`](../../src/xai/report_block_registry.py) : Répartit les sections de rapport vers les moteurs de rendu spécialisés (avec rendu des graphiques hors écran via `mpl_utils.py`).
+- [`src/sas/sas_helpers.py`](../../src/sas/sas_helpers.py) & [`sas_historical_data_processor.py`](../../src/sas/sas_historical_data_processor.py) : Calculent 100 quantiles en une seule passe via `TrafficMetricsCalculator.compute_percentiles` et évitent l'expansion redondante d'échantillons synthétiques (`SyntheticSampleGenerator`).
 
 ---
 
