@@ -1,8 +1,3 @@
----
-tags: [readme, home, carina]
-aliases: [Projeto CARINA, Root]
----
-
 <div align="center">
 
 <img src="docs/assets/carina-logo.png" alt="CARINA CORE Logo" width="130" />
